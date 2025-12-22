@@ -8,6 +8,8 @@ import (
 	"backend/service"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -33,11 +35,14 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	strategySvc := service.NewStrategyService(strategyRepo)
 	chartInkSvc := service.NewChartInkService(chartInkClient)
 
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// --- 4. Routes & Controllers ---
 	api := r.Group("/api")
 	{
+
 		// Health Check
-		controller.NewHealthController().RegisterRoutes(r)
+		controller.NewHealthController().RegisterRoutes(api)
 
 		// Email Endpoints
 		controller.NewEmailController(emailSvc).RegisterRoutes(api)

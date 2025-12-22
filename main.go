@@ -3,11 +3,18 @@ package main
 import (
 	"backend/config"
 	"backend/database"
+	_ "backend/docs"
 	"backend/routes"
 	"log"
 	"os"
 )
 
+// @title           Trades Management API
+// @version         1.0
+// @description     This is a specialized server for managing trading strategies and margins.
+// @BasePath  /api
+
+//go:generate swag init
 func main() {
 	// Initialize the config
 	sysConfigs, err := config.LoadConfigs()

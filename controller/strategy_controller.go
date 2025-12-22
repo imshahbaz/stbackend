@@ -31,11 +31,28 @@ func (ctrl *StrategyController) RegisterRoutes(router *gin.RouterGroup) {
 	}
 }
 
+// getAllStrategies retrieves all trading strategies
+// @Summary      Get all strategies
+// @Description  Returns a list of all configured trading strategies
+// @Tags         Strategy
+// @Produce      json
+// @Success      200  {array}  model.StrategyDto
+// @Router       /strategy [get]
 func (ctrl *StrategyController) getAllStrategies(c *gin.Context) {
 	strategies := ctrl.strategyService.GetAllStrategies()
 	c.JSON(http.StatusOK, strategies)
 }
 
+// createStrategy adds a new strategy
+// @Summary      Create a strategy
+// @Description  Saves a new trading strategy configuration to the database
+// @Tags         Strategy
+// @Accept       json
+// @Produce      json
+// @Param        request  body      model.StrategyDto  true  "Strategy Details"
+// @Success      201      {object}  model.Strategy
+// @Failure      400      {object}  map[string]string
+// @Router       /strategy [post]
 func (ctrl *StrategyController) createStrategy(c *gin.Context) {
 	var request model.StrategyDto
 	// ShouldBindJSON validates against `binding:"required"` tags in the struct
@@ -52,6 +69,16 @@ func (ctrl *StrategyController) createStrategy(c *gin.Context) {
 	c.JSON(http.StatusCreated, res)
 }
 
+// updateStrategy modifies an existing strategy
+// @Summary      Update a strategy
+// @Description  Updates the configuration of an existing strategy by name
+// @Tags         Strategy
+// @Accept       json
+// @Produce      json
+// @Param        request  body      model.StrategyDto  true  "Updated Strategy Details"
+// @Success      200      {object}  model.Strategy
+// @Failure      400      {object}  map[string]string
+// @Router       /strategy [put]
 func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
 	var request model.StrategyDto
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -67,6 +94,14 @@ func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
+// deleteStrategy removes a strategy
+// @Summary      Delete a strategy
+// @Description  Removes a strategy from the system using its ID (Name)
+// @Tags         Strategy
+// @Param        id   path      string  true  "Strategy ID (Name)"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /strategy/{id} [delete]
 func (ctrl *StrategyController) deleteStrategy(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -82,6 +117,12 @@ func (ctrl *StrategyController) deleteStrategy(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// reloadAllStrategies refreshes cache from DB
+// @Summary      Reload strategies
+// @Description  Syncs the in-memory strategy cache with the MongoDB database
+// @Tags         Strategy
+// @Success      200
+// @Router       /strategy/reload [post]
 func (ctrl *StrategyController) reloadAllStrategies(c *gin.Context) {
 	err := ctrl.strategyService.ReloadAllStrategies(c.Request.Context())
 	if err != nil {

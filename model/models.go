@@ -7,7 +7,12 @@ import (
 )
 
 // --- ENUMS ---
+// UserRole represents the account access level
+// @Description ADMIN or USER access level
 type UserRole string
+
+// UserTheme represents the UI preference
+// @Description LIGHT or DARK theme mode
 type UserTheme string
 
 const (
@@ -18,6 +23,8 @@ const (
 )
 
 // --- SYSTEM CONFIG ---
+// EnvConfig holds sensitive environment settings
+// @Description Private configuration (usually not exposed in public endpoints)
 type EnvConfig struct {
 	BrevoEmail    string `json:"brevoEmail"`
 	BrevoApiKey   string `json:"brevoApiKey"`
@@ -27,12 +34,14 @@ type EnvConfig struct {
 }
 
 // --- MARGIN ---
+// Margin represents the database entity for stock leverage
 type Margin struct {
 	Symbol string  `bson:"_id" json:"symbol"`
 	Name   string  `bson:"name" json:"name"`
 	Margin float32 `bson:"margin" json:"margin"`
 }
 
+// StockMarginDto combines stock price with margin requirements
 type StockMarginDto struct {
 	Name   string  `json:"name"`
 	Symbol string  `json:"symbol"`
@@ -41,12 +50,14 @@ type StockMarginDto struct {
 }
 
 // --- STRATEGY ---
+// Strategy is the core scanner entity
 type Strategy struct {
 	Name       string `bson:"_id" json:"name"`
 	ScanClause string `bson:"scanClause" json:"scanClause"`
 	Active     bool   `bson:"active" json:"active"`
 }
 
+// StrategyDto is used for creating/updating strategies
 type StrategyDto struct {
 	Name       string `json:"name" validate:"required"`
 	ScanClause string `json:"scanClause" validate:"required"`
@@ -62,6 +73,7 @@ func (d *StrategyDto) ToEntity() Strategy {
 }
 
 // --- USER ---
+// User is the main account entity
 type User struct {
 	Username string    `bson:"_id" json:"username"`
 	Email    string    `bson:"email" json:"email"`
@@ -70,6 +82,7 @@ type User struct {
 	Theme    UserTheme `bson:"theme" json:"theme"`
 }
 
+// UserDto handles authentication requests
 type UserDto struct {
 	Email           string    `json:"email" validate:"required,email"`
 	Password        string    `json:"password" validate:"required,min=8"`
@@ -93,6 +106,7 @@ func (d *UserDto) ToEntity() (*User, error) {
 }
 
 // --- BREVO EMAIL ---
+// BrevoEmailRequest is the payload for sending transactional emails
 type Recipient struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -119,6 +133,7 @@ func (r *BrevoEmailRequest) Signup(otp string, validity int) {
 }
 
 // ChartInkResponseDto mimics the parent Java class
+// ChartInkResponseDto maps the wrapper from ChartInk API
 type ChartInkResponseDto struct {
 	// json:"data" tells the parser to map the JSON key "data" to this field
 	Data []StockData `json:"data"`
@@ -126,6 +141,7 @@ type ChartInkResponseDto struct {
 
 // StockData mimics the static inner class
 // In Go, we usually keep them at the package level for better readability
+// StockData represents a single row from a scan result
 type StockData struct {
 	NSECode string  `json:"nsecode"`
 	Name    string  `json:"name"`

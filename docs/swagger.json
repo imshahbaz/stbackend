@@ -1,0 +1,594 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "This is a specialized server for managing trading strategies and margins.",
+        "title": "Trades Management API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/api",
+    "paths": {
+        "/chartink/fetch": {
+            "get": {
+                "description": "Triggers a scan on ChartInk for the given strategy and returns raw stock data",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ChartInk"
+                ],
+                "summary": "Fetch raw ChartInk data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bullish_Engulfing",
+                        "description": "Name of the strategy to run",
+                        "name": "strategy",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.StockData"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Strategy not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chartink/fetchWithMargin": {
+            "get": {
+                "description": "Triggers a scan and maps the results with the current margin and leverage data",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ChartInk"
+                ],
+                "summary": "Fetch ChartInk data with Margin info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Nifty_50_Breakout",
+                        "description": "Name of the strategy to run",
+                        "name": "strategy",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.StockMarginDto"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/email/send": {
+            "post": {
+                "description": "Sends a transactional email using the Brevo API provider",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "Send an email",
+                "parameters": [
+                    {
+                        "description": "Email content and recipients",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.BrevoEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to send email",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "System Health Check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "head": {
+                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "System Health Check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/margin/all": {
+            "get": {
+                "description": "Returns a list of all stock margins stored in the database",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Margin"
+                ],
+                "summary": "Get all margins",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.Margin"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/margin/load-from-csv": {
+            "post": {
+                "description": "Uploads a CSV file to bulk load or update margin data",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "tags": [
+                    "Margin"
+                ],
+                "summary": "Upload Margin CSV",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Margin CSV file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/margin/reload": {
+            "get": {
+                "description": "Forces a reload of all margins from the persistent database into the memory cache",
+                "tags": [
+                    "Margin"
+                ],
+                "summary": "Reload margins",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/margin/{symbol}": {
+            "get": {
+                "description": "Fetches the margin details for a specific stock symbol",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Margin"
+                ],
+                "summary": "Get margin by symbol",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "RELIANCE",
+                        "description": "Stock Symbol",
+                        "name": "symbol",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Margin"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy": {
+            "get": {
+                "description": "Returns a list of all configured trading strategies",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Get all strategies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.StrategyDto"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates the configuration of an existing strategy by name",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Update a strategy",
+                "parameters": [
+                    {
+                        "description": "Updated Strategy Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.StrategyDto"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Strategy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Saves a new trading strategy configuration to the database",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Create a strategy",
+                "parameters": [
+                    {
+                        "description": "Strategy Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.StrategyDto"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Strategy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy/reload": {
+            "post": {
+                "description": "Syncs the in-memory strategy cache with the MongoDB database",
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Reload strategies",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/strategy/{id}": {
+            "delete": {
+                "description": "Removes a strategy from the system using its ID (Name)",
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Delete a strategy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Strategy ID (Name)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "model.BrevoEmailRequest": {
+            "type": "object",
+            "properties": {
+                "htmlContent": {
+                    "type": "string"
+                },
+                "sender": {
+                    "$ref": "#/definitions/model.Recipient"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Recipient"
+                    }
+                }
+            }
+        },
+        "model.Margin": {
+            "type": "object",
+            "properties": {
+                "margin": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Recipient": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.StockData": {
+            "type": "object",
+            "properties": {
+                "close": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nsecode": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.StockMarginDto": {
+            "type": "object",
+            "properties": {
+                "close": {
+                    "type": "number"
+                },
+                "margin": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Strategy": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scanClause": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.StrategyDto": {
+            "type": "object",
+            "required": [
+                "name",
+                "scanClause"
+            ],
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scanClause": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

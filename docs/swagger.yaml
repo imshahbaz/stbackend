@@ -1,0 +1,395 @@
+basePath: /api
+definitions:
+  model.BrevoEmailRequest:
+    properties:
+      htmlContent:
+        type: string
+      sender:
+        $ref: '#/definitions/model.Recipient'
+      subject:
+        type: string
+      to:
+        items:
+          $ref: '#/definitions/model.Recipient'
+        type: array
+    type: object
+  model.Margin:
+    properties:
+      margin:
+        type: number
+      name:
+        type: string
+      symbol:
+        type: string
+    type: object
+  model.Recipient:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+    type: object
+  model.StockData:
+    properties:
+      close:
+        type: number
+      name:
+        type: string
+      nsecode:
+        type: string
+    type: object
+  model.StockMarginDto:
+    properties:
+      close:
+        type: number
+      margin:
+        type: number
+      name:
+        type: string
+      symbol:
+        type: string
+    type: object
+  model.Strategy:
+    properties:
+      active:
+        type: boolean
+      name:
+        type: string
+      scanClause:
+        type: string
+    type: object
+  model.StrategyDto:
+    properties:
+      active:
+        type: boolean
+      name:
+        type: string
+      scanClause:
+        type: string
+    required:
+    - name
+    - scanClause
+    type: object
+info:
+  contact: {}
+  description: This is a specialized server for managing trading strategies and margins.
+  title: Trades Management API
+  version: "1.0"
+paths:
+  /chartink/fetch:
+    get:
+      description: Triggers a scan on ChartInk for the given strategy and returns
+        raw stock data
+      parameters:
+      - description: Name of the strategy to run
+        example: Bullish_Engulfing
+        in: query
+        name: strategy
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.StockData'
+            type: array
+        "404":
+          description: Strategy not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Fetch raw ChartInk data
+      tags:
+      - ChartInk
+  /chartink/fetchWithMargin:
+    get:
+      description: Triggers a scan and maps the results with the current margin and
+        leverage data
+      parameters:
+      - description: Name of the strategy to run
+        example: Nifty_50_Breakout
+        in: query
+        name: strategy
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.StockMarginDto'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Fetch ChartInk data with Margin info
+      tags:
+      - ChartInk
+  /email/send:
+    post:
+      consumes:
+      - application/json
+      description: Sends a transactional email using the Brevo API provider
+      parameters:
+      - description: Email content and recipients
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.BrevoEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to send email
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Send an email
+      tags:
+      - Email
+  /health:
+    get:
+      description: Confirm that the server is up and running. Returns a 200 status
+        code with no body.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: System Health Check
+      tags:
+      - System
+    head:
+      description: Confirm that the server is up and running. Returns a 200 status
+        code with no body.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: System Health Check
+      tags:
+      - System
+  /margin/{symbol}:
+    get:
+      description: Fetches the margin details for a specific stock symbol
+      parameters:
+      - description: Stock Symbol
+        example: RELIANCE
+        in: path
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Margin'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get margin by symbol
+      tags:
+      - Margin
+  /margin/all:
+    get:
+      description: Returns a list of all stock margins stored in the database
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Margin'
+            type: array
+      summary: Get all margins
+      tags:
+      - Margin
+  /margin/load-from-csv:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a CSV file to bulk load or update margin data
+      parameters:
+      - description: Margin CSV file
+        in: formData
+        name: file
+        required: true
+        type: file
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Upload Margin CSV
+      tags:
+      - Margin
+  /margin/reload:
+    get:
+      description: Forces a reload of all margins from the persistent database into
+        the memory cache
+      responses:
+        "200":
+          description: OK
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reload margins
+      tags:
+      - Margin
+  /strategy:
+    get:
+      description: Returns a list of all configured trading strategies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.StrategyDto'
+            type: array
+      summary: Get all strategies
+      tags:
+      - Strategy
+    post:
+      consumes:
+      - application/json
+      description: Saves a new trading strategy configuration to the database
+      parameters:
+      - description: Strategy Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.StrategyDto'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Strategy'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a strategy
+      tags:
+      - Strategy
+    put:
+      consumes:
+      - application/json
+      description: Updates the configuration of an existing strategy by name
+      parameters:
+      - description: Updated Strategy Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.StrategyDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Strategy'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update a strategy
+      tags:
+      - Strategy
+  /strategy/{id}:
+    delete:
+      description: Removes a strategy from the system using its ID (Name)
+      parameters:
+      - description: Strategy ID (Name)
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete a strategy
+      tags:
+      - Strategy
+  /strategy/reload:
+    post:
+      description: Syncs the in-memory strategy cache with the MongoDB database
+      responses:
+        "200":
+          description: OK
+      summary: Reload strategies
+      tags:
+      - Strategy
+swagger: "2.0"

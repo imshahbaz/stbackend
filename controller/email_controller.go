@@ -28,6 +28,17 @@ func (ctrl *EmailController) RegisterRoutes(router *gin.RouterGroup) {
 	}
 }
 
+// sendEmail handles email dispatching via Brevo
+// @Summary      Send an email
+// @Description  Sends a transactional email using the Brevo API provider
+// @Tags         Email
+// @Accept       json
+// @Produce      json
+// @Param        request  body      model.BrevoEmailRequest  true  "Email content and recipients"
+// @Success      200      {string}  string "OK"
+// @Failure      400      {object}  map[string]string "Invalid request body"
+// @Failure      500      {object}  map[string]string "Failed to send email"
+// @Router       /email/send [post]
 func (ctrl *EmailController) sendEmail(c *gin.Context) {
 	var request model.BrevoEmailRequest
 

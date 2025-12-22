@@ -31,6 +31,15 @@ func (ctrl *ChartInkController) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 // fetchData replaces GET /fetch
+// @Summary      Fetch raw ChartInk data
+// @Description  Triggers a scan on ChartInk for the given strategy and returns raw stock data
+// @Tags         ChartInk
+// @Produce      json
+// @Param        strategy  query     string  true  "Name of the strategy to run"  example(Bullish_Engulfing)
+// @Success      200       {array}   model.StockData
+// @Failure      404       {object}  map[string]string "Strategy not found"
+// @Failure      500       {object}  map[string]string "Internal server error"
+// @Router       /chartink/fetch [get]
 func (ctrl *ChartInkController) fetchData(c *gin.Context) {
 	strategyName := c.Query("strategy")
 
@@ -51,6 +60,15 @@ func (ctrl *ChartInkController) fetchData(c *gin.Context) {
 }
 
 // fetchWithMargin replaces GET /fetchWithMargin
+// @Summary      Fetch ChartInk data with Margin info
+// @Description  Triggers a scan and maps the results with the current margin and leverage data
+// @Tags         ChartInk
+// @Produce      json
+// @Param        strategy  query     string  true  "Name of the strategy to run" example(Nifty_50_Breakout)
+// @Success      200       {array}   model.StockMarginDto
+// @Failure      404       {object}  map[string]string
+// @Failure      500       {object}  map[string]string
+// @Router       /chartink/fetchWithMargin [get]
 func (ctrl *ChartInkController) fetchWithMargin(c *gin.Context) {
 	strategyName := c.Query("strategy")
 
