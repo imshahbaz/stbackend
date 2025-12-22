@@ -1,0 +1,16 @@
+# Sensitive environment variables
+.env
+*.env
+config.yaml
+
+# Binaries and executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin
+bin/
+
+# Dependency directories
+vendor/
