@@ -1,10 +1,14 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"backend/auth"
+	"backend/cache"
 	"backend/config"
 	"backend/middleware"
 	"backend/model"
@@ -17,10 +21,11 @@ import (
 type AuthController struct {
 	userSvc service.UserService
 	cfg     *config.SystemConfigs
+	otpSvc  service.OtpService
 }
 
-func NewAuthController(s service.UserService, cfg *config.SystemConfigs) *AuthController {
-	return &AuthController{userSvc: s, cfg: cfg}
+func NewAuthController(s service.UserService, cfg *config.SystemConfigs, otpSvc service.OtpService) *AuthController {
+	return &AuthController{userSvc: s, cfg: cfg, otpSvc: otpSvc}
 }
 
 func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
@@ -28,6 +33,8 @@ func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
 
 	// 1. Public Routes
 	authGroup.POST("/login", ctrl.Login)
+	authGroup.POST("/signup", ctrl.Signup)
+	authGroup.POST("/verify-otp", ctrl.VerifyOtp)
 
 	// 2. Protected Routes (Apply middleware to this sub-group)
 	protected := authGroup.Group("/")
@@ -63,14 +70,14 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	// 2. Fetch User from DB
 	user, err := ctrl.userSvc.GetUser(c.Request.Context(), req.Email)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
 		return
 	}
 
 	// 3. Verify Bcrypt Password
 	hashedFromDB := strings.TrimSpace(user.Password)
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedFromDB), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
 		return
 	}
 
@@ -166,4 +173,105 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 
 	// 2. Return the DTO directly to React
 	c.JSON(http.StatusOK, user)
+}
+
+// Signup handles user registration and caches pending data locally
+// @Summary      User Signup
+// @Description  Stores user data in local memory for 5 minutes and sends an OTP.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        user  body      model.UserDto  true  "User Registration Details"
+// @Success      200   {object}  model.MessageResponse
+// @Failure      400   {object}  map[string]string
+// @Router       /auth/signup [post]
+func (ctrl *AuthController) Signup(c *gin.Context) {
+	var user model.UserDto
+
+	// 1. Validation
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// 2. Keep in Cache for 5 mins
+	// We use the email as the key to retrieve the data during OTP verification
+	cache.PendingUserCache.Set(user.Email, user, 5*time.Minute)
+
+	// 3. Send OTP
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := ctrl.otpSvc.SendSignUpOtp(ctx, user); err != nil {
+
+		if errors.Is(err, service.ErrDuplicateOtp) {
+			c.JSON(http.StatusConflict, model.MessageResponse{
+				Message: err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong please try again later"})
+		return
+	}
+
+	// 4. Return Success Response
+	c.JSON(http.StatusOK, model.MessageResponse{
+		OtpSent: true,
+		Message: "Otp sent successfully to " + user.Email,
+	})
+}
+
+// VerifyOtp handles OTP validation and final user creation
+// @Summary      Verify OTP and Create User
+// @Description  Validates the OTP from cache. If valid, creates the user in the database and returns a JWT.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      model.VerifyOtpRequest  true  "OTP Verification Details"
+// @Success      201      {object}  model.MessageResponse  "User created successfully"
+// @Failure      400      {object}  model.MessageResponse  "Invalid OTP or session expired"
+// @Router       /auth/verify-otp [post]
+func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
+	var req model.VerifyOtpRequest
+
+	// 1. Bind JSON Input
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Invalid request format"})
+		return
+	}
+
+	// 2. Retrieve Pending User from go-cache
+	// We use the email from the request to find the cached data
+	val, found := cache.PendingUserCache.Get(req.Email)
+	if !found {
+		c.JSON(http.StatusBadRequest, model.MessageResponse{
+			Message: "No pending signup found or session expired. Please start over.",
+		})
+		return
+	}
+
+	// 3. Verify OTP Logic
+	// Assuming otpService.Verify returns an error if invalid
+	if match, err := ctrl.otpSvc.VerifyOtp(req.Email, req.Otp); err != nil || !match {
+		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Invalid or expired OTP"})
+		return
+	}
+
+	// 4. Create User in Database
+	// We pass the data we recovered from the cache
+	pendingDto := val.(model.UserDto)
+	_, err := ctrl.userSvc.CreateUser(c.Request.Context(), pendingDto)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.MessageResponse{Message: "Failed to create user"})
+		return
+	}
+
+	// 5. Cleanup Cache
+	cache.PendingUserCache.Delete(req.Email)
+
+	// 6. Return Success (In a JWT flow, you'd generate the token here)
+	c.JSON(http.StatusCreated, model.MessageResponse{
+		Message: "Signup successful! You can now login.",
+	})
 }

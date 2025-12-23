@@ -110,6 +110,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/signup": {
+            "post": {
+                "description": "Stores user data in local memory for 5 minutes and sends an OTP.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "User Signup",
+                "parameters": [
+                    {
+                        "description": "User Registration Details",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.UserDto"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.MessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/username": {
             "patch": {
                 "description": "Updates the username and returns the updated user object",
@@ -157,6 +200,46 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/verify-otp": {
+            "post": {
+                "description": "Validates the OTP from cache. If valid, creates the user in the database and returns a JWT.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Verify OTP and Create User",
+                "parameters": [
+                    {
+                        "description": "OTP Verification Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.VerifyOtpRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/model.MessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid OTP or session expired",
+                        "schema": {
+                            "$ref": "#/definitions/model.MessageResponse"
                         }
                     }
                 }
@@ -670,6 +753,22 @@ const docTemplate = `{
                 }
             }
         },
+        "model.MessageResponse": {
+            "description": "Standard response containing status and a descriptive message",
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message provides details about the operation result",
+                    "type": "string",
+                    "example": "Otp sent successfully to user@example.com"
+                },
+                "otpSent": {
+                    "description": "OtpSent indicates if the OTP was successfully triggered",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "model.Recipient": {
             "type": "object",
             "properties": {
@@ -794,6 +893,23 @@ const docTemplate = `{
                 "ThemeLight",
                 "ThemeDark"
             ]
+        },
+        "model.VerifyOtpRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "otp"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "otp": {
+                    "type": "string",
+                    "example": "123456"
+                }
+            }
         }
     }
 }`

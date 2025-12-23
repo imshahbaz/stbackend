@@ -22,6 +22,18 @@ definitions:
       symbol:
         type: string
     type: object
+  model.MessageResponse:
+    description: Standard response containing status and a descriptive message
+    properties:
+      message:
+        description: Message provides details about the operation result
+        example: Otp sent successfully to user@example.com
+        type: string
+      otpSent:
+        description: OtpSent indicates if the OTP was successfully triggered
+        example: true
+        type: boolean
+    type: object
   model.Recipient:
     properties:
       email:
@@ -106,6 +118,18 @@ definitions:
     x-enum-varnames:
     - ThemeLight
     - ThemeDark
+  model.VerifyOtpRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      otp:
+        example: "123456"
+        type: string
+    required:
+    - email
+    - otp
+    type: object
 info:
   contact: {}
   description: This is a specialized server for managing trading strategies and margins.
@@ -174,6 +198,34 @@ paths:
       summary: Get current authenticated user
       tags:
       - Auth
+  /auth/signup:
+    post:
+      consumes:
+      - application/json
+      description: Stores user data in local memory for 5 minutes and sends an OTP.
+      parameters:
+      - description: User Registration Details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/model.UserDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User Signup
+      tags:
+      - auth
   /auth/username:
     patch:
       consumes:
@@ -208,6 +260,33 @@ paths:
       summary: Update Username
       tags:
       - User
+  /auth/verify-otp:
+    post:
+      consumes:
+      - application/json
+      description: Validates the OTP from cache. If valid, creates the user in the
+        database and returns a JWT.
+      parameters:
+      - description: OTP Verification Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.VerifyOtpRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            $ref: '#/definitions/model.MessageResponse'
+        "400":
+          description: Invalid OTP or session expired
+          schema:
+            $ref: '#/definitions/model.MessageResponse'
+      summary: Verify OTP and Create User
+      tags:
+      - auth
   /chartink/fetch:
     get:
       description: Triggers a scan on ChartInk for the given strategy and returns

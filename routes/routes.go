@@ -35,7 +35,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	// --- 3. Services (Dependency Injection) ---
 	emailSvc := service.NewEmailService(brevoClient, cfg.Config.BrevoApiKey)
-	// otpSvc := service.NewOtpService(emailSvc, cfg.Config.BrevoEmail)
+	otpSvc := service.NewOtpService(emailSvc, cfg.Config.BrevoEmail)
 	userSvc := service.NewUserService(userRepo)
 
 	// Note: Margin leverage comes from config
@@ -65,7 +65,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(api)
 
 		//User/Auth Endpoints (Once implemented)
-		controller.NewAuthController(userSvc, cfg).RegisterRoutes(api)
+		controller.NewAuthController(userSvc, cfg, otpSvc).RegisterRoutes(api)
 	}
 
 	return r

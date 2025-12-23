@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -115,8 +116,8 @@ func (d *UserDto) ToEntity() (*User, error) {
 		Username: strings.ToLower(strings.Split(d.Email, "@")[0]),
 		Email:    d.Email,
 		Password: string(hashed),
-		Role:     d.Role,
-		Theme:    d.Theme,
+		Role:     RoleUser,
+		Theme:    ThemeDark,
 	}, nil
 }
 
@@ -144,7 +145,7 @@ const SignupTemplate = `
 
 func (r *BrevoEmailRequest) Signup(otp string, validity int) {
 	r.Subject = "Signup Verification Code"
-	r.HTMLContent = (SignupTemplate) // Use fmt.Sprintf if you want to inject values
+	r.HTMLContent = fmt.Sprintf(SignupTemplate, otp, 5) // Use fmt.Sprintf if you want to inject values
 }
 
 // ChartInkResponseDto mimics the parent Java class
@@ -161,4 +162,19 @@ type StockData struct {
 	NSECode string  `json:"nsecode"`
 	Name    string  `json:"name"`
 	Close   float32 `json:"close"`
+}
+
+// MessageResponse represents a standard JSON response for auth operations
+// @Description Standard response containing status and a descriptive message
+type MessageResponse struct {
+	// OtpSent indicates if the OTP was successfully triggered
+	OtpSent bool `json:"otpSent" example:"true"`
+
+	// Message provides details about the operation result
+	Message string `json:"message" example:"Otp sent successfully to user@example.com"`
+}
+
+type VerifyOtpRequest struct {
+	Email string `json:"email" binding:"required,email" example:"user@example.com"`
+	Otp   string `json:"otp" binding:"required,len=6" example:"123456"`
 }
