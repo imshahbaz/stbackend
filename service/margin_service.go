@@ -6,36 +6,36 @@ import (
 	"io"
 	"log"
 	"path/filepath"
-	"sync"
 
-	"backend/model"      // Replace with your actual model package
-	"backend/repository" // Replace with your actual repo package
-	"backend/util"       // Replace with your actual util package
+	"backend/model"
+	"backend/repository"
+	"backend/util"
+
+	"github.com/patrickmn/go-cache"
 )
 
-// 1. Interface Definition
+// 1. Interface Definition (remains the same)
 type MarginService interface {
 	GetAllMargins() []model.Margin
 	GetMargin(symbol string) (*model.Margin, bool)
 	ReloadAllMargins(ctx context.Context) error
 	LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error
+	GetStore() *cache.Cache
 }
 
 // 2. Implementation Struct
 type MarginServiceImpl struct {
 	repo     *repository.MarginRepository
 	leverage float32
-	// marginMap is made thread-safe using a Read-Write Mutex
-	marginMap map[string]model.Margin
-	mu        sync.RWMutex
+	store    *cache.Cache
 }
 
 // NewMarginService acts as the @RequiredArgsConstructor + @PostConstruct
 func NewMarginService(repo *repository.MarginRepository, leverage float32) MarginService {
 	s := &MarginServiceImpl{
-		repo:      repo,
-		leverage:  leverage,
-		marginMap: make(map[string]model.Margin),
+		repo:     repo,
+		leverage: leverage,
+		store:    cache.New(cache.NoExpiration, 0),
 	}
 
 	// Trigger initial load (PostConstruct equivalent)
@@ -48,24 +48,25 @@ func NewMarginService(repo *repository.MarginRepository, leverage float32) Margi
 }
 
 func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	// FIX: Use store.Items() to get all entries
+	items := s.store.Items()
+	margins := make([]model.Margin, 0, len(items))
 
-	margins := make([]model.Margin, 0, len(s.marginMap))
-	for _, m := range s.marginMap {
-		margins = append(margins, m)
+	for _, item := range items {
+		// Type assertion from interface{} to model.Margin
+		margins = append(margins, item.Object.(model.Margin))
 	}
 	return margins
 }
 
 func (s *MarginServiceImpl) GetMargin(symbol string) (*model.Margin, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	margin, exists := s.marginMap[symbol]
+	// FIX: Use store.Get() - thread safety is handled internally
+	val, exists := s.store.Get(symbol)
 	if !exists {
 		return nil, false
 	}
+
+	margin := val.(model.Margin)
 	return &margin, true
 }
 
@@ -75,19 +76,15 @@ func (s *MarginServiceImpl) ReloadAllMargins(ctx context.Context) error {
 		return err
 	}
 
-	newMap := make(map[string]model.Margin)
+	// FIX: Flush old data and set new data
+	s.store.Flush()
 	for _, m := range margins {
-		newMap[m.Symbol] = m
+		s.store.Set(m.Symbol, m, cache.NoExpiration)
 	}
-
-	s.mu.Lock()
-	s.marginMap = newMap
-	s.mu.Unlock()
 	return nil
 }
 
 func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error {
-	// 1. Validation
 	if file == nil {
 		return fmt.Errorf("file is empty")
 	}
@@ -95,38 +92,35 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 		return fmt.Errorf("invalid file type: must be .csv")
 	}
 
-	// 2. Read using our CsvReader utility
 	margins, err := util.Read(file, s.leverage)
 	if err != nil {
 		return fmt.Errorf("csv parsing failed: %w", err)
 	}
 
-	// 3. Save All to DB
 	if err := s.repo.SaveAll(ctx, margins); err != nil {
 		return fmt.Errorf("failed to save margins: %w", err)
 	}
 
-	// 4. Delete old records not in the new list (Sync logic)
 	var ids []string
 	for _, m := range margins {
 		ids = append(ids, m.Symbol)
 	}
+
 	deletedCount, err := s.repo.DeleteByIdNotIn(ctx, ids)
 	if err != nil {
 		log.Printf("Error deleting old margins: %v", err)
-	} else {
-		log.Printf("Deleted %d old margin(s)", deletedCount)
 	}
 
-	// 5. Update local cache
-	newMap := make(map[string]model.Margin)
+	// FIX: Update local cache using the same Flush/Set pattern
+	s.store.Flush()
 	for _, m := range margins {
-		newMap[m.Symbol] = m
+		s.store.Set(m.Symbol, m, cache.NoExpiration)
 	}
 
-	s.mu.Lock()
-	s.marginMap = newMap
-	s.mu.Unlock()
-
+	log.Printf("CSV Loaded. Cache updated. Deleted %d old records.", deletedCount)
 	return nil
+}
+
+func (s *MarginServiceImpl) GetStore() *cache.Cache {
+	return s.store
 }

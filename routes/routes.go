@@ -44,7 +44,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	// Note: Margin leverage comes from config
 	marginSvc := service.NewMarginService(marginRepo, 4.0)
 	strategySvc := service.NewStrategyService(strategyRepo)
-	chartInkSvc := service.NewChartInkService(chartInkClient)
+	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
