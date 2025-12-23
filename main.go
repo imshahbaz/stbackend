@@ -6,7 +6,6 @@ import (
 	_ "backend/docs"
 	"backend/routes"
 	"log"
-	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,13 +33,13 @@ func main() {
 	router := routes.SetupRouter(db, sysConfigs)
 
 	// 4. Start Server
-	port := os.Getenv("PORT")
+	port := sysConfigs.Config.Port
 	if port == "" {
 		port = "8080"
 	}
 
 	log.Printf("Server starting on port %s", port)
-	if err := router.Run(":" + port); err != nil {
+	if err := router.Run("0.0.0.0:" + port); err != nil {
 		log.Fatal("Server failed to start: ", err)
 	}
 }

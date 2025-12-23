@@ -15,7 +15,12 @@ import (
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	if cfg.Config.Environment != "production" {
+		r.Use(gin.Logger())
+	}
 
 	r.Use(middleware.CORS(cfg))
 
