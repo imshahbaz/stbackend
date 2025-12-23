@@ -15,6 +15,49 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/login": {
+            "post": {
+                "description": "Authenticates user and returns user details without password",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User Login",
+                "parameters": [
+                    {
+                        "description": "Login Credentials (only email/password required)",
+                        "name": "login",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.UserDto"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Login successful (Passwords omitted)",
+                        "schema": {
+                            "$ref": "#/definitions/model.UserDto"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/chartink/fetch": {
             "get": {
                 "description": "Triggers a scan on ChartInk for the given strategy and returns raw stock data",
@@ -596,6 +639,57 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "model.UserDto": {
+            "type": "object",
+            "required": [
+                "confirmPassword",
+                "email"
+            ],
+            "properties": {
+                "confirmPassword": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/model.UserRole"
+                },
+                "theme": {
+                    "$ref": "#/definitions/model.UserTheme"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.UserRole": {
+            "description": "ADMIN or USER access level",
+            "type": "string",
+            "enum": [
+                "ADMIN",
+                "USER"
+            ],
+            "x-enum-varnames": [
+                "RoleAdmin",
+                "RoleUser"
+            ]
+        },
+        "model.UserTheme": {
+            "description": "LIGHT or DARK theme mode",
+            "type": "string",
+            "enum": [
+                "LIGHT",
+                "DARK"
+            ],
+            "x-enum-varnames": [
+                "ThemeLight",
+                "ThemeDark"
+            ]
         }
     }
 }`

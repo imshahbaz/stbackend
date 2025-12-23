@@ -70,12 +70,76 @@ definitions:
     - name
     - scanClause
     type: object
+  model.UserDto:
+    properties:
+      confirmPassword:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        $ref: '#/definitions/model.UserRole'
+      theme:
+        $ref: '#/definitions/model.UserTheme'
+      username:
+        type: string
+    required:
+    - confirmPassword
+    - email
+    type: object
+  model.UserRole:
+    description: ADMIN or USER access level
+    enum:
+    - ADMIN
+    - USER
+    type: string
+    x-enum-varnames:
+    - RoleAdmin
+    - RoleUser
+  model.UserTheme:
+    description: LIGHT or DARK theme mode
+    enum:
+    - LIGHT
+    - DARK
+    type: string
+    x-enum-varnames:
+    - ThemeLight
+    - ThemeDark
 info:
   contact: {}
   description: This is a specialized server for managing trading strategies and margins.
   title: Trades Management API
   version: "1.0"
 paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates user and returns user details without password
+      parameters:
+      - description: Login Credentials (only email/password required)
+        in: body
+        name: login
+        required: true
+        schema:
+          $ref: '#/definitions/model.UserDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful (Passwords omitted)
+          schema:
+            $ref: '#/definitions/model.UserDto'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User Login
+      tags:
+      - Auth
   /chartink/fetch:
     get:
       description: Triggers a scan on ChartInk for the given strategy and returns

@@ -23,7 +23,7 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 // FindByEmail replaces Optional<User> findByEmail(String email)
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	var user model.User
-	err := r.collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	err := r.collection.FindOne(ctx, bson.M{"_id": email}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, nil // Return nil, nil to represent an empty Optional
@@ -37,7 +37,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	var user model.User
 	// Using "_id" because in your User entity, Username is tagged as bson:"_id"
-	err := r.collection.FindOne(ctx, bson.M{"_id": username}).Decode(&user)
+	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, nil
