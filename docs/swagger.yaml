@@ -140,6 +140,40 @@ paths:
       summary: User Login
       tags:
       - Auth
+  /auth/logout:
+    post:
+      description: Clears the authentication cookie to log out the user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: Logged out successfully'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Logout user
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Retrieves user details (email and role) from the session cookie
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User details successfully retrieved
+          schema:
+            $ref: '#/definitions/model.UserDto'
+        "401":
+          description: 'Unauthorized: Session invalid or expired'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get current authenticated user
+      tags:
+      - Auth
   /auth/username:
     patch:
       consumes:

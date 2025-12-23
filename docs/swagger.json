@@ -51,6 +51,58 @@
                 }
             }
         },
+        "/auth/logout": {
+            "post": {
+                "description": "Clears the authentication cookie to log out the user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout user",
+                "responses": {
+                    "200": {
+                        "description": "message: Logged out successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "description": "Retrieves user details (email and role) from the session cookie",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Get current authenticated user",
+                "responses": {
+                    "200": {
+                        "description": "User details successfully retrieved",
+                        "schema": {
+                            "$ref": "#/definitions/model.UserDto"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized: Session invalid or expired",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/username": {
             "patch": {
                 "description": "Updates the username and returns the updated user object",

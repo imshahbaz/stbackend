@@ -4,11 +4,10 @@ import (
 	"backend/client"
 	"backend/config"
 	"backend/controller"
+	"backend/middleware"
 	"backend/repository"
 	"backend/service"
-	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -18,14 +17,7 @@ import (
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	r := gin.Default()
 
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"}, // Your Frontend URL
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	r.Use(middleware.CORS())
 
 	// --- 1. Clients ---
 	brevoClient := client.NewBrevoClient()
