@@ -49,7 +49,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 
 // Save (Insert or Update)
 func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
-	filter := bson.M{"_id": user.Username}
+	filter := bson.M{"_id": user.Email}
 	update := bson.M{"$set": user}
 	opts := options.Update().SetUpsert(true)
 

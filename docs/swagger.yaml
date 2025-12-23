@@ -140,6 +140,40 @@ paths:
       summary: User Login
       tags:
       - Auth
+  /auth/username:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the username and returns the updated user object
+      parameters:
+      - description: Target Email and New Username
+        in: body
+        name: update
+        required: true
+        schema:
+          $ref: '#/definitions/model.UserDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.UserDto'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update Username
+      tags:
+      - User
   /chartink/fetch:
     get:
       description: Triggers a scan on ChartInk for the given strategy and returns

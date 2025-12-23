@@ -23,6 +23,7 @@ func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
 	authGroup := router.Group("/auth")
 	{
 		authGroup.POST("/login", ctrl.Login)
+		authGroup.PATCH("/username", ctrl.UpdateUsername)
 	}
 }
 
@@ -65,4 +66,35 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	// Because of json:"-", the password fields will be stripped automatically
 	response := user.ToDto()
 	c.JSON(http.StatusOK, response)
+}
+
+// UpdateUsername godoc
+// @Summary      Update Username
+// @Description  Updates the username and returns the updated user object
+// @Tags         User
+// @Accept       json
+// @Produce      json
+// @Param        update  body      model.UserDto  true  "Target Email and New Username"
+// @Success      200     {object}  model.UserDto
+// @Failure      400     {object}  map[string]string
+// @Failure      404     {object}  map[string]string
+// @Router       /auth/username [patch]
+func (ctrl *AuthController) UpdateUsername(c *gin.Context) {
+	var req model.UserDto
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload"})
+		return
+	}
+
+	// 1. Call Service (Returns updated *model.User)
+	updatedUser, err := ctrl.userSvc.UpdateUsername(c.Request.Context(), req.Email, req.Username)
+	if err != nil {
+		// Handle case where user might not exist or DB error
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found or update failed"})
+		return
+	}
+
+	// 2. Return the DTO (React will use this to update its state)
+	c.JSON(http.StatusOK, updatedUser.ToDto())
 }
