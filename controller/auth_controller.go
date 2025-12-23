@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"backend/auth"
+	"backend/config"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -15,10 +16,11 @@ import (
 
 type AuthController struct {
 	userSvc service.UserService
+	cfg     *config.SystemConfigs
 }
 
-func NewAuthController(s service.UserService) *AuthController {
-	return &AuthController{userSvc: s}
+func NewAuthController(s service.UserService, cfg *config.SystemConfigs) *AuthController {
+	return &AuthController{userSvc: s, cfg: cfg}
 }
 
 func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
@@ -80,6 +82,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		return
 	}
 
+	isProduction := ctrl.cfg.Config.Environment == "production"
 	// 3. Set HttpOnly Cookie
 	c.SetCookie(
 		"auth_token", // name
@@ -87,7 +90,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		1800,         // maxAge in seconds (30 mins)
 		"/",          // path
 		"",           // domain (empty for localhost)
-		false,        // secure (set to TRUE in production for HTTPS)
+		isProduction, // secure (set to TRUE in production for HTTPS)
 		true,         // httpOnly (PREVENTS JAVASCRIPT ACCESS)
 	)
 
@@ -138,7 +141,8 @@ func (ctrl *AuthController) UpdateUsername(c *gin.Context) {
 func (ctrl *AuthController) Logout(c *gin.Context) {
 	// Set the cookie with a MaxAge of -1 to delete it instantly
 	// In production, ensure 'secure' is set to true if using HTTPS
-	c.SetCookie("auth_token", "", -1, "/", "", false, true)
+	isProduction := ctrl.cfg.Config.Environment == "production"
+	c.SetCookie("auth_token", "", -1, "/", "", isProduction, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

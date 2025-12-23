@@ -65,7 +65,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(api)
 
 		//User/Auth Endpoints (Once implemented)
-		controller.NewAuthController(userSvc).RegisterRoutes(api)
+		controller.NewAuthController(userSvc, cfg).RegisterRoutes(api)
 	}
 
 	return r
