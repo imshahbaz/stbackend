@@ -1,16 +1,17 @@
 package middleware
 
 import (
+	"backend/config"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func CORS() gin.HandlerFunc {
+func CORS(cfg *config.SystemConfigs) gin.HandlerFunc {
 	return cors.New(cors.Config{
 		// 1. Specify your exact frontend origin (avoid "*" when using credentials)
-		AllowOrigins: []string{"http://localhost:3000"},
+		AllowOrigins: []string{cfg.Config.FrontendUrl},
 
 		// 2. Methods your React app is allowed to use
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},

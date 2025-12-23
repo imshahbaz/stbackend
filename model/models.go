@@ -26,6 +26,8 @@ const (
 // EnvConfig holds sensitive environment settings
 // @Description Private configuration (usually not exposed in public endpoints)
 type EnvConfig struct {
+	Environment   string `json:"environment"`
+	FrontendUrl   string `json:"frontendUrl"`
 	BrevoEmail    string `json:"brevoEmail"`
 	BrevoApiKey   string `json:"brevoApiKey"`
 	ApiKey        string `json:"apiKey"`

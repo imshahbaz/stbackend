@@ -7,6 +7,8 @@ import (
 	"backend/routes"
 	"log"
 	"os"
+
+	"github.com/gin-gonic/gin"
 )
 
 // @title           Trades Management API
@@ -20,6 +22,10 @@ func main() {
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
 		log.Fatal("Error loading configuration: ", err)
+	}
+
+	if sysConfigs.Config.Environment == "production" {
+		gin.SetMode(gin.ReleaseMode)
 	}
 
 	_, db := database.InitMongoClient(sysConfigs)

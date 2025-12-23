@@ -17,7 +17,7 @@ import (
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	r := gin.Default()
 
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg))
 
 	// --- 1. Clients ---
 	brevoClient := client.NewBrevoClient()
