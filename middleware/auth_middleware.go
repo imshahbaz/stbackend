@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(isProduction bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := c.Cookie("auth_token")
 		if err != nil {
@@ -27,7 +27,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// If more than 15 minutes of the 30-minute token has passed, refresh it
 		if time.Until(claims.ExpiresAt.Time) < 15*time.Minute {
 			newToken, _ := auth.GenerateToken(claims.User)
-			c.SetCookie("auth_token", newToken, 1800, "/", "", false, true)
+			c.SetCookie("auth_token", newToken, 1800, "/", "", isProduction, true)
 		}
 
 		c.Set("user", claims.User)

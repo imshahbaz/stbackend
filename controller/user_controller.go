@@ -12,17 +12,18 @@ import (
 )
 
 type UserController struct {
-	userSvc service.UserService
+	userSvc      service.UserService
+	isProduction bool
 }
 
-func NewUserController(s service.UserService) *UserController {
-	return &UserController{userSvc: s}
+func NewUserController(s service.UserService, isProduction bool) *UserController {
+	return &UserController{userSvc: s, isProduction: isProduction}
 }
 
 func (ctrl *UserController) RegisterRoutes(router *gin.RouterGroup) {
 	authGroup := router.Group("/user")
 	protected := authGroup.Group("/")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(ctrl.isProduction))
 	{
 		protected.PATCH("/username", ctrl.UpdateUsername)
 		protected.PATCH("/theme", ctrl.UpdateTheme)

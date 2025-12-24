@@ -38,7 +38,8 @@ func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
 
 	// 2. Protected Routes (Apply middleware to this sub-group)
 	protected := authGroup.Group("/")
-	protected.Use(middleware.AuthMiddleware())
+	isProduction := ctrl.cfg.Config.Environment == "production"
+	protected.Use(middleware.AuthMiddleware(isProduction))
 	{
 		protected.POST("/logout", ctrl.Logout)
 		protected.GET("/me", ctrl.GetMe)

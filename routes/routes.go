@@ -24,6 +24,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	}
 
 	r.Use(middleware.CORS(cfg))
+	isProduction := cfg.Config.Environment == "production"
 
 	// --- 1. Clients ---
 	brevoClient := client.NewBrevoClient()
@@ -65,7 +66,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewMarginController(marginSvc).RegisterRoutes(api)
 
 		// Strategy Endpoints
-		controller.NewStrategyController(strategySvc).RegisterRoutes(api)
+		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(api)
 
 		// ChartInk Endpoints
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(api)
@@ -73,7 +74,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		//User/Auth Endpoints (Once implemented)
 		controller.NewAuthController(userSvc, cfg, otpSvc).RegisterRoutes(api)
 
-		controller.NewUserController(userSvc).RegisterRoutes(api)
+		controller.NewUserController(userSvc, isProduction).RegisterRoutes(api)
 	}
 
 	return r

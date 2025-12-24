@@ -12,11 +12,13 @@ import (
 
 type StrategyController struct {
 	strategyService service.StrategyService
+	isProduction    bool
 }
 
-func NewStrategyController(ss service.StrategyService) *StrategyController {
+func NewStrategyController(ss service.StrategyService, isProduction bool) *StrategyController {
 	return &StrategyController{
 		strategyService: ss,
+		isProduction:    isProduction,
 	}
 }
 
@@ -28,7 +30,7 @@ func (ctrl *StrategyController) RegisterRoutes(router *gin.RouterGroup) {
 	}
 
 	protectedGroup := strategyGroup.Group("")
-	protectedGroup.Use(middleware.AuthMiddleware(), middleware.AdminOnly())
+	protectedGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
 	{
 		protectedGroup.POST("", ctrl.createStrategy)
 		protectedGroup.PUT("", ctrl.updateStrategy)
