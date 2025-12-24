@@ -122,6 +122,9 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 	// Set the cookie with a MaxAge of -1 to delete it instantly
 	// In production, ensure 'secure' is set to true if using HTTPS
 	isProduction := ctrl.cfg.Config.Environment == "production"
+	if isProduction {
+		c.SetSameSite(http.SameSiteNoneMode)
+	}
 	c.SetCookie("auth_token", "", -1, "/", "", isProduction, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
