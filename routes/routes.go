@@ -19,7 +19,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	if cfg.Config.Environment != "production" {
+	if cfg.Config.DebugMode == "true" {
 		r.Use(gin.Logger())
 	}
 

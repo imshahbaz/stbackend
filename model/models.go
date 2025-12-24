@@ -36,6 +36,7 @@ type EnvConfig struct {
 	MongoUser     string `json:"mongoUser"`
 	MongoPassword string `json:"mongoPassword"`
 	Leverage      string `json:"leverage"`
+	DebugMode     string `json:"debug"`
 }
 
 // --- MARGIN ---
