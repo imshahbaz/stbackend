@@ -17,6 +17,7 @@ type StrategyService interface {
 	CreateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error)
 	UpdateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error)
 	DeleteStrategy(ctx context.Context, id string) error
+	GetAllStrategiesAdmin() []model.StrategyDto
 }
 
 // 2. Implementation Struct
@@ -49,16 +50,14 @@ func (s *StrategyServiceImpl) ReloadAllStrategies(ctx context.Context) error {
 	cache.StrategyCache.Flush()
 
 	for _, strategy := range strategies {
-		if strategy.Active {
-			dto := model.StrategyDto{
-				Name:       strategy.Name,
-				ScanClause: strategy.ScanClause,
-				Active:     strategy.Active,
-			}
-
-			// Set with NoExpiration to keep it indefinitely
-			cache.StrategyCache.Set(dto.Name, dto, -1)
+		dto := model.StrategyDto{
+			Name:       strategy.Name,
+			ScanClause: strategy.ScanClause,
+			Active:     strategy.Active,
 		}
+
+		// Set with NoExpiration to keep it indefinitely
+		cache.StrategyCache.Set(dto.Name, dto, -1)
 	}
 
 	return nil
@@ -70,7 +69,9 @@ func (s *StrategyServiceImpl) GetAllStrategies() []model.StrategyDto {
 	list := make([]model.StrategyDto, 0, len(s.strategyMap))
 	for _, item := range items {
 		if strategy, ok := item.Object.(model.StrategyDto); ok {
-			list = append(list, strategy)
+			if strategy.Active {
+				list = append(list, strategy)
+			}
 		}
 	}
 
@@ -84,11 +85,11 @@ func (s *StrategyServiceImpl) CreateStrategy(ctx context.Context, request model.
 		return model.StrategyDto{}, err
 	}
 
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		s.ReloadAllStrategies(bgCtx)
-	}()
+	//go func() {
+	bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s.ReloadAllStrategies(bgCtx)
+	//}()
 
 	return request, nil
 }
@@ -104,4 +105,17 @@ func (s *StrategyServiceImpl) DeleteStrategy(ctx context.Context, id string) err
 	}
 	cache.StrategyCache.Delete(id)
 	return nil
+}
+
+func (s *StrategyServiceImpl) GetAllStrategiesAdmin() []model.StrategyDto {
+	items := cache.StrategyCache.Items()
+
+	list := make([]model.StrategyDto, 0, len(s.strategyMap))
+	for _, item := range items {
+		if strategy, ok := item.Object.(model.StrategyDto); ok {
+			list = append(list, strategy)
+		}
+	}
+
+	return list
 }

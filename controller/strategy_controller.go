@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
@@ -24,11 +25,18 @@ func (ctrl *StrategyController) RegisterRoutes(router *gin.RouterGroup) {
 	strategyGroup := router.Group("/strategy")
 	{
 		strategyGroup.GET("", ctrl.getAllStrategies)
-		strategyGroup.POST("", ctrl.createStrategy)
-		strategyGroup.PUT("", ctrl.updateStrategy)
-		strategyGroup.DELETE("/:id", ctrl.deleteStrategy) // Path variable
-		strategyGroup.POST("/reload", ctrl.reloadAllStrategies)
 	}
+
+	protectedGroup := strategyGroup.Group("")
+	protectedGroup.Use(middleware.AuthMiddleware(), middleware.AdminOnly())
+	{
+		protectedGroup.POST("", ctrl.createStrategy)
+		protectedGroup.PUT("", ctrl.updateStrategy)
+		protectedGroup.DELETE("", ctrl.deleteStrategy)
+		protectedGroup.POST("/reload", ctrl.reloadAllStrategies)
+		protectedGroup.GET("/admin", ctrl.getAllStrategiesAdmin)
+	}
+
 }
 
 // getAllStrategies retrieves all trading strategies
@@ -98,12 +106,13 @@ func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
 // @Summary      Delete a strategy
 // @Description  Removes a strategy from the system using its ID (Name)
 // @Tags         Strategy
-// @Param        id   path      string  true  "Strategy ID (Name)"
+// @Param        id   query     string  true  "Strategy ID (Name)"
 // @Success      204  "No Content"
 // @Failure      400  {object}  map[string]string
-// @Router       /strategy/{id} [delete]
+// @Failure      500  {object}  map[string]string
+// @Router       /strategy [delete]
 func (ctrl *StrategyController) deleteStrategy(c *gin.Context) {
-	id := c.Param("id")
+	id := c.Query("id")
 	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is required"})
 		return
@@ -130,4 +139,16 @@ func (ctrl *StrategyController) reloadAllStrategies(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusOK)
+}
+
+// getAllStrategies retrieves all trading strategies
+// @Summary      Get all strategies
+// @Description  Returns a list of all configured trading strategies
+// @Tags         Strategy
+// @Produce      json
+// @Success      200  {array}  model.StrategyDto
+// @Router       /strategy/admin [get]
+func (ctrl *StrategyController) getAllStrategiesAdmin(c *gin.Context) {
+	strategies := ctrl.strategyService.GetAllStrategiesAdmin()
+	c.JSON(http.StatusOK, strategies)
 }

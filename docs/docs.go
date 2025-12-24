@@ -617,23 +617,7 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/strategy/reload": {
-            "post": {
-                "description": "Syncs the in-memory strategy cache with the MongoDB database",
-                "tags": [
-                    "Strategy"
-                ],
-                "summary": "Reload strategies",
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                }
-            }
-        },
-        "/strategy/{id}": {
+            },
             "delete": {
                 "description": "Removes a strategy from the system using its ID (Name)",
                 "tags": [
@@ -645,7 +629,7 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Strategy ID (Name)",
                         "name": "id",
-                        "in": "path",
+                        "in": "query",
                         "required": true
                     }
                 ],
@@ -661,6 +645,52 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy/admin": {
+            "get": {
+                "description": "Returns a list of all configured trading strategies",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Get all strategies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.StrategyDto"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy/reload": {
+            "post": {
+                "description": "Syncs the in-memory strategy cache with the MongoDB database",
+                "tags": [
+                    "Strategy"
+                ],
+                "summary": "Reload strategies",
+                "responses": {
+                    "200": {
+                        "description": "OK"
                     }
                 }
             }
