@@ -132,15 +132,24 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 // @Router       /auth/me [get]
 func (ctrl *AuthController) GetMe(c *gin.Context) {
 	// 1. Extract the DTO using the helper we created earlier
-	user, ok := middleware.GetUser(c)
+	tokenUser, ok := middleware.GetUser(c)
 	if !ok {
 		// This case should rarely happen if the middleware is working correctly
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	user, err := ctrl.userSvc.GetUser(ctx, tokenUser.Email)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
+		return
+	}
+
 	// 2. Return the DTO directly to React
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, user.ToDto())
 }
 
 // Signup handles user registration and caches pending data locally
