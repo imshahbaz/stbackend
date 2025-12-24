@@ -91,6 +91,10 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 
 	isProduction := ctrl.cfg.Config.Environment == "production"
 	// 3. Set HttpOnly Cookie
+	if isProduction {
+		c.SetSameSite(http.SameSiteNoneMode)
+	}
+
 	c.SetCookie(
 		"auth_token", // name
 		token,        // value

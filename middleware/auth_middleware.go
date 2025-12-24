@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/http"
 	"time"
 
 	"backend/auth"
@@ -26,6 +27,9 @@ func AuthMiddleware(isProduction bool) gin.HandlerFunc {
 		// --- SLIDING EXPIRY ---
 		// If more than 15 minutes of the 30-minute token has passed, refresh it
 		if time.Until(claims.ExpiresAt.Time) < 15*time.Minute {
+			if isProduction {
+				c.SetSameSite(http.SameSiteNoneMode)
+			}
 			newToken, _ := auth.GenerateToken(claims.User)
 			c.SetCookie("auth_token", newToken, 1800, "/", "", isProduction, true)
 		}
