@@ -66,6 +66,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		//User/Auth Endpoints (Once implemented)
 		controller.NewAuthController(userSvc, cfg, otpSvc).RegisterRoutes(api)
+
+		controller.NewUserController(userSvc).RegisterRoutes(api)
 	}
 
 	return r

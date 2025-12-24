@@ -83,3 +83,22 @@ func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	count, err := r.collection.CountDocuments(ctx, bson.M{"email": email})
 	return count > 0, err
 }
+
+func (r *UserRepository) UpdateTheme(ctx context.Context, email string, theme model.UserTheme) (bool, error) {
+	filter := bson.M{"_id": email}
+	update := bson.M{
+		"$set": bson.M{
+			"theme": theme,
+		},
+	}
+
+	// Enable Upsert
+	opts := options.Update().SetUpsert(true)
+
+	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}

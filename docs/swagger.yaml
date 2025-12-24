@@ -41,6 +41,18 @@ definitions:
       name:
         type: string
     type: object
+  model.Response:
+    properties:
+      data: {}
+      error:
+        type: string
+      message:
+        example: Update successful
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
   model.StockData:
     properties:
       close:
@@ -81,6 +93,18 @@ definitions:
     required:
     - name
     - scanClause
+    type: object
+  model.UpdateThemeRequest:
+    properties:
+      theme:
+        allOf:
+        - $ref: '#/definitions/model.UserTheme'
+        enum:
+        - LIGHT
+        - DARK
+        example: DARK
+    required:
+    - theme
     type: object
   model.UserDto:
     properties:
@@ -226,40 +250,6 @@ paths:
       summary: User Signup
       tags:
       - auth
-  /auth/username:
-    patch:
-      consumes:
-      - application/json
-      description: Updates the username and returns the updated user object
-      parameters:
-      - description: Target Email and New Username
-        in: body
-        name: update
-        required: true
-        schema:
-          $ref: '#/definitions/model.UserDto'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.UserDto'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Update Username
-      tags:
-      - User
   /auth/verify-otp:
     post:
       consumes:
@@ -603,4 +593,73 @@ paths:
       summary: Reload strategies
       tags:
       - Strategy
+  /user/theme:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the theme preference (LIGHT/DARK) for the authenticated
+        user
+      parameters:
+      - description: Theme Preference
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdateThemeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update User Theme
+      tags:
+      - user
+  /user/username:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the username and returns the updated user object
+      parameters:
+      - description: Target Email and New Username
+        in: body
+        name: update
+        required: true
+        schema:
+          $ref: '#/definitions/model.UserDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.UserDto'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update Username
+      tags:
+      - User
 swagger: "2.0"

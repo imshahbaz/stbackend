@@ -178,3 +178,11 @@ type VerifyOtpRequest struct {
 	Email string `json:"email" binding:"required,email" example:"user@example.com"`
 	Otp   string `json:"otp" binding:"required,len=6" example:"123456"`
 }
+
+// Common Response structure for all API calls
+type Response struct {
+	Success bool   `json:"success" example:"true"`
+	Message string `json:"message" example:"Update successful"`
+	Data    any    `json:"data,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
