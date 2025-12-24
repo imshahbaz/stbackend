@@ -7,11 +7,10 @@ import (
 	"log"
 	"path/filepath"
 
+	"backend/cache"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
-
-	"github.com/patrickmn/go-cache"
 )
 
 // 1. Interface Definition (remains the same)
@@ -20,14 +19,12 @@ type MarginService interface {
 	GetMargin(symbol string) (*model.Margin, bool)
 	ReloadAllMargins(ctx context.Context) error
 	LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error
-	GetStore() *cache.Cache
 }
 
 // 2. Implementation Struct
 type MarginServiceImpl struct {
 	repo     *repository.MarginRepository
 	leverage float32
-	store    *cache.Cache
 }
 
 // NewMarginService acts as the @RequiredArgsConstructor + @PostConstruct
@@ -35,7 +32,6 @@ func NewMarginService(repo *repository.MarginRepository, leverage float32) Margi
 	s := &MarginServiceImpl{
 		repo:     repo,
 		leverage: leverage,
-		store:    cache.New(cache.NoExpiration, 0),
 	}
 
 	// Trigger initial load (PostConstruct equivalent)
@@ -49,11 +45,10 @@ func NewMarginService(repo *repository.MarginRepository, leverage float32) Margi
 
 func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
 	// FIX: Use store.Items() to get all entries
-	items := s.store.Items()
+	items := cache.MarginCache.Items()
 	margins := make([]model.Margin, 0, len(items))
 
 	for _, item := range items {
-		// Type assertion from interface{} to model.Margin
 		margins = append(margins, item.Object.(model.Margin))
 	}
 	return margins
@@ -61,7 +56,7 @@ func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
 
 func (s *MarginServiceImpl) GetMargin(symbol string) (*model.Margin, bool) {
 	// FIX: Use store.Get() - thread safety is handled internally
-	val, exists := s.store.Get(symbol)
+	val, exists := cache.MarginCache.Get(symbol)
 	if !exists {
 		return nil, false
 	}
@@ -77,9 +72,9 @@ func (s *MarginServiceImpl) ReloadAllMargins(ctx context.Context) error {
 	}
 
 	// FIX: Flush old data and set new data
-	s.store.Flush()
+	cache.MarginCache.Flush()
 	for _, m := range margins {
-		s.store.Set(m.Symbol, m, cache.NoExpiration)
+		cache.MarginCache.Set(m.Symbol, m, -1)
 	}
 	return nil
 }
@@ -112,15 +107,11 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 	}
 
 	// FIX: Update local cache using the same Flush/Set pattern
-	s.store.Flush()
+	cache.MarginCache.Flush()
 	for _, m := range margins {
-		s.store.Set(m.Symbol, m, cache.NoExpiration)
+		cache.MarginCache.Set(m.Symbol, m, -1)
 	}
 
 	log.Printf("CSV Loaded. Cache updated. Deleted %d old records.", deletedCount)
 	return nil
-}
-
-func (s *MarginServiceImpl) GetStore() *cache.Cache {
-	return s.store
 }

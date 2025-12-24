@@ -7,6 +7,7 @@ import (
 	"backend/middleware"
 	"backend/repository"
 	"backend/service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -39,7 +40,12 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	userSvc := service.NewUserService(userRepo)
 
 	// Note: Margin leverage comes from config
-	marginSvc := service.NewMarginService(marginRepo, 4.0)
+	leverage, err := strconv.ParseFloat(cfg.Config.Leverage, 64)
+	if err != nil {
+		leverage = 4.0
+	}
+
+	marginSvc := service.NewMarginService(marginRepo, float32(leverage))
 	strategySvc := service.NewStrategyService(strategyRepo)
 	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
 

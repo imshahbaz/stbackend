@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"sync"
+	"time"
 
-	"backend/model"      // Replace with your actual path
-	"backend/repository" // Replace with your actual path
+	"backend/cache"
+	"backend/model"
+	"backend/repository"
 )
 
 // 1. Interface Definition
@@ -44,33 +46,34 @@ func (s *StrategyServiceImpl) ReloadAllStrategies(ctx context.Context) error {
 		return err
 	}
 
-	newMap := make(map[string]model.StrategyDto)
+	cache.StrategyCache.Flush()
+
 	for _, strategy := range strategies {
 		if strategy.Active {
-			// Converting Entity to DTO (Assuming you have a ToDto method)
 			dto := model.StrategyDto{
 				Name:       strategy.Name,
 				ScanClause: strategy.ScanClause,
 				Active:     strategy.Active,
 			}
-			newMap[dto.Name] = dto
+
+			// Set with NoExpiration to keep it indefinitely
+			cache.StrategyCache.Set(dto.Name, dto, -1)
 		}
 	}
 
-	s.mu.Lock()
-	s.strategyMap = newMap
-	s.mu.Unlock()
 	return nil
 }
 
 func (s *StrategyServiceImpl) GetAllStrategies() []model.StrategyDto {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	items := cache.StrategyCache.Items()
 
 	list := make([]model.StrategyDto, 0, len(s.strategyMap))
-	for _, v := range s.strategyMap {
-		list = append(list, v)
+	for _, item := range items {
+		if strategy, ok := item.Object.(model.StrategyDto); ok {
+			list = append(list, strategy)
+		}
 	}
+
 	return list
 }
 
@@ -81,18 +84,16 @@ func (s *StrategyServiceImpl) CreateStrategy(ctx context.Context, request model.
 		return model.StrategyDto{}, err
 	}
 
-	// Update local cache if active
-	if entity.Active {
-		s.mu.Lock()
-		s.strategyMap[entity.Name] = request
-		s.mu.Unlock()
-	}
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		s.ReloadAllStrategies(bgCtx)
+	}()
 
 	return request, nil
 }
 
 func (s *StrategyServiceImpl) UpdateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error) {
-	// In MongoDB, Save (Upsert) handles both Create and Update
 	return s.CreateStrategy(ctx, request)
 }
 
@@ -101,9 +102,6 @@ func (s *StrategyServiceImpl) DeleteStrategy(ctx context.Context, id string) err
 	if err != nil {
 		return err
 	}
-
-	s.mu.Lock()
-	delete(s.strategyMap, id)
-	s.mu.Unlock()
+	cache.StrategyCache.Delete(id)
 	return nil
 }

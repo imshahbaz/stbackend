@@ -1,6 +1,7 @@
 package service
 
 import (
+	localCache "backend/cache"
 	"backend/client"
 	"backend/model"
 	"context"
@@ -24,13 +25,11 @@ type ChartInkService interface {
 // 2. Concrete Implementation Struct
 type ChartInkServiceImpl struct {
 	client        *client.ChartinkClient
-	marginService MarginService // Properly injected MarginService
-	// FIX: Replaced sync.Map with go-cache
-	cache     *cache.Cache
-	xsrfToken string
-	cookie    string
-	userAgent string
-	mu        sync.RWMutex
+	marginService MarginService
+	xsrfToken     string
+	cookie        string
+	userAgent     string
+	mu            sync.RWMutex
 }
 
 // NewChartInkService acts as the Constructor
@@ -38,9 +37,7 @@ func NewChartInkService(c *client.ChartinkClient, ms MarginService) ChartInkServ
 	return &ChartInkServiceImpl{
 		client:        c,
 		marginService: ms,
-		// FIX: Set default expiration to 1 minute, cleanup every 2 minutes
-		cache:     cache.New(1*time.Minute, 2*time.Minute),
-		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+		userAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 	}
 }
 
@@ -78,7 +75,7 @@ func (s *ChartInkServiceImpl) FetchData(strategy model.StrategyDto) (*model.Char
 	}
 
 	// FIX: Store in cache with the default 1-minute expiration
-	s.cache.Set(strategy.Name, &dto, cache.DefaultExpiration)
+	localCache.ChartInkResponseCache.Set(strategy.Name, &dto, cache.DefaultExpiration)
 	return &dto, nil
 }
 
@@ -106,8 +103,7 @@ func (s *ChartInkServiceImpl) refreshTokens(ctx context.Context) {
 }
 
 func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error) {
-	// FIX: Use go-cache Get instead of sync.Map Load
-	val, ok := s.cache.Get(strategy.Name)
+	val, ok := localCache.ChartInkResponseCache.Get(strategy.Name)
 	var response *model.ChartInkResponseDto
 
 	if !ok {
@@ -122,7 +118,7 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 
 	var result []model.StockMarginDto
 
-	marginStore := s.marginService.GetStore()
+	marginStore := localCache.MarginCache
 	for _, stock := range response.Data {
 		// FIX: Replaced mocked global lookup with the injected MarginService
 		val, exists := marginStore.Get(stock.NSECode)

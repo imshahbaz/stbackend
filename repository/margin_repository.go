@@ -7,6 +7,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type MarginRepository struct {
@@ -67,15 +68,23 @@ func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) 
 		return nil
 	}
 
-	// MongoDB's InsertMany requires a slice of []interface{} (or []any)
-	docs := make([]any, len(margins))
-	for i, m := range margins {
-		docs[i] = m
+	var models []mongo.WriteModel
+	for _, m := range margins {
+		filter := bson.M{"_id": m.Symbol}
+		update := bson.M{"$set": m}
+
+		upsertModel := mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(update).
+			SetUpsert(true)
+
+		models = append(models, upsertModel)
 	}
 
-	_, err := r.collection.InsertMany(ctx, docs)
+	opts := options.BulkWrite().SetOrdered(false)
+	_, err := r.collection.BulkWrite(ctx, models, opts)
 	if err != nil {
-		return fmt.Errorf("failed to perform bulk insert: %w", err)
+		return fmt.Errorf("failed to perform bulk upsert: %w", err)
 	}
 
 	return nil
