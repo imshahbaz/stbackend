@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"backend/cache"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -65,6 +66,7 @@ func (ctrl *UserController) UpdateUsername(c *gin.Context) {
 		return
 	}
 
+	cache.UserAuthCache.Delete(req.Email)
 	// 2. Return the DTO (React will use this to update its state)
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,
@@ -134,6 +136,7 @@ func (ctrl *UserController) UpdateTheme(c *gin.Context) {
 		return
 	}
 
+	cache.UserAuthCache.Delete(user.Email)
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,
 		Message: "Theme synchronized",

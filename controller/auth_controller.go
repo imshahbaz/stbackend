@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"backend/auth"
-	"backend/cache"
+	localCache "backend/cache"
 	"backend/config"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -108,6 +109,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	// 4. Return DTO (Response)
 	// Because of json:"-", the password fields will be stripped automatically
 
+	localCache.UserAuthCache.Delete(req.Email)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -142,22 +144,34 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 	// 1. Extract the DTO using the helper we created earlier
 	tokenUser, ok := middleware.GetUser(c)
 	if !ok {
-		// This case should rarely happen if the middleware is working correctly
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
+	cacheUser, ok := localCache.UserAuthCache.Get(tokenUser.Email)
 
-	user, err := ctrl.userSvc.GetUser(ctx, tokenUser.Email)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
+	if !ok {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		user, err := ctrl.userSvc.GetUser(ctx, tokenUser.Email)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
+			return
+		}
+
+		localCache.UserAuthCache.Set(user.Email, user.ToDto(), cache.DefaultExpiration)
+		c.JSON(http.StatusOK, user.ToDto())
 		return
 	}
 
+	userDto, ok := cacheUser.(model.UserDto)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User session not found"})
+		return
+	}
 	// 2. Return the DTO directly to React
-	c.JSON(http.StatusOK, user.ToDto())
+	c.JSON(http.StatusOK, userDto)
 }
 
 // Signup handles user registration and caches pending data locally
@@ -181,7 +195,7 @@ func (ctrl *AuthController) Signup(c *gin.Context) {
 
 	// 2. Keep in Cache for 5 mins
 	// We use the email as the key to retrieve the data during OTP verification
-	cache.PendingUserCache.Set(user.Email, user, 5*time.Minute)
+	localCache.PendingUserCache.Set(user.Email, user, 5*time.Minute)
 
 	// 3. Send OTP
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -228,7 +242,7 @@ func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
 
 	// 2. Retrieve Pending User from go-cache
 	// We use the email from the request to find the cached data
-	val, found := cache.PendingUserCache.Get(req.Email)
+	val, found := localCache.PendingUserCache.Get(req.Email)
 	if !found {
 		c.JSON(http.StatusBadRequest, model.MessageResponse{
 			Message: "No pending signup found or session expired. Please start over.",
@@ -253,7 +267,7 @@ func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
 	}
 
 	// 5. Cleanup Cache
-	cache.PendingUserCache.Delete(req.Email)
+	localCache.PendingUserCache.Delete(req.Email)
 
 	// 6. Return Success (In a JWT flow, you'd generate the token here)
 	c.JSON(http.StatusCreated, model.MessageResponse{
