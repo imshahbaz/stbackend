@@ -54,7 +54,9 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	nseSvc := service.NewNseService()
 	auth.SecretKey = []byte((os.Getenv("jwtSecret")))
 
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	if !isProduction {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	// --- 4. Routes & Controllers ---
 	api := r.Group("/api")
