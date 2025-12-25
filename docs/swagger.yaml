@@ -34,6 +34,21 @@ definitions:
         example: true
         type: boolean
     type: object
+  model.NSEHistoricalData:
+    properties:
+      chClosingPrice:
+        type: number
+      chOpeningPrice:
+        type: number
+      chSymbol:
+        type: string
+      chTradeHighPrice:
+        type: number
+      chTradeLowPrice:
+        type: number
+      mtimestamp:
+        type: string
+    type: object
   model.Recipient:
     properties:
       email:
@@ -494,6 +509,47 @@ paths:
       summary: Reload margins
       tags:
       - Margin
+  /nse/history:
+    get:
+      consumes:
+      - application/json
+      description: Fetches stock history for a specific symbol (e.g., BEL). Data is
+        cached for 1 hour.
+      parameters:
+      - description: Stock Symbol (e.g. BEL)
+        in: query
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fetch Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.NSEHistoricalData'
+                  type: array
+              type: object
+        "400":
+          description: Invalid Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get Historical Stock Data
+      tags:
+      - Stocks
   /strategy:
     delete:
       description: Removes a strategy from the system using its ID (Name)

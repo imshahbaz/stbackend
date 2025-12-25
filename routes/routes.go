@@ -49,6 +49,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	marginSvc := service.NewMarginService(marginRepo, float32(leverage))
 	strategySvc := service.NewStrategyService(strategyRepo)
 	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
+	nseSvc := service.NewNseService()
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -75,6 +76,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewAuthController(userSvc, cfg, otpSvc).RegisterRoutes(api)
 
 		controller.NewUserController(userSvc, isProduction).RegisterRoutes(api)
+
+		controller.NewNseController(nseSvc).RegisterRoutes(api)
 	}
 
 	return r

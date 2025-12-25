@@ -507,6 +507,71 @@
                 }
             }
         },
+        "/nse/history": {
+            "get": {
+                "description": "Fetches stock history for a specific symbol (e.g., BEL). Data is cached for 1 hour.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stocks"
+                ],
+                "summary": "Get Historical Stock Data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stock Symbol (e.g. BEL)",
+                        "name": "symbol",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Fetch Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.NSEHistoricalData"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/strategy": {
             "get": {
                 "description": "Returns a list of all configured trading strategies",
@@ -841,6 +906,29 @@
                     "description": "OtpSent indicates if the OTP was successfully triggered",
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "model.NSEHistoricalData": {
+            "type": "object",
+            "properties": {
+                "chClosingPrice": {
+                    "type": "number"
+                },
+                "chOpeningPrice": {
+                    "type": "number"
+                },
+                "chSymbol": {
+                    "type": "string"
+                },
+                "chTradeHighPrice": {
+                    "type": "number"
+                },
+                "chTradeLowPrice": {
+                    "type": "number"
+                },
+                "mtimestamp": {
+                    "type": "string"
                 }
             }
         },
