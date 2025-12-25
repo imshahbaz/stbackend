@@ -71,9 +71,22 @@ func (s *NseServiceImpl) WarmUp() error {
 }
 
 func (s *NseServiceImpl) executeRequest(symbol string) ([]model.NSEHistoricalData, error) {
+
+	now := time.Now()
+
+	// 2. Calculate one month ago (From Date)
+	// .AddDate(years, months, days)
+	oneMonthAgo := now.AddDate(0, -1, 0)
+
+	// 3. Format according to NSE requirement: DD-MM-YYYY
+	toDate := now.Format("02-01-2006")
+	fromDate := oneMonthAgo.Format("02-01-2006")
+
 	url := fmt.Sprintf(
-		"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getHistoricalTradeData&symbol=%s&series=EQ&fromDate=25-11-2025&toDate=25-12-2025",
+		"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getHistoricalTradeData&symbol=%s&series=EQ&fromDate=%s&toDate=%s",
 		symbol,
+		fromDate,
+		toDate,
 	)
 
 	req, _ := http.NewRequest("GET", url, nil)
