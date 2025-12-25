@@ -1,12 +1,14 @@
 package routes
 
 import (
+	"backend/auth"
 	"backend/client"
 	"backend/config"
 	"backend/controller"
 	"backend/middleware"
 	"backend/repository"
 	"backend/service"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +52,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	strategySvc := service.NewStrategyService(strategyRepo)
 	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
 	nseSvc := service.NewNseService()
+	auth.SecretKey = []byte((os.Getenv("jwtSecret")))
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

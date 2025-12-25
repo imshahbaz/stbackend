@@ -7,7 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var secretKey = []byte("your_super_secret_key_change_this")
+var SecretKey = []byte("")
 
 type Claims struct {
 	User model.UserDto `json:"user"`
@@ -29,7 +29,7 @@ func GenerateToken(user model.UserDto) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secretKey)
+	return token.SignedString(SecretKey)
 }
 
 // ValidateToken now returns *Claims so the middleware can check expiration timing
@@ -37,7 +37,7 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		return secretKey, nil
+		return SecretKey, nil
 	})
 
 	if err != nil || !token.Valid {
