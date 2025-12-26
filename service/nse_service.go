@@ -2,16 +2,13 @@ package service
 
 import (
 	localCache "backend/cache"
+	"backend/middleware"
 	"backend/model"
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
-	"github.com/andybalholm/brotli"
 	"github.com/go-resty/resty/v2"
 	"github.com/patrickmn/go-cache"
 )
@@ -40,36 +37,7 @@ func NewNseService() NseService {
 		SetRetryCount(2).
 		SetRetryWaitTime(1 * time.Second)
 
-	client.OnAfterResponse(func(c *resty.Client, resp *resty.Response) error {
-		encoding := resp.Header().Get("Content-Encoding")
-		if encoding == "" {
-			return nil
-		}
-
-		var reader io.ReadCloser
-		var err error
-
-		switch encoding {
-		case "br":
-			reader = io.NopCloser(brotli.NewReader(bytes.NewReader(resp.Body())))
-		case "gzip":
-			reader, err = gzip.NewReader(bytes.NewReader(resp.Body()))
-			if err != nil {
-				return err
-			}
-			defer reader.Close()
-		default:
-			return nil
-		}
-
-		decompressed, err := io.ReadAll(reader)
-		if err != nil {
-			return err
-		}
-
-		resp.SetBody(decompressed)
-		return nil
-	})
+	client.OnAfterResponse(middleware.DecompressMiddleware)
 
 	return &NseServiceImpl{client: client}
 }
