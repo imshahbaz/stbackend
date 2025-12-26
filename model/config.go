@@ -1,7 +1,7 @@
 package model
 
 type MongoEnvConfig struct {
-	ID          string  `json:"id" bson:"_id,omitempty"`
+	ID          string  `json:"-" bson:"_id,omitempty"`
 	FrontendUrl string  `json:"frontendUrl" bson:"frontendUrl"`
 	BrevoEmail  string  `json:"brevoEmail" bson:"brevoEmail"`
 	BrevoApiKey string  `json:"brevoApiKey" bson:"brevoApiKey"`
