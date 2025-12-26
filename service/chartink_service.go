@@ -9,100 +9,79 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
 )
 
-// 1. Interface Definition
 type ChartInkService interface {
 	FetchData(strategy model.StrategyDto) (*model.ChartInkResponseDto, error)
 	FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error)
 }
 
-// 2. Concrete Implementation Struct
 type ChartInkServiceImpl struct {
 	client        *client.ChartinkClient
 	marginService MarginService
 	xsrfToken     string
-	cookie        string
 	userAgent     string
 	mu            sync.RWMutex
 }
 
-// NewChartInkService acts as the Constructor
 func NewChartInkService(c *client.ChartinkClient, ms MarginService) ChartInkService {
 	return &ChartInkServiceImpl{
 		client:        c,
 		marginService: ms,
-		userAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+		userAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 }
 
+// FetchData handles the API call and CSRF retry logic
 func (s *ChartInkServiceImpl) FetchData(strategy model.StrategyDto) (*model.ChartInkResponseDto, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	s.mu.RLock()
-	hasTokens := s.xsrfToken != "" && s.cookie != ""
+	token := s.xsrfToken
 	s.mu.RUnlock()
 
-	if !hasTokens {
-		s.refreshTokens(ctx)
+	if token == "" {
+		if err := s.refreshTokens(ctx); err != nil {
+			return nil, err
+		}
+		token = s.xsrfToken
 	}
 
 	payload := map[string]string{"scan_clause": strategy.ScanClause}
+	resp, err := s.client.FetchData(ctx, token, s.userAgent, payload)
 
-	s.mu.RLock()
-	res, err := s.client.FetchData(ctx, s.xsrfToken, s.cookie, s.userAgent, payload)
-	s.mu.RUnlock()
-
-	if err != nil {
-		s.refreshTokens(ctx)
-		s.mu.RLock()
-		res, err = s.client.FetchData(ctx, s.xsrfToken, s.cookie, s.userAgent, payload)
-		s.mu.RUnlock()
+	// Retry on 419 (CSRF Mismatch)
+	if err != nil || (resp != nil && resp.StatusCode() == 419) {
+		if err := s.refreshTokens(ctx); err != nil {
+			return nil, err
+		}
+		resp, err = s.client.FetchData(ctx, s.xsrfToken, s.userAgent, payload)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch data after retry: %w", err)
+			return nil, err
 		}
 	}
 
-	var dto model.ChartInkResponseDto
-	if err := json.Unmarshal([]byte(res), &dto); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("chartink api error: %d", resp.StatusCode())
 	}
 
-	// FIX: Store in cache with the default 1-minute expiration
+	var dto model.ChartInkResponseDto
+	if err := json.Unmarshal(resp.Body(), &dto); err != nil {
+		return nil, fmt.Errorf("failed to parse chartink json: %w", err)
+	}
+
 	localCache.ChartInkResponseCache.Set(strategy.Name, &dto, cache.DefaultExpiration)
 	return &dto, nil
 }
 
-func (s *ChartInkServiceImpl) refreshTokens(ctx context.Context) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	resp, _, err := s.client.GetHomepage(ctx)
-	if err != nil {
-		return
-	}
-
-	cookies := resp.Cookies()
-	var cookieParts []string
-	for _, c := range cookies {
-		if c.Name == "XSRF-TOKEN" {
-			decoded, _ := url.QueryUnescape(c.Value)
-			s.xsrfToken = decoded
-		}
-		if c.Name == "ci_session" || c.Name == "laravel_session" || c.Name == "XSRF-TOKEN" {
-			cookieParts = append(cookieParts, fmt.Sprintf("%s=%s", c.Name, c.Value))
-		}
-	}
-	s.cookie = strings.Join(cookieParts, "; ")
-}
-
+// FetchWithMargin joins ChartInk results with local Margin data
 func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error) {
+	// 1. Check Cache first
 	val, ok := localCache.ChartInkResponseCache.Get(strategy.Name)
 	var response *model.ChartInkResponseDto
 
@@ -116,17 +95,17 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		response = val.(*model.ChartInkResponseDto)
 	}
 
+	// 2. Map Stock results to Margin data
 	var result []model.StockMarginDto
-
 	marginStore := localCache.MarginCache
+
 	for _, stock := range response.Data {
-		// FIX: Replaced mocked global lookup with the injected MarginService
-		val, exists := marginStore.Get(stock.NSECode)
+		marginVal, exists := marginStore.Get(stock.NSECode)
 		if !exists {
 			continue
 		}
 
-		margin, ok := val.(model.Margin)
+		m, ok := marginVal.(model.Margin)
 		if !ok {
 			continue
 		}
@@ -134,14 +113,34 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		result = append(result, model.StockMarginDto{
 			Name:   stock.Name,
 			Symbol: stock.NSECode,
-			Margin: margin.Margin,
+			Margin: m.Margin,
 			Close:  stock.Close,
 		})
 	}
 
+	// 3. Sort by Margin (Highest first)
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Margin > result[j].Margin
 	})
 
 	return result, nil
+}
+
+func (s *ChartInkServiceImpl) refreshTokens(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	resp, err := s.client.GetHomepage(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, c := range resp.Cookies() {
+		if c.Name == "XSRF-TOKEN" {
+			decoded, _ := url.QueryUnescape(c.Value)
+			s.xsrfToken = decoded
+			return nil
+		}
+	}
+	return fmt.Errorf("could not find XSRF-TOKEN")
 }
