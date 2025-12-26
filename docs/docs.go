@@ -514,6 +514,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/nse/heatmap": {
+            "get": {
+                "description": "Fetches the latest sectoral index performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stocks"
+                ],
+                "summary": "Get NSE Sectoral Heatmap",
+                "responses": {
+                    "200": {
+                        "description": "Fetch Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.SectorData"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/nse/history": {
             "get": {
                 "description": "Fetches stock history for a specific symbol (e.g., BEL). Data is cached for 1 hour.",
@@ -964,6 +1008,38 @@ const docTemplate = `{
                 "success": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "model.SectorData": {
+            "type": "object",
+            "properties": {
+                "close": {
+                    "type": "number"
+                },
+                "current": {
+                    "type": "number"
+                },
+                "high": {
+                    "type": "number"
+                },
+                "index": {
+                    "type": "string"
+                },
+                "indexLongName": {
+                    "type": "string"
+                },
+                "low": {
+                    "type": "number"
+                },
+                "open": {
+                    "type": "number"
+                },
+                "pChange": {
+                    "type": "number"
+                },
+                "timeStamp": {
+                    "type": "string"
                 }
             }
         },
