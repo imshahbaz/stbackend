@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
@@ -48,11 +49,13 @@ func (s *NseServiceImpl) WarmUp() error {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		log.Printf("Error in warmup %s", err.Error())
 		return fmt.Errorf("warmup request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("Error in warmup %d", resp.StatusCode)
 		return fmt.Errorf("warmup failed with status: %d", resp.StatusCode)
 	}
 	return nil
@@ -107,6 +110,7 @@ func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
 
 	var data []model.SectorData
 	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		log.Printf("Error parsing sector data %s", err.Error())
 		return nil, fmt.Errorf("heatmap decode error: %w", err)
 	}
 
@@ -130,6 +134,7 @@ func (s *NseServiceImpl) doRequestWithRetry(endpoint, referer string) ([]byte, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("Error calling nse api %s err: {%d}", endpoint, resp.StatusCode)
 		return nil, fmt.Errorf("NSE returned status: %d", resp.StatusCode)
 	}
 
