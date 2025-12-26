@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
+	localCache "backend/cache"
 	"backend/model"
 	"backend/util"
 
@@ -28,7 +28,6 @@ type OtpService interface {
 // 2. Implementation Struct
 type OtpServiceImpl struct {
 	emailService EmailService
-	otpCache     *cache.Cache // Using patrickmn/go-cache for TTL support
 	brevoEmail   string
 }
 
@@ -36,15 +35,13 @@ type OtpServiceImpl struct {
 func NewOtpService(emailService EmailService, brevoEmail string) OtpService {
 	return &OtpServiceImpl{
 		emailService: emailService,
-		// Default expiration: 5 minutes, Cleanup: every 10 minutes
-		otpCache:   cache.New(5*time.Minute, 10*time.Minute),
-		brevoEmail: brevoEmail,
+		brevoEmail:   brevoEmail,
 	}
 }
 
 func (s *OtpServiceImpl) SendSignUpOtp(ctx context.Context, request model.UserDto) error {
 	// 1. Check if OTP exists in cache
-	if _, found := s.otpCache.Get(request.Email); found {
+	if _, found := localCache.OtpCache.Get(request.Email); found {
 		return ErrDuplicateOtp
 	}
 
@@ -77,17 +74,16 @@ func (s *OtpServiceImpl) SendSignUpOtp(ctx context.Context, request model.UserDt
 	}
 
 	// 5. Store in cache with 5-minute expiration
-	s.otpCache.Set(request.Email, otp, cache.DefaultExpiration)
+	localCache.OtpCache.Set(request.Email, otp, cache.DefaultExpiration)
 
 	return nil
 }
 
 func (s *OtpServiceImpl) VerifyOtp(email, otp string) (bool, error) {
-	cachedOtp, found := s.otpCache.Get(email)
+	cachedOtp, found := localCache.OtpCache.Get(email)
 
 	if found && cachedOtp.(string) == otp {
-		// Equivalent to invalidate
-		s.otpCache.Delete(email)
+		localCache.OtpCache.Delete(email)
 		return true, nil
 	}
 
