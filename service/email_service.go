@@ -1,7 +1,8 @@
 package service
 
 import (
-	"backend/client" // Adjust to your module path
+	"backend/client"
+	"backend/config"
 	"backend/model"
 	"context"
 )
@@ -14,20 +15,20 @@ type EmailService interface {
 // 2. Implementation Struct
 type EmailServiceImpl struct {
 	brevoClient *client.BrevoClient
-	apiKey      string
+	cfg         *config.ConfigManager
 }
 
 // NewEmailService acts as the @RequiredArgsConstructor
-func NewEmailService(bc *client.BrevoClient, apiKey string) EmailService {
+func NewEmailService(bc *client.BrevoClient, cfg *config.ConfigManager) EmailService {
 	return &EmailServiceImpl{
 		brevoClient: bc,
-		apiKey:      apiKey,
+		cfg:         cfg,
 	}
 }
 
 // SendEmail replaces the @Override method
 func (s *EmailServiceImpl) SendEmail(ctx context.Context, request model.BrevoEmailRequest) error {
 	// We use the BrevoClient we created in the previous step
-	_, err := s.brevoClient.SendTransactionalEmail(ctx, s.apiKey, request)
+	_, err := s.brevoClient.SendTransactionalEmail(ctx, s.cfg.GetConfig().BrevoApiKey, request)
 	return err
 }

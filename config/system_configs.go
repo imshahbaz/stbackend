@@ -1,11 +1,11 @@
 package config
 
 import (
+	"backend/model"
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"backend/model"
+	"sync/atomic"
 
 	"github.com/joho/godotenv"
 )
@@ -14,9 +14,7 @@ type SystemConfigs struct {
 	Config *model.EnvConfig
 }
 
-// LoadConfigs acts as your @PostConstruct
 func LoadConfigs() (*SystemConfigs, error) {
-	// 1. Read the 'config' env variable
 	godotenv.Load()
 
 	rawJson := os.Getenv("config")
@@ -34,4 +32,22 @@ func LoadConfigs() (*SystemConfigs, error) {
 	return &SystemConfigs{
 		Config: &envCfg,
 	}, nil
+}
+
+type ConfigManager struct {
+	value atomic.Value
+}
+
+func NewConfigManager(initial *model.MongoEnvConfig) *ConfigManager {
+	cm := &ConfigManager{}
+	cm.value.Store(initial)
+	return cm
+}
+
+func (cm *ConfigManager) GetConfig() *model.MongoEnvConfig {
+	return cm.value.Load().(*model.MongoEnvConfig)
+}
+
+func (cm *ConfigManager) UpdateConfig(newCfg *model.MongoEnvConfig) {
+	cm.value.Store(newCfg)
 }

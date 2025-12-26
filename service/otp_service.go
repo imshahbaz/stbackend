@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	localCache "backend/cache"
+	"backend/config"
 	"backend/model"
 	"backend/util"
 
@@ -28,14 +29,14 @@ type OtpService interface {
 // 2. Implementation Struct
 type OtpServiceImpl struct {
 	emailService EmailService
-	brevoEmail   string
+	cfg          *config.ConfigManager
 }
 
 // NewOtpService replaces @RequiredArgsConstructor
-func NewOtpService(emailService EmailService, brevoEmail string) OtpService {
+func NewOtpService(emailService EmailService, cfg *config.ConfigManager) OtpService {
 	return &OtpServiceImpl{
 		emailService: emailService,
-		brevoEmail:   brevoEmail,
+		cfg:          cfg,
 	}
 }
 
@@ -55,7 +56,7 @@ func (s *OtpServiceImpl) SendSignUpOtp(ctx context.Context, request model.UserDt
 	userName := strings.Split(request.Email, "@")[0]
 	emailRequest := model.BrevoEmailRequest{
 		Sender: model.Recipient{
-			Email: s.brevoEmail,
+			Email: s.cfg.GetConfig().BrevoEmail,
 			Name:  "Shahbaz Trades",
 		},
 		To: []model.Recipient{
