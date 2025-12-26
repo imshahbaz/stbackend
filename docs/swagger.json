@@ -288,6 +288,112 @@
                 }
             }
         },
+        "/config": {
+            "get": {
+                "description": "Returns the current system settings (Leverage, API Keys, etc.) from the real-time cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Get Active Configuration",
+                "responses": {
+                    "200": {
+                        "description": "Current active config",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.MongoEnvConfig"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache across all services.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Reload System Configuration",
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates the configuration document in MongoDB and hot-swaps the active memory pointer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Update System Configuration",
+                "parameters": [
+                    {
+                        "description": "Update Config Fields",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.MongoEnvConfig"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Request Body",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/email/send": {
             "post": {
                 "description": "Sends a transactional email using the Brevo API provider",
@@ -950,6 +1056,38 @@
                     "description": "OtpSent indicates if the OTP was successfully triggered",
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "model.MongoEnvConfig": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "brevoApiKey": {
+                    "type": "string"
+                },
+                "brevoEmail": {
+                    "type": "string"
+                },
+                "debug": {
+                    "type": "boolean"
+                },
+                "frontendUrl": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "jwtSecret": {
+                    "type": "string"
+                },
+                "leverage": {
+                    "type": "number"
+                },
+                "rateLimiter": {
+                    "type": "boolean"
                 }
             }
         },

@@ -23,14 +23,12 @@ type AuthController struct {
 	userSvc      service.UserService
 	cfgManager   *config.ConfigManager
 	otpSvc       service.OtpService
-	sysConfig    *config.SystemConfigs
 	isProduction bool
 }
 
 func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
-	otpSvc service.OtpService, sysConfig *config.SystemConfigs) *AuthController {
-	isProduction := sysConfig.Config.Environment == "production"
-	return &AuthController{userSvc: s, cfgManager: cfgManager, otpSvc: otpSvc, sysConfig: sysConfig, isProduction: isProduction}
+	otpSvc service.OtpService, isProduction bool) *AuthController {
+	return &AuthController{userSvc: s, cfgManager: cfgManager, otpSvc: otpSvc, isProduction: isProduction}
 }
 
 func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
