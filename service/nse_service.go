@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"sync"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -29,10 +28,7 @@ type NseService interface {
 }
 
 type NseServiceImpl struct {
-	client      http.Client
-	mu          sync.RWMutex // Changed to RWMutex for better read performance
-	lastWarmUp  time.Time
-	warmUpCache time.Duration
+	client http.Client
 }
 
 func NewNseService() NseService {
@@ -42,19 +38,11 @@ func NewNseService() NseService {
 			Jar:     jar,
 			Timeout: 30 * time.Second,
 		},
-		warmUpCache: 5 * time.Minute,
 	}
 }
 
 // WarmUp ensures we have a fresh session/cookies
 func (s *NseServiceImpl) WarmUp() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if time.Since(s.lastWarmUp) < s.warmUpCache {
-		return nil
-	}
-
 	req, _ := http.NewRequest("GET", nseUrl, nil)
 	s.setHeaders(req, nseUrl)
 
@@ -67,8 +55,6 @@ func (s *NseServiceImpl) WarmUp() error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("warmup failed with status: %d", resp.StatusCode)
 	}
-
-	s.lastWarmUp = time.Now()
 	return nil
 }
 
@@ -142,14 +128,6 @@ func (s *NseServiceImpl) doRequestWithRetry(endpoint, referer string) ([]byte, e
 		return nil, err
 	}
 	defer resp.Body.Close()
-
-	// If NSE rejects us (session expired), force a re-warmup once
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		s.mu.Lock()
-		s.lastWarmUp = time.Time{} // Reset timer
-		s.mu.Unlock()
-		return s.doRequestWithRetry(endpoint, referer)
-	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("NSE returned status: %d", resp.StatusCode)
