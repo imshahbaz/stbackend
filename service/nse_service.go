@@ -124,7 +124,7 @@ func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
 		return nil, fmt.Errorf("heatmap decode error: %w", err)
 	}
 
-	localCache.NseHistoryCache.Set(cacheKey, data, 1*time.Minute)
+	localCache.HeatMapCache.Set(cacheKey, data, cache.DefaultExpiration)
 	return data, nil
 }
 
