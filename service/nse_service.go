@@ -9,15 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"sync"
 	"time"
 
-	"github.com/andybalholm/brotli" // Required for 'br' encoding
+	"github.com/andybalholm/brotli"
 	"github.com/patrickmn/go-cache"
 )
 
 var (
 	nseUrl             = "https://www.nseindia.com"
-	userAgent          = "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36"
+	userAgent          = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	historicalEndpoint = "/api/NextApi/apiClient/GetQuoteApi?functionName=getHistoricalTradeData&symbol=%s&series=EQ&fromDate=%s&toDate=%s"
 	heatMapEndpoint    = "/api/heatmap-index?type=Sectoral%20Indices"
 )
@@ -28,7 +29,10 @@ type NseService interface {
 }
 
 type NseServiceImpl struct {
-	client http.Client
+	client      http.Client
+	mu          sync.RWMutex // Changed to RWMutex for better read performance
+	lastWarmUp  time.Time
+	warmUpCache time.Duration
 }
 
 func NewNseService() NseService {
@@ -38,174 +42,151 @@ func NewNseService() NseService {
 			Jar:     jar,
 			Timeout: 30 * time.Second,
 		},
+		warmUpCache: 5 * time.Minute,
 	}
 }
 
-func (s *NseServiceImpl) FetchStockData(symbol string) ([]model.NSEHistoricalData, error) {
-
-	cacheKey := "history_" + symbol
-	if cachedData, found := localCache.NseHistoryCache.Get(cacheKey); found {
-		return cachedData.([]model.NSEHistoricalData), nil
-	}
-
-	if err := s.WarmUp(); err != nil {
-		return nil, err
-	}
-
-	// 3. Execute API Call
-	data, err := s.executeRequest(symbol)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. Save to Cache for 5 minutes before returning
-	if len(data) > 0 {
-		localCache.NseHistoryCache.Set(cacheKey, data, cache.DefaultExpiration)
-	}
-
-	return data, nil
-}
-
+// WarmUp ensures we have a fresh session/cookies
 func (s *NseServiceImpl) WarmUp() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if time.Since(s.lastWarmUp) < s.warmUpCache {
+		return nil
+	}
+
 	req, _ := http.NewRequest("GET", nseUrl, nil)
-	req.Header.Set("User-Agent", userAgent)
+	s.setHeaders(req, nseUrl)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("warmup request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("warmup failed with status: %d", resp.StatusCode)
+	}
+
+	s.lastWarmUp = time.Now()
 	return nil
 }
 
-func (s *NseServiceImpl) executeRequest(symbol string) ([]model.NSEHistoricalData, error) {
-
-	now := time.Now()
-
-	// 2. Calculate one month ago (From Date)
-	// .AddDate(years, months, days)
-	oneMonthAgo := now.AddDate(0, -1, 0)
-
-	// 3. Format according to NSE requirement: DD-MM-YYYY
-	toDate := now.Format("02-01-2006")
-	fromDate := oneMonthAgo.Format("02-01-2006")
-
-	url := nseUrl + fmt.Sprintf(historicalEndpoint, symbol, fromDate, toDate)
-
-	req, _ := http.NewRequest("GET", url, nil)
-
-	// 2. Set EXACT headers from your browser request
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br") // Browser defaults
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Referer", fmt.Sprintf("https://www.nseindia.com/get-quote/equity/%s", symbol))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1")
-	req.Header.Set("sec-fetch-dest", "empty")
-	req.Header.Set("sec-fetch-mode", "cors")
-	req.Header.Set("sec-fetch-site", "same-origin")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("nse returned status: %d", resp.StatusCode)
+func (s *NseServiceImpl) FetchStockData(symbol string) ([]model.NSEHistoricalData, error) {
+	cacheKey := "history_" + symbol
+	if cached, found := localCache.NseHistoryCache.Get(cacheKey); found {
+		return cached.([]model.NSEHistoricalData), nil
 	}
 
-	// 3. MULTI-ENCODING DECOMPRESSION
-	var reader io.ReadCloser
-	encoding := resp.Header.Get("Content-Encoding")
+	bodyBytes, err := s.doRequestWithRetry(fmt.Sprintf(historicalEndpoint, symbol,
+		time.Now().AddDate(0, -1, 0).Format("02-01-2006"),
+		time.Now().Format("02-01-2006")),
+		fmt.Sprintf("https://www.nseindia.com/get-quote/equity/%s", symbol))
 
-	switch encoding {
-	case "br":
-		reader = io.NopCloser(brotli.NewReader(resp.Body))
-	case "gzip":
-		gzReader, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		defer gzReader.Close()
-		reader = gzReader
-	default:
-		reader = resp.Body
-	}
-
-	bodyBytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. Handle Wrapper Structure
+	// Try format A: {"data": [...]}
 	var wrapper struct {
 		Data []model.NSEHistoricalData `json:"data"`
 	}
-	if err := json.Unmarshal(bodyBytes, &wrapper); err != nil {
-		var direct []model.NSEHistoricalData
-		if err2 := json.Unmarshal(bodyBytes, &direct); err2 == nil {
-			return direct, nil
-		}
-		return nil, fmt.Errorf("json unmarshal failed: %v", err)
+	if err := json.Unmarshal(bodyBytes, &wrapper); err == nil && len(wrapper.Data) > 0 {
+		localCache.NseHistoryCache.Set(cacheKey, wrapper.Data, cache.DefaultExpiration)
+		return wrapper.Data, nil
 	}
 
-	return wrapper.Data, nil
+	// Try format B: [...] (Direct Array)
+	var direct []model.NSEHistoricalData
+	if err := json.Unmarshal(bodyBytes, &direct); err == nil {
+		if len(direct) > 0 {
+			localCache.NseHistoryCache.Set(cacheKey, direct, cache.DefaultExpiration)
+		}
+		return direct, nil
+	}
+
+	return nil, fmt.Errorf("failed to parse NSE JSON. Preview: %s", string(bodyBytes[:min(50, len(bodyBytes))]))
 }
 
 func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
-	if err := s.WarmUp(); err != nil {
-		return nil, err
+	cacheKey := "heatmap_sectoral"
+	if cached, found := localCache.HeatMapCache.Get(cacheKey); found {
+		return cached.([]model.SectorData), nil
 	}
 
-	req, _ := http.NewRequest("GET", nseUrl+heatMapEndpoint, nil)
-
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Referer", "https://www.nseindia.com/market-data/live-market-indices/heatmap")
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("sec-fetch-dest", "empty")
-	req.Header.Set("sec-fetch-mode", "cors")
-	req.Header.Set("sec-fetch-site", "same-origin")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("NSE returned status: %d", resp.StatusCode)
-	}
-
-	var reader io.ReadCloser
-	encoding := resp.Header.Get("Content-Encoding")
-
-	switch encoding {
-	case "br":
-		reader = io.NopCloser(brotli.NewReader(resp.Body))
-	case "gzip":
-		gzReader, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		defer gzReader.Close()
-		reader = gzReader
-	default:
-		reader = resp.Body
-	}
-
-	bodyBytes, err := io.ReadAll(reader)
+	bodyBytes, err := s.doRequestWithRetry(heatMapEndpoint, "https://www.nseindia.com/market-data/live-market-indices/heatmap")
 	if err != nil {
 		return nil, err
 	}
 
 	var data []model.SectorData
-
 	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		return nil, fmt.Errorf("json decode error: %v", err)
+		return nil, fmt.Errorf("heatmap decode error: %w", err)
 	}
 
+	localCache.NseHistoryCache.Set(cacheKey, data, 1*time.Minute)
 	return data, nil
+}
 
+// Internal helper to handle WarmUp, Execution, and Decompression
+func (s *NseServiceImpl) doRequestWithRetry(endpoint, referer string) ([]byte, error) {
+	if err := s.WarmUp(); err != nil {
+		return nil, err
+	}
+
+	req, _ := http.NewRequest("GET", nseUrl+endpoint, nil)
+	s.setHeaders(req, referer)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// If NSE rejects us (session expired), force a re-warmup once
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		s.mu.Lock()
+		s.lastWarmUp = time.Time{} // Reset timer
+		s.mu.Unlock()
+		return s.doRequestWithRetry(endpoint, referer)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("NSE returned status: %d", resp.StatusCode)
+	}
+
+	return s.decompressBody(resp)
+}
+
+func (s *NseServiceImpl) decompressBody(resp *http.Response) ([]byte, error) {
+	var reader io.ReadCloser
+	switch resp.Header.Get("Content-Encoding") {
+	case "br":
+		reader = io.NopCloser(brotli.NewReader(resp.Body))
+	case "gzip":
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		defer gz.Close()
+		reader = gz
+	default:
+		reader = resp.Body
+	}
+	return io.ReadAll(reader)
+}
+
+func (s *NseServiceImpl) setHeaders(req *http.Request, referer string) {
+	headers := map[string]string{
+		"Accept":          "*/*",
+		"Accept-Encoding": "gzip, deflate, br",
+		"Referer":         referer,
+		"User-Agent":      userAgent,
+		"sec-fetch-dest":  "empty",
+		"sec-fetch-mode":  "cors",
+		"sec-fetch-site":  "same-origin",
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 }
