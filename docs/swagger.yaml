@@ -46,8 +46,6 @@ definitions:
         type: boolean
       frontendUrl:
         type: string
-      id:
-        type: string
       jwtSecret:
         type: string
       leverage:

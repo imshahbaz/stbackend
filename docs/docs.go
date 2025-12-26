@@ -1084,9 +1084,6 @@ const docTemplate = `{
                 "frontendUrl": {
                     "type": "string"
                 },
-                "id": {
-                    "type": "string"
-                },
                 "jwtSecret": {
                     "type": "string"
                 },
