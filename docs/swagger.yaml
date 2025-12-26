@@ -68,6 +68,27 @@ definitions:
         example: true
         type: boolean
     type: object
+  model.SectorData:
+    properties:
+      close:
+        type: number
+      current:
+        type: number
+      high:
+        type: number
+      index:
+        type: string
+      indexLongName:
+        type: string
+      low:
+        type: number
+      open:
+        type: number
+      pChange:
+        type: number
+      timeStamp:
+        type: string
+    type: object
   model.StockData:
     properties:
       close:
@@ -509,6 +530,33 @@ paths:
       summary: Reload margins
       tags:
       - Margin
+  /nse/heatmap:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the latest sectoral index performance data. Uses a warmup
+        time-cache strategy to serve data efficiently and avoid NSE rate limits.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fetch Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.SectorData'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get NSE Sectoral Heatmap
+      tags:
+      - Stocks
   /nse/history:
     get:
       consumes:
