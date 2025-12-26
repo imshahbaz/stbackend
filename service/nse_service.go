@@ -45,7 +45,10 @@ func NewNseService() NseService {
 // WarmUp ensures we have a fresh session/cookies
 func (s *NseServiceImpl) WarmUp() error {
 	req, _ := http.NewRequest("GET", nseUrl, nil)
-	s.setHeaders(req, nseUrl)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Referer", "https://www.google.com/")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -55,7 +58,6 @@ func (s *NseServiceImpl) WarmUp() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Error in warmup %d", resp.StatusCode)
 		return fmt.Errorf("warmup failed with status: %d", resp.StatusCode)
 	}
 	return nil
