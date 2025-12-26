@@ -28,7 +28,7 @@ type OtpService interface {
 // 2. Implementation Struct
 type OtpServiceImpl struct {
 	emailService EmailService
-	otpCache     *cache.Cache // Using patrickmn/go-cache for TTL support
+	otpCache     *cache.Cache
 	brevoEmail   string
 }
 
@@ -36,9 +36,8 @@ type OtpServiceImpl struct {
 func NewOtpService(emailService EmailService, brevoEmail string) OtpService {
 	return &OtpServiceImpl{
 		emailService: emailService,
-		// Default expiration: 5 minutes, Cleanup: every 10 minutes
-		otpCache:   cache.New(5*time.Minute, 10*time.Minute),
-		brevoEmail: brevoEmail,
+		otpCache:     cache.New(5*time.Minute, 10*time.Minute),
+		brevoEmail:   brevoEmail,
 	}
 }
 
