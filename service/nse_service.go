@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http/cookiejar"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -29,7 +32,10 @@ type NseService interface {
 }
 
 type NseServiceImpl struct {
-	client *resty.Client
+	client     *resty.Client
+	sfGroup    singleflight.Group
+	lastWarmup time.Time
+	warmupLock sync.RWMutex
 }
 
 func NewNseService() NseService {
@@ -46,16 +52,40 @@ func NewNseService() NseService {
 }
 
 func (s *NseServiceImpl) WarmUp() error {
-	resp, err := s.client.R().
-		SetHeader("Referer", "https://www.google.com/").
-		SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8").
-		SetHeader("Accept-Language", "en-US,en;q=0.9").
-		Get("/")
-
-	if err != nil || !resp.IsSuccess() {
-		return fmt.Errorf("warmup failed: %v (status: %d)", err, resp.StatusCode())
+	s.warmupLock.RLock()
+	if time.Since(s.lastWarmup) < 2*time.Minute {
+		s.warmupLock.RUnlock()
+		return nil
 	}
-	return nil
+	s.warmupLock.RUnlock()
+
+	_, err, _ := s.sfGroup.Do("nse-session-refresh", func() (any, error) {
+		if time.Since(s.lastWarmup) < 2*time.Minute {
+			return nil, nil
+		}
+
+		log.Println("Refreshing NSE session...")
+
+		newJar, _ := cookiejar.New(nil)
+		s.client.SetCookieJar(newJar)
+		resp, err := s.client.R().
+			SetHeader("Referer", "https://www.google.com/").
+			SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8").
+			SetHeader("Accept-Language", "en-US,en;q=0.9").
+			Get("/")
+
+		if err != nil || !resp.IsSuccess() {
+			log.Printf("Warm up failed : %v (status: %d)", err, resp.StatusCode())
+			return nil, fmt.Errorf("warmup failed: %v (status: %d)", err, resp.StatusCode())
+		}
+
+		s.warmupLock.Lock()
+		s.lastWarmup = time.Now()
+		s.warmupLock.Unlock()
+
+		return nil, nil
+	})
+	return err
 }
 
 func (s *NseServiceImpl) FetchStockData(symbol string) ([]model.NSEHistoricalData, error) {
