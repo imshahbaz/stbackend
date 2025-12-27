@@ -23,6 +23,7 @@ func (ctrl *NseController) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		nseGroup.GET("/history", ctrl.GetStockHistory)
 		nseGroup.GET("/heatmap", ctrl.GetHeatMap)
+		nseGroup.GET("/allindices", ctrl.GetAllIndices)
 	}
 }
 
@@ -73,6 +74,33 @@ func (ctrl *NseController) GetHeatMap(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
 			Message: "Failed to get heat map",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Success: true,
+		Message: "Fetch Success",
+		Data:    data,
+	})
+}
+
+// GetHeatMap godoc
+// @Summary      Get NSE Sectoral Heatmap
+// @Description  Fetches the latest all indices performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.
+// @Tags         Stocks
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  model.Response{data=[]model.AllIndicesResponse} "Fetch Success"
+// @Failure      500  {object}  model.Response "Internal Server Error"
+// @Router       /nse/allindices [get]
+func (ctrl *NseController) GetAllIndices(c *gin.Context) {
+	data, err := ctrl.nseService.FetchAllIndices()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Success: false,
+			Message: "Failed to get all indices data",
 			Error:   err.Error(),
 		})
 		return

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -18,11 +19,13 @@ var (
 	userAgent      = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
 	historicalPath = "/api/NextApi/apiClient/GetQuoteApi"
 	heatMapPath    = "/api/heatmap-index"
+	allIndicesPath = "/api/allindices"
 )
 
 type NseService interface {
 	FetchStockData(symbol string) ([]model.NSEHistoricalData, error)
 	FetchHeatMap() ([]model.SectorData, error)
+	FetchAllIndices() ([]model.AllIndicesResponse, error)
 }
 
 type NseServiceImpl struct {
@@ -131,4 +134,53 @@ func (s *NseServiceImpl) setHeaders(req *resty.Request, referer string) *resty.R
 		req.Header.Set(k, v)
 	}
 	return req
+}
+
+func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
+	cacheKey := "heatmap_all_indices"
+	if cached, found := localCache.HeatMapCache.Get(cacheKey); found {
+		return cached.([]model.AllIndicesResponse), nil
+	}
+
+	if err := s.WarmUp(); err != nil {
+		return nil, err
+	}
+
+	resp, err := s.setHeaders(s.client.R(), nseUrl+"/market-data/live-market-indices").
+		Get(allIndicesPath)
+
+	if err != nil || !resp.IsSuccess() {
+		log.Println("Error calling all indices data api %", err.Error())
+		return nil, fmt.Errorf("all indices error: %v", err)
+	}
+
+	var result model.NseResponseWrapper[model.NseIndexData]
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		log.Printf("Error parsing all indices data %s", err.Error())
+		return nil, fmt.Errorf("heatmap decode error: %w", err)
+	}
+
+	data := ConvertSlice(result.Data)
+	localCache.HeatMapCache.Set(cacheKey, data, cache.DefaultExpiration)
+	return data, nil
+}
+
+func ConvertSlice(input []model.NseIndexData) []model.AllIndicesResponse {
+	output := make([]model.AllIndicesResponse, 0, len(input))
+	for _, val := range input {
+		if val.Key == "SECTORAL INDICES" {
+			oneWeekChange := formatToTwo(((val.Last - val.OneWeekAgoVal) / val.OneWeekAgoVal) * 100)
+			output = append(output, model.AllIndicesResponse{
+				NseIndexData: val,
+				PerChange1w:  oneWeekChange,
+			})
+		}
+	}
+	return output
+}
+
+func formatToTwo(n float64) float64 {
+	s := fmt.Sprintf("%.2f", n)
+	val, _ := strconv.ParseFloat(s, 64)
+	return val
 }

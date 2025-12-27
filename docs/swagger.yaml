@@ -1,5 +1,26 @@
 basePath: /api
 definitions:
+  model.AllIndicesResponse:
+    properties:
+      index:
+        type: string
+      indexSymbol:
+        type: string
+      key:
+        type: string
+      last:
+        type: number
+      oneWeekAgoVal:
+        type: number
+      perChange1w:
+        type: number
+      perChange30d:
+        type: number
+      perChange365d:
+        type: number
+      percentChange:
+        type: number
+    type: object
   model.BrevoEmailRequest:
     properties:
       htmlContent:
@@ -619,6 +640,33 @@ paths:
       summary: Reload margins
       tags:
       - Margin
+  /nse/allindices:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the latest all indices performance data. Uses a warmup
+        time-cache strategy to serve data efficiently and avoid NSE rate limits.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fetch Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.AllIndicesResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get NSE Sectoral Heatmap
+      tags:
+      - Stocks
   /nse/heatmap:
     get:
       consumes:
