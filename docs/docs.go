@@ -620,6 +620,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/nse/allindices": {
+            "get": {
+                "description": "Fetches the latest all indices performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stocks"
+                ],
+                "summary": "Get NSE Sectoral Heatmap",
+                "responses": {
+                    "200": {
+                        "description": "Fetch Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.AllIndicesResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/nse/heatmap": {
             "get": {
                 "description": "Fetches the latest sectoral index performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
@@ -1016,6 +1060,38 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "model.AllIndicesResponse": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "string"
+                },
+                "indexSymbol": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "last": {
+                    "type": "number"
+                },
+                "oneWeekAgoVal": {
+                    "type": "number"
+                },
+                "perChange1w": {
+                    "type": "number"
+                },
+                "perChange30d": {
+                    "type": "number"
+                },
+                "perChange365d": {
+                    "type": "number"
+                },
+                "percentChange": {
+                    "type": "number"
+                }
+            }
+        },
         "model.BrevoEmailRequest": {
             "type": "object",
             "properties": {
