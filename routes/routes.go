@@ -88,7 +88,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewConfigController(configService, isProduction).RegisterRoutes(api)
 
-		controller.NewPriceActionController(priceActionSvc).RegisterRoutes(api)
+		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(api)
 	}
 
 	return r

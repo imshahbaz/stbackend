@@ -2,6 +2,7 @@ package controller
 
 import (
 	"backend/cache"
+	"backend/middleware"
 	"backend/model"
 	"backend/service"
 	"net/http"
@@ -11,11 +12,13 @@ import (
 
 type PriceActionController struct {
 	priceActionService service.PriceActionService
+	isProduction       bool
 }
 
-func NewPriceActionController(s service.PriceActionService) *PriceActionController {
+func NewPriceActionController(s service.PriceActionService, isProduction bool) *PriceActionController {
 	return &PriceActionController{
 		priceActionService: s,
+		isProduction:       isProduction,
 	}
 }
 
@@ -23,12 +26,17 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 	priceActionGrp := router.Group("/price-action")
 	obGroup := priceActionGrp.Group("/ob")
 	{
-		obGroup.POST("", ctrl.SaveOrderBlock)
-		obGroup.DELETE("", ctrl.DeleteOrderBlock)
 		obGroup.POST("/check", ctrl.CheckOBMitigation)
 		obGroup.GET("/mitigation", ctrl.GetOBMitigation)
-		obGroup.GET("/:symbol", ctrl.GetObBySymbol)
-		obGroup.PATCH("", ctrl.UpdateOrderBlock)
+	}
+
+	protectedGrp := obGroup.Group("")
+	protectedGrp.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
+	{
+		protectedGrp.GET("/:symbol", ctrl.GetObBySymbol)
+		protectedGrp.PATCH("", ctrl.UpdateOrderBlock)
+		protectedGrp.POST("", ctrl.SaveOrderBlock)
+		protectedGrp.DELETE("", ctrl.DeleteOrderBlock)
 	}
 }
 
