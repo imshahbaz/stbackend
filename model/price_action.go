@@ -8,5 +8,5 @@ type OBInfo struct {
 
 type StockRecord struct {
 	Symbol      string   `bson:"_id" json:"symbol"`
-	OrderBlocks []OBInfo `bson:"order_blocks" json:"order_blocks"`
+	OrderBlocks []OBInfo `bson:"order_blocks" json:"orderBlocks"`
 }

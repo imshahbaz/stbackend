@@ -772,7 +772,7 @@ const docTemplate = `{
         },
         "/price-action/ob": {
             "post": {
-                "description": "Creates a new order block or updates an existing one for a specific symbol and date.",
+                "description": "Creates a new order block for a specific symbol and date.",
                 "consumes": [
                     "application/json"
                 ],
@@ -782,7 +782,7 @@ const docTemplate = `{
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Save or Update an Order Block",
+                "summary": "Save an Order Block",
                 "parameters": [
                     {
                         "description": "Order Block Details",
@@ -830,6 +830,50 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Symbol and Date of block to delete",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates an existing one for a specific symbol and date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Update an Order Block",
+                "parameters": [
+                    {
+                        "description": "Order Block Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -935,6 +979,59 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/{symbol}": {
+            "get": {
+                "description": "Retrieves the full list of order blocks for a specific stock symbol from the MongoDB cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Get Order Blocks by Symbol",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stock Symbol (e.g., RELIANCE)",
+                        "name": "symbol",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved order blocks",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.StockRecord"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid symbol provided",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Stock symbol not found in cache",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1363,6 +1460,20 @@ const docTemplate = `{
                 }
             }
         },
+        "model.OBInfo": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "high": {
+                    "type": "number"
+                },
+                "low": {
+                    "type": "number"
+                }
+            }
+        },
         "model.ObRequest": {
             "type": "object",
             "properties": {
@@ -1485,6 +1596,20 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.StockRecord": {
+            "type": "object",
+            "properties": {
+                "orderBlocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.OBInfo"
+                    }
                 },
                 "symbol": {
                     "type": "string"

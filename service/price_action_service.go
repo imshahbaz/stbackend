@@ -14,6 +14,7 @@ type PriceActionService interface {
 	SaveOrderBlock(ctx *gin.Context)
 	DeleteOrderBlock(ctx *gin.Context)
 	CheckOBMitigation(ctx *gin.Context)
+	GetObBySymbol(ctx *gin.Context)
 }
 
 type PriceActionServiceImpl struct {
@@ -50,7 +51,7 @@ func (s *PriceActionServiceImpl) SaveOrderBlock(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, model.Response{
 		Success: true,
-		Message: "Order block created/updated",
+		Message: "Order block created",
 	})
 }
 
@@ -146,5 +147,56 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 		Success: true,
 		Message: "Order block fetch success",
 		Data:    response,
+	})
+}
+
+func (s *PriceActionServiceImpl) GetObBySymbol(ctx *gin.Context) {
+	symbol := ctx.Param("symbol")
+
+	if symbol == "" {
+		ctx.JSON(http.StatusBadRequest, model.Response{
+			Success: false,
+			Error:   "Invalid request",
+		})
+		return
+	}
+
+	data, err := s.priceActionRepo.GetObByID(ctx, symbol)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, model.Response{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, model.Response{
+		Success: true,
+		Message: "Order block found",
+		Data:    data,
+	})
+}
+
+func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx *gin.Context) {
+	var request model.ObRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, model.Response{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	err := s.priceActionRepo.UpdateOrderBlock(ctx, request)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, model.Response{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, model.Response{
+		Success: true,
+		Message: "Order block updated",
 	})
 }

@@ -27,12 +27,14 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 		obGroup.DELETE("", ctrl.DeleteOrderBlock)
 		obGroup.POST("/check", ctrl.CheckOBMitigation)
 		obGroup.GET("/mitigation", ctrl.GetOBMitigation)
+		obGroup.GET("/:symbol", ctrl.GetObBySymbol)
+		obGroup.PATCH("", ctrl.UpdateOrderBlock)
 	}
 }
 
 // SaveOrderBlock godoc
-// @Summary      Save or Update an Order Block
-// @Description  Creates a new order block or updates an existing one for a specific symbol and date.
+// @Summary      Save an Order Block
+// @Description  Creates a new order block for a specific symbol and date.
 // @Tags         PriceAction
 // @Accept       json
 // @Produce      json
@@ -92,4 +94,33 @@ func (c *PriceActionController) GetOBMitigation(ctx *gin.Context) {
 		return
 	}
 	c.priceActionService.CheckOBMitigation(ctx)
+}
+
+// GetObBySymbol godoc
+// @Summary      Get Order Blocks by Symbol
+// @Description  Retrieves the full list of order blocks for a specific stock symbol from the MongoDB cache.
+// @Tags         PriceAction
+// @Produce      json
+// @Param        symbol  path      string  true  "Stock Symbol (e.g., RELIANCE)"
+// @Success      200     {object}  model.Response{data=model.StockRecord} "Successfully retrieved order blocks"
+// @Failure      400     {object}  model.Response "Invalid symbol provided"
+// @Failure      404     {object}  model.Response "Stock symbol not found in cache"
+// @Router       /price-action/ob/{symbol} [get]
+func (c *PriceActionController) GetObBySymbol(ctx *gin.Context) {
+	c.priceActionService.GetObBySymbol(ctx)
+}
+
+// UpdateOrderBlock godoc
+// @Summary      Update an Order Block
+// @Description  Updates an existing one for a specific symbol and date.
+// @Tags         PriceAction
+// @Accept       json
+// @Produce      json
+// @Param        request body model.ObRequest true "Order Block Details"
+// @Success      200 {object} model.Response
+// @Failure      400 {object} model.Response
+// @Failure      500 {object} model.Response
+// @Router       /price-action/ob [patch]
+func (c *PriceActionController) UpdateOrderBlock(ctx *gin.Context) {
+	c.priceActionService.SaveOrderBlock(ctx)
 }

@@ -89,6 +89,15 @@ definitions:
       mtimestamp:
         type: string
     type: object
+  model.OBInfo:
+    properties:
+      date:
+        type: string
+      high:
+        type: number
+      low:
+        type: number
+    type: object
   model.ObRequest:
     properties:
       date:
@@ -170,6 +179,15 @@ definitions:
         type: number
       name:
         type: string
+      symbol:
+        type: string
+    type: object
+  model.StockRecord:
+    properties:
+      orderBlocks:
+        items:
+          $ref: '#/definitions/model.OBInfo'
+        type: array
       symbol:
         type: string
     type: object
@@ -788,11 +806,10 @@ paths:
       summary: Delete an Order Block
       tags:
       - PriceAction
-    post:
+    patch:
       consumes:
       - application/json
-      description: Creates a new order block or updates an existing one for a specific
-        symbol and date.
+      description: Updates an existing one for a specific symbol and date.
       parameters:
       - description: Order Block Details
         in: body
@@ -815,7 +832,69 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/model.Response'
-      summary: Save or Update an Order Block
+      summary: Update an Order Block
+      tags:
+      - PriceAction
+    post:
+      consumes:
+      - application/json
+      description: Creates a new order block for a specific symbol and date.
+      parameters:
+      - description: Order Block Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Save an Order Block
+      tags:
+      - PriceAction
+  /price-action/ob/{symbol}:
+    get:
+      description: Retrieves the full list of order blocks for a specific stock symbol
+        from the MongoDB cache.
+      parameters:
+      - description: Stock Symbol (e.g., RELIANCE)
+        in: path
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved order blocks
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.StockRecord'
+              type: object
+        "400":
+          description: Invalid symbol provided
+          schema:
+            $ref: '#/definitions/model.Response'
+        "404":
+          description: Stock symbol not found in cache
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get Order Blocks by Symbol
       tags:
       - PriceAction
   /price-action/ob/check:

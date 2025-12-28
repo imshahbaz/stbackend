@@ -126,3 +126,31 @@ func (r *PriceActionRepo) DeleteOrderBlockByDate(ctx context.Context, symbol str
 
 	return nil
 }
+
+func (r *PriceActionRepo) UpdateOrderBlock(ctx context.Context, updateData model.ObRequest) error {
+	filter := bson.M{"_id": updateData.Symbol, "order_blocks.date": updateData.Date}
+
+	// $[elem] is a placeholder for the element that matches our arrayFilter
+	update := bson.M{
+		"$set": bson.M{
+			"order_blocks.$[elem].high": updateData.High,
+			"order_blocks.$[elem].low":  updateData.Low,
+		},
+	}
+
+	// This filter tells MongoDB which specific array element to update
+	options := options.Update().SetArrayFilters(options.ArrayFilters{
+		Filters: []any{bson.M{"elem.date": updateData.Date}},
+	})
+
+	result, err := r.obCollection.UpdateOne(ctx, filter, update, options)
+	if err != nil {
+		return err
+	}
+
+	if result.ModifiedCount == 0 {
+		return fmt.Errorf("no order block found for date %s", updateData.Date)
+	}
+
+	return nil
+}
