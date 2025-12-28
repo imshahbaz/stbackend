@@ -233,7 +233,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx *gin.Context) {
 		if err != nil {
 			continue
 		}
-		candle := history[1]
+		candle := history[2]
 		formattedDate, err := util.ParseNseDate(candle.Timestamp)
 		if err != nil {
 			continue

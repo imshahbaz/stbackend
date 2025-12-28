@@ -34,6 +34,15 @@ definitions:
           $ref: '#/definitions/model.Recipient'
         type: array
     type: object
+  model.Info:
+    properties:
+      date:
+        type: string
+      high:
+        type: number
+      low:
+        type: number
+    type: object
   model.Margin:
     properties:
       margin:
@@ -88,15 +97,6 @@ definitions:
         type: number
       mtimestamp:
         type: string
-    type: object
-  model.OBInfo:
-    properties:
-      date:
-        type: string
-      high:
-        type: number
-      low:
-        type: number
     type: object
   model.ObRequest:
     properties:
@@ -184,9 +184,13 @@ definitions:
     type: object
   model.StockRecord:
     properties:
+      fvg:
+        items:
+          $ref: '#/definitions/model.Info'
+        type: array
       orderBlocks:
         items:
-          $ref: '#/definitions/model.OBInfo'
+          $ref: '#/definitions/model.Info'
         type: array
       symbol:
         type: string

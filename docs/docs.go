@@ -1449,6 +1449,20 @@ const docTemplate = `{
                 }
             }
         },
+        "model.Info": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "high": {
+                    "type": "number"
+                },
+                "low": {
+                    "type": "number"
+                }
+            }
+        },
         "model.Margin": {
             "type": "object",
             "properties": {
@@ -1528,20 +1542,6 @@ const docTemplate = `{
                 },
                 "mtimestamp": {
                     "type": "string"
-                }
-            }
-        },
-        "model.OBInfo": {
-            "type": "object",
-            "properties": {
-                "date": {
-                    "type": "string"
-                },
-                "high": {
-                    "type": "number"
-                },
-                "low": {
-                    "type": "number"
                 }
             }
         },
@@ -1676,10 +1676,16 @@ const docTemplate = `{
         "model.StockRecord": {
             "type": "object",
             "properties": {
+                "fvg": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Info"
+                    }
+                },
                 "orderBlocks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.OBInfo"
+                        "$ref": "#/definitions/model.Info"
                     }
                 },
                 "symbol": {
