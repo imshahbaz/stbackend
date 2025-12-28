@@ -897,6 +897,45 @@ paths:
       summary: Get Order Blocks by Symbol
       tags:
       - PriceAction
+  /price-action/ob/automate:
+    post:
+      consumes:
+      - application/json
+      description: Fetches stocks based on the "BULLISH CLOSE 200" strategy, retrieves
+        historical data from NSE (utilizing time cache), and persists Order Blocks.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Automate Order Block Discovery
+      tags:
+      - Price Action
   /price-action/ob/check:
     post:
       description: Fetches strategy symbols, checks them against NSE live data, identifies

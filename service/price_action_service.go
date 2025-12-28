@@ -4,6 +4,7 @@ import (
 	"backend/cache"
 	"backend/model"
 	"backend/repository"
+	"backend/util"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ type PriceActionService interface {
 	DeleteOrderBlock(ctx *gin.Context)
 	CheckOBMitigation(ctx *gin.Context)
 	GetObBySymbol(ctx *gin.Context)
+	AutomateOrderBlock(ctx *gin.Context)
 }
 
 type PriceActionServiceImpl struct {
@@ -199,4 +201,51 @@ func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx *gin.Context) {
 		Success: true,
 		Message: "Order block updated",
 	})
+}
+
+func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx *gin.Context) {
+	rawStrategy, ok := cache.StrategyCache.Get("BULLISH OB 1D")
+
+	strategy, ok := rawStrategy.(model.StrategyDto)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, model.Response{
+			Success: false,
+			Error:   "OB strategy error",
+		})
+		return
+	}
+
+	data, err := s.chartInkService.FetchWithMargin(strategy)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, model.Response{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	for _, dto := range data {
+		history, err := s.nseService.FetchStockData(dto.Symbol)
+		if err != nil {
+			continue
+		}
+		candle := history[1]
+		formattedDate, err := util.ParseNseDate(candle.Timestamp)
+		if err != nil {
+			continue
+		}
+		request := model.ObRequest{
+			Symbol: dto.Symbol,
+			Date:   formattedDate,
+			High:   candle.High,
+			Low:    candle.Low,
+		}
+		s.priceActionRepo.SaveOrderBlock(ctx, request)
+	}
+
+	ctx.JSON(http.StatusOK, model.Response{
+		Success: true,
+		Message: "Order block automation completed",
+	})
+
 }
