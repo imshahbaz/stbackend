@@ -28,6 +28,7 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		obGroup.POST("/check", ctrl.CheckOBMitigation)
 		obGroup.GET("/mitigation", ctrl.GetOBMitigation)
+		obGroup.POST("/automate", ctrl.AutomateOrderBlock)
 	}
 
 	protectedGrp := obGroup.Group("")
@@ -131,4 +132,18 @@ func (c *PriceActionController) GetObBySymbol(ctx *gin.Context) {
 // @Router       /price-action/ob [patch]
 func (c *PriceActionController) UpdateOrderBlock(ctx *gin.Context) {
 	c.priceActionService.SaveOrderBlock(ctx)
+}
+
+// AutomateOrderBlock godoc
+// @Summary      Automate Order Block Discovery
+// @Description  Fetches stocks based on the "BULLISH CLOSE 200" strategy, retrieves historical data from NSE (utilizing time cache), and persists Order Blocks.
+// @Tags         Price Action
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  model.Response{message=string}
+// @Failure      401  {object}  model.Response{error=string}
+// @Failure      500  {object}  model.Response{error=string}
+// @Router       /price-action/ob/automate [post]
+func (c *PriceActionController) AutomateOrderBlock(ctx *gin.Context) {
+	c.priceActionService.AutomateOrderBlock(ctx)
 }
