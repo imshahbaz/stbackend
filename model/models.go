@@ -172,3 +172,15 @@ type Response struct {
 	Data    any    `json:"data,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
+
+type ObRequest struct {
+	Symbol string  `json:"symbol"`
+	Date   string  `json:"date"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+}
+
+type ObResponse struct {
+	StockMarginDto
+	Date string `json:"date"`
+}

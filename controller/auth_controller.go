@@ -178,14 +178,17 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 // @Produce      json
 // @Param        user  body      model.UserDto  true  "User Registration Details"
 // @Success      200   {object}  model.MessageResponse
-// @Failure      400   {object}  map[string]string
+// @Failure      400   {object}  model.MessageResponse
 // @Router       /auth/signup [post]
 func (ctrl *AuthController) Signup(c *gin.Context) {
 	var user model.UserDto
 
 	// 1. Validation
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, model.MessageResponse{
+			OtpSent: false,
+			Message: "Invalid request",
+		})
 		return
 	}
 
@@ -201,12 +204,16 @@ func (ctrl *AuthController) Signup(c *gin.Context) {
 
 		if errors.Is(err, service.ErrDuplicateOtp) {
 			c.JSON(http.StatusConflict, model.MessageResponse{
+				OtpSent: false,
 				Message: err.Error(),
 			})
 			return
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong please try again later"})
+		c.JSON(http.StatusInternalServerError, model.MessageResponse{
+			OtpSent: false,
+			Message: "Something went wrong please try again later",
+		})
 		return
 	}
 

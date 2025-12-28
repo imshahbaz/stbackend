@@ -57,6 +57,9 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 
+	priceActionRepo := repository.NewPriceActionRepo(db)
+	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo)
+
 	// --- 4. Routes & Controllers ---
 	api := r.Group("/api")
 	{
@@ -84,6 +87,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewNseController(nseSvc).RegisterRoutes(api)
 
 		controller.NewConfigController(configService, isProduction).RegisterRoutes(api)
+
+		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(api)
 	}
 
 	return r
