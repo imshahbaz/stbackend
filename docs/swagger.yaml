@@ -89,6 +89,30 @@ definitions:
       mtimestamp:
         type: string
     type: object
+  model.ObRequest:
+    properties:
+      date:
+        type: string
+      high:
+        type: number
+      low:
+        type: number
+      symbol:
+        type: string
+    type: object
+  model.ObResponse:
+    properties:
+      close:
+        type: number
+      date:
+        type: string
+      margin:
+        type: number
+      name:
+        type: string
+      symbol:
+        type: string
+    type: object
   model.Recipient:
     properties:
       email:
@@ -735,6 +759,117 @@ paths:
       summary: Get Historical Stock Data
       tags:
       - Stocks
+  /price-action/ob:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a specific order block entry from a stock's record based
+        on symbol and date.
+      parameters:
+      - description: Symbol and Date of block to delete
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Delete an Order Block
+      tags:
+      - PriceAction
+    post:
+      consumes:
+      - application/json
+      description: Creates a new order block or updates an existing one for a specific
+        symbol and date.
+      parameters:
+      - description: Order Block Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Save or Update an Order Block
+      tags:
+      - PriceAction
+  /price-action/ob/check:
+    post:
+      description: Fetches strategy symbols, checks them against NSE live data, identifies
+        non-mitigated blocks, and updates the cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.ObResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check and Refresh Order Block Mitigations
+      tags:
+      - PriceAction
+  /price-action/ob/mitigation:
+    get:
+      description: Fetches strategy symbols, checks them against NSE live data, identifies
+        non-mitigated blocks, and updates the cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.ObResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check and Refresh Order Block Mitigations
+      tags:
+      - PriceAction
   /strategy:
     delete:
       description: Removes a strategy from the system using its ID (Name)

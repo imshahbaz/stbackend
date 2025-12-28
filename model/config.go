@@ -1,5 +1,9 @@
 package model
 
+var (
+	ObCollectionName = "OrderBlocks"
+)
+
 type MongoEnvConfig struct {
 	ID          string  `json:"-" bson:"_id,omitempty"`
 	FrontendUrl string  `json:"frontendUrl" bson:"frontendUrl"`
