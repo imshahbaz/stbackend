@@ -1,7 +1,7 @@
 package model
 
 var (
-	ObCollectionName = "OrderBlocks"
+	PACollectionName = "price_action"
 )
 
 type MongoEnvConfig struct {

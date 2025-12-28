@@ -12,17 +12,17 @@ import (
 )
 
 type PriceActionRepo struct {
-	obCollection *mongo.Collection
+	priceActionCollection *mongo.Collection
 }
 
 func NewPriceActionRepo(db *mongo.Database) *PriceActionRepo {
 	return &PriceActionRepo{
-		obCollection: db.Collection(model.ObCollectionName),
+		priceActionCollection: db.Collection(model.PACollectionName),
 	}
 }
 
 func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest) error {
-	var newOB model.OBInfo
+	var newOB model.Info
 	copier.Copy(&newOB, &ob)
 
 	pullOp := mongo.NewUpdateOneModel().
@@ -38,7 +38,7 @@ func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest
 		SetUpdate(bson.M{
 			"$push": bson.M{
 				"order_blocks": bson.M{
-					"$each": []model.OBInfo{newOB},
+					"$each": []model.Info{newOB},
 					"$sort": bson.M{"date": -1},
 				},
 			},
@@ -46,7 +46,7 @@ func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest
 		SetUpsert(true)
 
 	opts := options.BulkWrite().SetOrdered(true)
-	_, err := r.obCollection.BulkWrite(ctx, []mongo.WriteModel{pullOp, pushOp}, opts)
+	_, err := r.priceActionCollection.BulkWrite(ctx, []mongo.WriteModel{pullOp, pushOp}, opts)
 
 	return err
 }
@@ -54,7 +54,7 @@ func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest
 func (r *PriceActionRepo) GetAllOrderBlock(ctx context.Context) ([]model.StockRecord, error) {
 	var results []model.StockRecord
 
-	cursor, err := r.obCollection.Find(ctx, bson.M{})
+	cursor, err := r.priceActionCollection.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (r *PriceActionRepo) GetAllObIn(ctx context.Context, ids []string) ([]model
 		"_id": bson.M{"$in": ids},
 	}
 
-	cursor, err := r.obCollection.Find(ctx, filter)
+	cursor, err := r.priceActionCollection.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (r *PriceActionRepo) GetObByID(ctx context.Context, symbol string) (model.S
 
 	filter := bson.M{"_id": symbol}
 
-	err := r.obCollection.FindOne(ctx, filter).Decode(&stock)
+	err := r.priceActionCollection.FindOne(ctx, filter).Decode(&stock)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return model.StockRecord{}, fmt.Errorf("stock %s not found in cache", symbol)
@@ -115,7 +115,7 @@ func (r *PriceActionRepo) DeleteOrderBlockByDate(ctx context.Context, symbol str
 		},
 	}
 
-	result, err := r.obCollection.UpdateOne(ctx, filter, update)
+	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (r *PriceActionRepo) UpdateOrderBlock(ctx context.Context, updateData model
 		Filters: []any{bson.M{"elem.date": updateData.Date}},
 	})
 
-	result, err := r.obCollection.UpdateOne(ctx, filter, update, options)
+	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update, options)
 	if err != nil {
 		return err
 	}
