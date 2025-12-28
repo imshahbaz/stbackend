@@ -344,9 +344,7 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/model.MessageResponse'
       summary: User Signup
       tags:
       - auth
