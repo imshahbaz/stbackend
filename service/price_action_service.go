@@ -130,7 +130,11 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 		}
 		today := history[0]
 		for _, block := range ob.OrderBlocks {
-			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High {
+			formattedDate, err := util.ParseNseDate(history[1].Timestamp)
+			if err != nil {
+				continue
+			}
+			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High && formattedDate != block.Date {
 				dto, _ := idMap[ob.Symbol]
 				var obResp model.ObResponse
 				copier.Copy(&obResp, &dto)
