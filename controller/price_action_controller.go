@@ -131,7 +131,7 @@ func (c *PriceActionController) GetObBySymbol(ctx *gin.Context) {
 // @Failure      500 {object} model.Response
 // @Router       /price-action/ob [patch]
 func (c *PriceActionController) UpdateOrderBlock(ctx *gin.Context) {
-	c.priceActionService.SaveOrderBlock(ctx)
+	c.priceActionService.UpdateOrderBlock(ctx)
 }
 
 // AutomateOrderBlock godoc
