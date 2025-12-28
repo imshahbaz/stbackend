@@ -116,7 +116,7 @@ func (c *PriceActionController) GetOBMitigation(ctx *gin.Context) {
 // @Failure      404     {object}  model.Response "Stock symbol not found in cache"
 // @Router       /price-action/ob/{symbol} [get]
 func (c *PriceActionController) GetObBySymbol(ctx *gin.Context) {
-	c.priceActionService.GetObBySymbol(ctx)
+	c.priceActionService.GetPABySymbol(ctx)
 }
 
 // UpdateOrderBlock godoc

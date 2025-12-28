@@ -12,10 +12,10 @@ import (
 )
 
 type PriceActionService interface {
+	GetPABySymbol(ctx *gin.Context)
 	SaveOrderBlock(ctx *gin.Context)
 	DeleteOrderBlock(ctx *gin.Context)
 	CheckOBMitigation(ctx *gin.Context)
-	GetObBySymbol(ctx *gin.Context)
 	AutomateOrderBlock(ctx *gin.Context)
 }
 
@@ -113,7 +113,7 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 		ids = append(ids, stock.Symbol)
 	}
 
-	obs, err := s.priceActionRepo.GetAllObIn(ctx, ids)
+	obs, err := s.priceActionRepo.GetAllPAIn(ctx, ids)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
@@ -130,11 +130,7 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 		}
 		today := history[0]
 		for _, block := range ob.OrderBlocks {
-			formattedDate, err := util.ParseNseDate(history[1].Timestamp)
-			if err != nil {
-				continue
-			}
-			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High && formattedDate != block.Date {
+			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High {
 				dto, _ := idMap[ob.Symbol]
 				var obResp model.ObResponse
 				copier.Copy(&obResp, &dto)
@@ -156,7 +152,7 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 	})
 }
 
-func (s *PriceActionServiceImpl) GetObBySymbol(ctx *gin.Context) {
+func (s *PriceActionServiceImpl) GetPABySymbol(ctx *gin.Context) {
 	symbol := ctx.Param("symbol")
 
 	if symbol == "" {
@@ -167,7 +163,7 @@ func (s *PriceActionServiceImpl) GetObBySymbol(ctx *gin.Context) {
 		return
 	}
 
-	data, err := s.priceActionRepo.GetObByID(ctx, symbol)
+	data, err := s.priceActionRepo.GetPAByID(ctx, symbol)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, model.Response{
 			Success: false,
