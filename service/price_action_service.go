@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"sort"
 	"time"
 
 	"backend/cache"
@@ -102,6 +103,9 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 	}
 
 	if len(response) > 0 {
+		sort.Slice(response, func(i, j int) bool {
+			return response[i].Margin > response[j].Margin
+		})
 		cache.PriceActionCache.Set(cacheKey, response, 1*time.Hour)
 	}
 	return response, nil
