@@ -89,7 +89,6 @@ func (ctrl *PriceActionController) GetPABySymbol(c *gin.Context) {
 // SaveOrderBlock godoc
 // @Summary      Save OB
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "OB Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/ob [post]
@@ -106,7 +105,6 @@ func (ctrl *PriceActionController) SaveOrderBlock(c *gin.Context) {
 // UpdateOrderBlock godoc
 // @Summary      Update OB
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "Update Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/ob [patch]
@@ -123,7 +121,6 @@ func (ctrl *PriceActionController) UpdateOrderBlock(c *gin.Context) {
 // DeleteOrderBlock godoc
 // @Summary      Delete OB
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "Delete Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/ob [delete]
@@ -159,7 +156,6 @@ func (ctrl *PriceActionController) CheckOBMitigation(c *gin.Context) {
 // SaveFvg godoc
 // @Summary      Save FVG
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "FVG Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/fvg [post]
@@ -176,7 +172,6 @@ func (ctrl *PriceActionController) SaveFvg(c *gin.Context) {
 // UpdateFvg godoc
 // @Summary      Update FVG
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "Update Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/fvg [patch]
@@ -193,7 +188,6 @@ func (ctrl *PriceActionController) UpdateFvg(c *gin.Context) {
 // DeleteFvg godoc
 // @Summary      Delete FVG
 // @Tags         PriceAction (Admin)
-// @Security     BearerAuth
 // @Param        request  body      model.ObRequest  true  "Delete Details"
 // @Success      200      {object}  model.Response
 // @Router       /price-action/fvg [delete]

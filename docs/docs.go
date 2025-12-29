@@ -810,11 +810,6 @@ const docTemplate = `{
         },
         "/price-action/fvg": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -840,11 +835,6 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -870,11 +860,6 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -911,11 +896,6 @@ const docTemplate = `{
         },
         "/price-action/ob": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -941,11 +921,6 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -971,11 +946,6 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],

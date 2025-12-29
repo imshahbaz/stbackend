@@ -803,11 +803,6 @@
         },
         "/price-action/fvg": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -833,11 +828,6 @@
                 }
             },
             "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -863,11 +853,6 @@
                 }
             },
             "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -904,11 +889,6 @@
         },
         "/price-action/ob": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -934,11 +914,6 @@
                 }
             },
             "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],
@@ -964,11 +939,6 @@
                 }
             },
             "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "PriceAction (Admin)"
                 ],

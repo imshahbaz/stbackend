@@ -806,8 +806,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Delete FVG
       tags:
       - PriceAction (Admin)
@@ -824,8 +822,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Update FVG
       tags:
       - PriceAction (Admin)
@@ -842,8 +838,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Save FVG
       tags:
       - PriceAction (Admin)
@@ -867,8 +861,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Delete OB
       tags:
       - PriceAction (Admin)
@@ -885,8 +877,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Update OB
       tags:
       - PriceAction (Admin)
@@ -903,8 +893,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Save OB
       tags:
       - PriceAction (Admin)
