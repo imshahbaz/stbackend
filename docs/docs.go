@@ -770,13 +770,149 @@ const docTemplate = `{
                 }
             }
         },
-        "/price-action/ob": {
+        "/price-action/automate": {
             "post": {
-                "description": "Creates a new order block for a specific symbol and date.",
+                "description": "Triggers scanners to automatically find and save Order Blocks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Automate Order Block Discovery",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/fvg": {
+            "post": {
                 "consumes": [
                     "application/json"
                 ],
-                "produces": [
+                "tags": [
+                    "FVG"
+                ],
+                "summary": "Save Fair Value Gap",
+                "parameters": [
+                    {
+                        "description": "FVG Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "FVG"
+                ],
+                "summary": "Delete Fair Value Gap",
+                "parameters": [
+                    {
+                        "description": "Delete Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FVG"
+                ],
+                "summary": "Update Fair Value Gap",
+                "parameters": [
+                    {
+                        "description": "Update Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/fvg/check": {
+            "post": {
+                "tags": [
+                    "FVG"
+                ],
+                "summary": "Check Fvg Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/fvg/mitigation": {
+            "get": {
+                "tags": [
+                    "FVG"
+                ],
+                "summary": "Get Cached Fvg Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
                     "application/json"
                 ],
                 "tags": [
@@ -800,28 +936,14 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
                     }
                 }
             },
             "delete": {
-                "description": "Removes a specific order block entry from a stock's record based on symbol and date.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
                 "tags": [
                     "PriceAction"
@@ -829,7 +951,7 @@ const docTemplate = `{
                 "summary": "Delete an Order Block",
                 "parameters": [
                     {
-                        "description": "Symbol and Date of block to delete",
+                        "description": "Delete Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -844,27 +966,16 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
                     }
                 }
             },
             "patch": {
-                "description": "Updates an existing one for a specific symbol and date.",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
-                "produces": [
+                "consumes": [
                     "application/json"
                 ],
                 "tags": [
@@ -873,7 +984,7 @@ const docTemplate = `{
                 "summary": "Update an Order Block",
                 "parameters": [
                     {
-                        "description": "Order Block Details",
+                        "description": "Update Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -888,127 +999,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/price-action/ob/automate": {
-            "post": {
-                "description": "Fetches stocks based on the \"BULLISH CLOSE 200\" strategy, retrieves historical data from NSE (utilizing time cache), and persists Order Blocks.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Price Action"
-                ],
-                "summary": "Automate Order Block Discovery",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
                     }
                 }
             }
         },
         "/price-action/ob/check": {
             "post": {
-                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Check and Refresh Order Block Mitigations",
+                "summary": "Check OB Mitigations",
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/model.ObResponse"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1018,38 +1021,13 @@ const docTemplate = `{
         },
         "/price-action/ob/mitigation": {
             "get": {
-                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Check and Refresh Order Block Mitigations",
+                "summary": "Get Cached OB Mitigations",
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/model.ObResponse"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1057,20 +1035,20 @@ const docTemplate = `{
                 }
             }
         },
-        "/price-action/ob/{symbol}": {
+        "/price-action/{symbol}": {
             "get": {
-                "description": "Retrieves the full list of order blocks for a specific stock symbol from the MongoDB cache.",
+                "description": "Retrieves the full list of price action data for a specific stock symbol.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Get Order Blocks by Symbol",
+                "summary": "Get Price Action by Symbol",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Stock Symbol (e.g., RELIANCE)",
+                        "description": "Stock Symbol",
                         "name": "symbol",
                         "in": "path",
                         "required": true
@@ -1078,31 +1056,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully retrieved order blocks",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.StockRecord"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid symbol provided",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "404": {
-                        "description": "Stock symbol not found in cache",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1449,20 +1403,6 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Info": {
-            "type": "object",
-            "properties": {
-                "date": {
-                    "type": "string"
-                },
-                "high": {
-                    "type": "number"
-                },
-                "low": {
-                    "type": "number"
-                }
-            }
-        },
         "model.Margin": {
             "type": "object",
             "properties": {
@@ -1562,26 +1502,6 @@ const docTemplate = `{
                 }
             }
         },
-        "model.ObResponse": {
-            "type": "object",
-            "properties": {
-                "close": {
-                    "type": "number"
-                },
-                "date": {
-                    "type": "string"
-                },
-                "margin": {
-                    "type": "number"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
         "model.Recipient": {
             "type": "object",
             "properties": {
@@ -1667,26 +1587,6 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.StockRecord": {
-            "type": "object",
-            "properties": {
-                "fvg": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Info"
-                    }
-                },
-                "orderBlocks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Info"
-                    }
                 },
                 "symbol": {
                     "type": "string"

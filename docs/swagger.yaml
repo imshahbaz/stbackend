@@ -34,15 +34,6 @@ definitions:
           $ref: '#/definitions/model.Recipient'
         type: array
     type: object
-  model.Info:
-    properties:
-      date:
-        type: string
-      high:
-        type: number
-      low:
-        type: number
-    type: object
   model.Margin:
     properties:
       margin:
@@ -109,19 +100,6 @@ definitions:
       symbol:
         type: string
     type: object
-  model.ObResponse:
-    properties:
-      close:
-        type: number
-      date:
-        type: string
-      margin:
-        type: number
-      name:
-        type: string
-      symbol:
-        type: string
-    type: object
   model.Recipient:
     properties:
       email:
@@ -179,19 +157,6 @@ definitions:
         type: number
       name:
         type: string
-      symbol:
-        type: string
-    type: object
-  model.StockRecord:
-    properties:
-      fvg:
-        items:
-          $ref: '#/definitions/model.Info'
-        type: array
-      orderBlocks:
-        items:
-          $ref: '#/definitions/model.Info'
-        type: array
       symbol:
         type: string
     type: object
@@ -779,101 +744,12 @@ paths:
       summary: Get Historical Stock Data
       tags:
       - Stocks
-  /price-action/ob:
-    delete:
-      consumes:
-      - application/json
-      description: Removes a specific order block entry from a stock's record based
-        on symbol and date.
-      parameters:
-      - description: Symbol and Date of block to delete
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Delete an Order Block
-      tags:
-      - PriceAction
-    patch:
-      consumes:
-      - application/json
-      description: Updates an existing one for a specific symbol and date.
-      parameters:
-      - description: Order Block Details
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Update an Order Block
-      tags:
-      - PriceAction
-    post:
-      consumes:
-      - application/json
-      description: Creates a new order block for a specific symbol and date.
-      parameters:
-      - description: Order Block Details
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Save an Order Block
-      tags:
-      - PriceAction
-  /price-action/ob/{symbol}:
+  /price-action/{symbol}:
     get:
-      description: Retrieves the full list of order blocks for a specific stock symbol
-        from the MongoDB cache.
+      description: Retrieves the full list of price action data for a specific stock
+        symbol.
       parameters:
-      - description: Stock Symbol (e.g., RELIANCE)
+      - description: Stock Symbol
         in: path
         name: symbol
         required: true
@@ -882,112 +758,175 @@ paths:
       - application/json
       responses:
         "200":
-          description: Successfully retrieved order blocks
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.StockRecord'
-              type: object
-        "400":
-          description: Invalid symbol provided
+          description: OK
           schema:
             $ref: '#/definitions/model.Response'
-        "404":
-          description: Stock symbol not found in cache
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Get Order Blocks by Symbol
+      summary: Get Price Action by Symbol
       tags:
       - PriceAction
-  /price-action/ob/automate:
+  /price-action/automate:
+    post:
+      description: Triggers scanners to automatically find and save Order Blocks.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Automate Order Block Discovery
+      tags:
+      - PriceAction
+  /price-action/fvg:
+    delete:
+      parameters:
+      - description: Delete Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Delete Fair Value Gap
+      tags:
+      - FVG
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Update Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update Fair Value Gap
+      tags:
+      - FVG
     post:
       consumes:
       - application/json
-      description: Fetches stocks based on the "BULLISH CLOSE 200" strategy, retrieves
-        historical data from NSE (utilizing time cache), and persists Order Blocks.
-      produces:
-      - application/json
+      parameters:
+      - description: FVG Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
       responses:
         "200":
           description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                message:
-                  type: string
-              type: object
-        "401":
-          description: Unauthorized
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-              type: object
-      summary: Automate Order Block Discovery
-      tags:
-      - Price Action
-  /price-action/ob/check:
-    post:
-      description: Fetches strategy symbols, checks them against NSE live data, identifies
-        non-mitigated blocks, and updates the cache.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/model.ObResponse'
-                  type: array
-              type: object
-        "500":
-          description: Internal Server Error
           schema:
             $ref: '#/definitions/model.Response'
-      summary: Check and Refresh Order Block Mitigations
+      summary: Save Fair Value Gap
+      tags:
+      - FVG
+  /price-action/fvg/check:
+    post:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check Fvg Mitigations
+      tags:
+      - FVG
+  /price-action/fvg/mitigation:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get Cached Fvg Mitigations
+      tags:
+      - FVG
+  /price-action/ob:
+    delete:
+      parameters:
+      - description: Delete Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete an Order Block
+      tags:
+      - PriceAction
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Update Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - BearerAuth: []
+      summary: Update an Order Block
+      tags:
+      - PriceAction
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Order Block Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - BearerAuth: []
+      summary: Save an Order Block
+      tags:
+      - PriceAction
+  /price-action/ob/check:
+    post:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check OB Mitigations
       tags:
       - PriceAction
   /price-action/ob/mitigation:
     get:
-      description: Fetches strategy symbols, checks them against NSE live data, identifies
-        non-mitigated blocks, and updates the cache.
-      produces:
-      - application/json
       responses:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/model.ObResponse'
-                  type: array
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
             $ref: '#/definitions/model.Response'
-      summary: Check and Refresh Order Block Mitigations
+      summary: Get Cached OB Mitigations
       tags:
       - PriceAction
   /strategy:
