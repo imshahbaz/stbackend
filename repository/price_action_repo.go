@@ -12,223 +12,142 @@ import (
 )
 
 type PriceActionRepo struct {
-	priceActionCollection *mongo.Collection
+	collection *mongo.Collection
 }
 
 func NewPriceActionRepo(db *mongo.Database) *PriceActionRepo {
 	return &PriceActionRepo{
-		priceActionCollection: db.Collection(model.PACollectionName),
+		collection: db.Collection(model.PACollectionName),
 	}
 }
+
+// --- High Level Public API ---
 
 func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest) error {
-	var newOB model.Info
-	copier.Copy(&newOB, &ob)
-
-	pullOp := mongo.NewUpdateOneModel().
-		SetFilter(bson.M{"_id": ob.Symbol}).
-		SetUpdate(bson.M{
-			"$pull": bson.M{
-				"order_blocks": bson.M{"date": ob.Date},
-			},
-		})
-
-	pushOp := mongo.NewUpdateOneModel().
-		SetFilter(bson.M{"_id": ob.Symbol}).
-		SetUpdate(bson.M{
-			"$push": bson.M{
-				"order_blocks": bson.M{
-					"$each": []model.Info{newOB},
-					"$sort": bson.M{"date": -1},
-				},
-			},
-		}).
-		SetUpsert(true)
-
-	opts := options.BulkWrite().SetOrdered(true)
-	_, err := r.priceActionCollection.BulkWrite(ctx, []mongo.WriteModel{pullOp, pushOp}, opts)
-
-	return err
+	return r.saveNestedInfo(ctx, ob, "order_blocks")
 }
 
+func (r *PriceActionRepo) SaveFvg(ctx context.Context, ob model.ObRequest) error {
+	return r.saveNestedInfo(ctx, ob, "fvg")
+}
+
+func (r *PriceActionRepo) UpdateOrderBlock(ctx context.Context, req model.ObRequest) error {
+	return r.updateNestedInfo(ctx, req, "order_blocks")
+}
+
+func (r *PriceActionRepo) UpdateFvg(ctx context.Context, req model.ObRequest) error {
+	return r.updateNestedInfo(ctx, req, "fvg")
+}
+
+func (r *PriceActionRepo) DeleteOrderBlockByDate(ctx context.Context, symbol, date string) error {
+	return r.deleteNestedInfo(ctx, symbol, date, "order_blocks")
+}
+
+func (r *PriceActionRepo) DeleteFvgByDate(ctx context.Context, symbol, date string) error {
+	return r.deleteNestedInfo(ctx, symbol, date, "fvg")
+}
+
+// --- Standard Query API ---
+
 func (r *PriceActionRepo) GetAllPriceAction(ctx context.Context) ([]model.StockRecord, error) {
-	var results []model.StockRecord
-
-	cursor, err := r.priceActionCollection.Find(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	if err = cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-
-	return results, nil
+	return r.findMany(ctx, bson.M{})
 }
 
 func (r *PriceActionRepo) GetAllPAIn(ctx context.Context, ids []string) ([]model.StockRecord, error) {
-	var stocks []model.StockRecord
-
-	filter := bson.M{
-		"_id": bson.M{"$in": ids},
-	}
-
-	cursor, err := r.priceActionCollection.Find(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	if err = cursor.All(ctx, &stocks); err != nil {
-		return nil, err
-	}
-
-	if stocks == nil {
-		stocks = []model.StockRecord{}
-	}
-
-	return stocks, nil
+	return r.findMany(ctx, bson.M{"_id": bson.M{"$in": ids}})
 }
 
 func (r *PriceActionRepo) GetPAByID(ctx context.Context, symbol string) (model.StockRecord, error) {
 	var stock model.StockRecord
-
-	filter := bson.M{"_id": symbol}
-
-	err := r.priceActionCollection.FindOne(ctx, filter).Decode(&stock)
+	err := r.collection.FindOne(ctx, bson.M{"_id": symbol}).Decode(&stock)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return model.StockRecord{}, fmt.Errorf("stock %s not found in cache", symbol)
+			return model.StockRecord{}, fmt.Errorf("stock %s not found", symbol)
 		}
 		return model.StockRecord{}, err
 	}
-
 	return stock, nil
 }
 
-func (r *PriceActionRepo) DeleteOrderBlockByDate(ctx context.Context, symbol string, date string) error {
-	filter := bson.M{"_id": symbol}
-	update := bson.M{
-		"$pull": bson.M{
-			"order_blocks": bson.M{"date": date},
-		},
-	}
+// --- Generic Helpers (The Refactor Magic) ---
 
-	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update)
-	if err != nil {
-		return err
-	}
+// saveNestedInfo handles the BulkWrite logic (Pull then Push) to ensure no duplicate dates and sorted results.
+func (r *PriceActionRepo) saveNestedInfo(ctx context.Context, req model.ObRequest, fieldName string) error {
+	var newInfo model.Info
+	copier.Copy(&newInfo, &req)
 
-	if result.ModifiedCount == 0 {
-		return fmt.Errorf("no block found for date %s in %s", date, symbol)
-	}
+	// Operation 1: Remove existing record for that date
+	pull := mongo.NewUpdateOneModel().
+		SetFilter(bson.M{"_id": req.Symbol}).
+		SetUpdate(bson.M{"$pull": bson.M{fieldName: bson.M{"date": req.Date}}})
 
-	return nil
-}
-
-func (r *PriceActionRepo) UpdateOrderBlock(ctx context.Context, updateData model.ObRequest) error {
-	filter := bson.M{"_id": updateData.Symbol, "order_blocks.date": updateData.Date}
-
-	// $[elem] is a placeholder for the element that matches our arrayFilter
-	update := bson.M{
-		"$set": bson.M{
-			"order_blocks.$[elem].high": updateData.High,
-			"order_blocks.$[elem].low":  updateData.Low,
-		},
-	}
-
-	// This filter tells MongoDB which specific array element to update
-	options := options.Update().SetArrayFilters(options.ArrayFilters{
-		Filters: []any{bson.M{"elem.date": updateData.Date}},
-	})
-
-	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update, options)
-	if err != nil {
-		return err
-	}
-
-	if result.ModifiedCount == 0 {
-		return fmt.Errorf("no order block found for date %s", updateData.Date)
-	}
-
-	return nil
-}
-
-func (r *PriceActionRepo) SaveFvg(ctx context.Context, ob model.ObRequest) error {
-	var newOB model.Info
-	copier.Copy(&newOB, &ob)
-
-	pullOp := mongo.NewUpdateOneModel().
-		SetFilter(bson.M{"_id": ob.Symbol}).
-		SetUpdate(bson.M{
-			"$pull": bson.M{
-				"fvg": bson.M{"date": ob.Date},
-			},
-		})
-
-	pushOp := mongo.NewUpdateOneModel().
-		SetFilter(bson.M{"_id": ob.Symbol}).
+	// Operation 2: Add new record and sort the array by date descending
+	push := mongo.NewUpdateOneModel().
+		SetFilter(bson.M{"_id": req.Symbol}).
 		SetUpdate(bson.M{
 			"$push": bson.M{
-				"fvg": bson.M{
-					"$each": []model.Info{newOB},
+				fieldName: bson.M{
+					"$each": []model.Info{newInfo},
 					"$sort": bson.M{"date": -1},
 				},
 			},
-		}).
-		SetUpsert(true)
+		}).SetUpsert(true)
 
-	opts := options.BulkWrite().SetOrdered(true)
-	_, err := r.priceActionCollection.BulkWrite(ctx, []mongo.WriteModel{pullOp, pushOp}, opts)
-
+	_, err := r.collection.BulkWrite(ctx, []mongo.WriteModel{pull, push}, options.BulkWrite().SetOrdered(true))
 	return err
 }
 
-func (r *PriceActionRepo) DeleteFvgByDate(ctx context.Context, symbol string, date string) error {
-	filter := bson.M{"_id": symbol}
+// updateNestedInfo uses arrayFilters ($[elem]) to perform surgical updates on a specific date.
+func (r *PriceActionRepo) updateNestedInfo(ctx context.Context, req model.ObRequest, fieldName string) error {
+	filter := bson.M{"_id": req.Symbol, fieldName + ".date": req.Date}
 	update := bson.M{
-		"$pull": bson.M{
-			"fvg": bson.M{"date": date},
+		"$set": bson.M{
+			fieldName + ".$[elem].high": req.High,
+			fieldName + ".$[elem].low":  req.Low,
 		},
 	}
+	opts := options.Update().SetArrayFilters(options.ArrayFilters{
+		Filters: []any{bson.M{"elem.date": req.Date}},
+	})
 
-	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update)
+	res, err := r.collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
 		return err
 	}
-
-	if result.ModifiedCount == 0 {
-		return fmt.Errorf("no fvg found for date %s in %s", date, symbol)
+	if res.ModifiedCount == 0 {
+		return fmt.Errorf("no %s record found for date %s", fieldName, req.Date)
 	}
-
 	return nil
 }
 
-func (r *PriceActionRepo) UpdateFvg(ctx context.Context, updateData model.ObRequest) error {
-	filter := bson.M{"_id": updateData.Symbol, "fvg.date": updateData.Date}
+// deleteNestedInfo removes a specific object from the nested array by date.
+func (r *PriceActionRepo) deleteNestedInfo(ctx context.Context, symbol, date, fieldName string) error {
+	filter := bson.M{"_id": symbol}
+	update := bson.M{"$pull": bson.M{fieldName: bson.M{"date": date}}}
 
-	// $[elem] is a placeholder for the element that matches our arrayFilter
-	update := bson.M{
-		"$set": bson.M{
-			"fvg.$[elem].high": updateData.High,
-			"fvg.$[elem].low":  updateData.Low,
-		},
-	}
-
-	// This filter tells MongoDB which specific array element to update
-	options := options.Update().SetArrayFilters(options.ArrayFilters{
-		Filters: []any{bson.M{"elem.date": updateData.Date}},
-	})
-
-	result, err := r.priceActionCollection.UpdateOne(ctx, filter, update, options)
+	res, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
-
-	if result.ModifiedCount == 0 {
-		return fmt.Errorf("no fvg found for date %s", updateData.Date)
+	if res.ModifiedCount == 0 {
+		return fmt.Errorf("no %s record found to delete for date %s", fieldName, date)
 	}
-
 	return nil
+}
+
+// findMany centralizes the boilerplate for cursor management.
+func (r *PriceActionRepo) findMany(ctx context.Context, filter bson.M) ([]model.StockRecord, error) {
+	var results []model.StockRecord
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	if results == nil {
+		return []model.StockRecord{}, nil
+	}
+	return results, nil
 }

@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/auth/login": {
             "post": {
-                "description": "Authenticates user and returns user details without password",
+                "description": "Authenticates user via HttpOnly cookie and JWT",
                 "consumes": [
                     "application/json"
                 ],
@@ -30,7 +30,7 @@ const docTemplate = `{
                 "summary": "User Login",
                 "parameters": [
                     {
-                        "description": "Login Credentials (only email/password required)",
+                        "description": "Login Credentials",
                         "name": "login",
                         "in": "body",
                         "required": true,
@@ -41,7 +41,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Login successful (Passwords omitted)",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.UserDto"
                         }
@@ -60,17 +60,17 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
-                "description": "Clears the authentication cookie to log out the user",
+                "description": "Clears the authentication cookie",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Logout user",
+                "summary": "User Logout",
                 "responses": {
                     "200": {
-                        "description": "message: Logged out successfully",
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -83,23 +83,23 @@ const docTemplate = `{
         },
         "/auth/me": {
             "get": {
-                "description": "Retrieves user details (email and role) from the session cookie",
+                "description": "Retrieves authenticated user details from session",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Get current authenticated user",
+                "summary": "Get Current User",
                 "responses": {
                     "200": {
-                        "description": "User details successfully retrieved",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.UserDto"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized: Session invalid or expired",
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -112,7 +112,7 @@ const docTemplate = `{
         },
         "/auth/signup": {
             "post": {
-                "description": "Stores user data in local memory for 5 minutes and sends an OTP.",
+                "description": "Caches user data and sends OTP for verification",
                 "consumes": [
                     "application/json"
                 ],
@@ -120,12 +120,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "Auth"
                 ],
-                "summary": "User Signup",
+                "summary": "User Signup Initiation",
                 "parameters": [
                     {
-                        "description": "User Registration Details",
+                        "description": "Signup Details",
                         "name": "user",
                         "in": "body",
                         "required": true,
@@ -141,8 +141,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/model.MessageResponse"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
@@ -152,7 +152,7 @@ const docTemplate = `{
         },
         "/auth/verify-otp": {
             "post": {
-                "description": "Validates the OTP from cache. If valid, creates the user in the database and returns a JWT.",
+                "description": "Validates OTP and persists user to database",
                 "consumes": [
                     "application/json"
                 ],
@@ -160,12 +160,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "Auth"
                 ],
-                "summary": "Verify OTP and Create User",
+                "summary": "Verify OTP and Complete Signup",
                 "parameters": [
                     {
-                        "description": "OTP Verification Details",
+                        "description": "OTP Verification",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -176,13 +176,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "User created successfully",
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid OTP or session expired",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
@@ -214,9 +214,15 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.StockData"
+                            "$ref": "#/definitions/model.ChartInkResponseDto"
+                        }
+                    },
+                    "400": {
+                        "description": "Strategy name required",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -243,7 +249,7 @@ const docTemplate = `{
         },
         "/chartink/fetchWithMargin": {
             "get": {
-                "description": "Triggers a scan and maps the results with the current margin and leverage data",
+                "description": "Triggers a scan and maps results with current margin and leverage data",
                 "produces": [
                     "application/json"
                 ],
@@ -271,6 +277,15 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -292,9 +307,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/config": {
+        "/config/active": {
             "get": {
-                "description": "Returns the current system settings (Leverage, API Keys, etc.) from the real-time cache.",
+                "description": "Returns current system settings (Leverage, API Keys, etc.) from memory.",
                 "produces": [
                     "application/json"
                 ],
@@ -304,21 +319,9 @@ const docTemplate = `{
                 "summary": "Get Active Configuration",
                 "responses": {
                     "200": {
-                        "description": "Current active config",
+                        "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.MongoEnvConfig"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/model.MongoEnvConfig"
                         }
                     },
                     "500": {
@@ -328,9 +331,11 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/config/reload": {
             "post": {
-                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache across all services.",
+                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache.",
                 "produces": [
                     "application/json"
                 ],
@@ -340,7 +345,7 @@ const docTemplate = `{
                 "summary": "Reload System Configuration",
                 "responses": {
                     "200": {
-                        "description": "Successfully reloaded",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -352,9 +357,11 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/config/update": {
             "patch": {
-                "description": "Updates the configuration document in MongoDB and hot-swaps the active memory pointer.",
+                "description": "Updates MongoDB and hot-swaps active memory config.",
                 "consumes": [
                     "application/json"
                 ],
@@ -378,13 +385,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully updated",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
                     },
                     "400": {
-                        "description": "Invalid Request Body",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -424,9 +431,12 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Email sent successfully",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -452,9 +462,9 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "description": "Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.",
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
                     "System"
@@ -462,17 +472,20 @@ const docTemplate = `{
                 "summary": "System Health Check",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Status OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "head": {
-                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "description": "Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.",
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
                     "System"
@@ -480,9 +493,12 @@ const docTemplate = `{
                 "summary": "System Health Check",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Status OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -490,7 +506,7 @@ const docTemplate = `{
         },
         "/margin/all": {
             "get": {
-                "description": "Returns a list of all stock margins stored in the database",
+                "description": "Returns a list of all stock margins from the local memory cache",
                 "produces": [
                     "application/json"
                 ],
@@ -517,6 +533,9 @@ const docTemplate = `{
                 "consumes": [
                     "multipart/form-data"
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Margin"
                 ],
@@ -532,7 +551,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -556,15 +581,24 @@ const docTemplate = `{
             }
         },
         "/margin/reload": {
-            "get": {
-                "description": "Forces a reload of all margins from the persistent database into the memory cache",
+            "post": {
+                "description": "Forces a reload of all margins from MongoDB into the memory cache",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Margin"
                 ],
                 "summary": "Reload margins",
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "500": {
                         "description": "Internal Server Error",
@@ -578,7 +612,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/margin/{symbol}": {
+        "/margin/symbol/{symbol}": {
             "get": {
                 "description": "Fetches the margin details for a specific stock symbol",
                 "produces": [
@@ -619,20 +653,17 @@ const docTemplate = `{
         },
         "/nse/allindices": {
             "get": {
-                "description": "Fetches the latest all indices performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Fetches latest performance data for all indices using the warmup strategy.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Stocks"
                 ],
-                "summary": "Get NSE Sectoral Heatmap",
+                "summary": "Get All NSE Indices",
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -663,10 +694,7 @@ const docTemplate = `{
         },
         "/nse/heatmap": {
             "get": {
-                "description": "Fetches the latest sectoral index performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Fetches latest sectoral data. Uses warmup time-cache strategy to avoid NSE rate limits.",
                 "produces": [
                     "application/json"
                 ],
@@ -676,7 +704,7 @@ const docTemplate = `{
                 "summary": "Get NSE Sectoral Heatmap",
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -707,7 +735,7 @@ const docTemplate = `{
         },
         "/nse/history": {
             "get": {
-                "description": "Fetches stock history for a specific symbol (e.g., BEL). Data is cached for 1 hour.",
+                "description": "Fetches stock history for a specific symbol. Utilizes a 1-hour time cache.",
                 "consumes": [
                     "application/json"
                 ],
@@ -721,7 +749,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Stock Symbol (e.g. BEL)",
+                        "description": "Stock Symbol (e.g. RELIANCE)",
                         "name": "symbol",
                         "in": "query",
                         "required": true
@@ -729,7 +757,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -750,13 +778,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1066,7 +1088,7 @@ const docTemplate = `{
         },
         "/strategy": {
             "get": {
-                "description": "Returns a list of all configured trading strategies",
+                "description": "Returns a list of all configured active trading strategies",
                 "produces": [
                     "application/json"
                 ],
@@ -1087,7 +1109,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Updates the configuration of an existing strategy by name",
+                "description": "Updates an existing strategy configuration by name/ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -1100,7 +1122,7 @@ const docTemplate = `{
                 "summary": "Update a strategy",
                 "parameters": [
                     {
-                        "description": "Updated Strategy Details",
+                        "description": "Updated Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1115,20 +1137,11 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Strategy"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
                     }
                 }
             },
             "post": {
-                "description": "Saves a new trading strategy configuration to the database",
+                "description": "Saves a new trading strategy configuration to MongoDB",
                 "consumes": [
                     "application/json"
                 ],
@@ -1169,7 +1182,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Removes a strategy from the system using its ID (Name)",
+                "description": "Removes a strategy from the system using its ID/Name",
                 "tags": [
                     "Strategy"
                 ],
@@ -1186,38 +1199,20 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
                     }
                 }
             }
         },
         "/strategy/admin": {
             "get": {
-                "description": "Returns a list of all configured trading strategies",
+                "description": "Returns all trading strategies with full administrative details",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Strategy"
                 ],
-                "summary": "Get all strategies",
+                "summary": "Get all strategies (Admin)",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1233,21 +1228,30 @@ const docTemplate = `{
         },
         "/strategy/reload": {
             "post": {
-                "description": "Syncs the in-memory strategy cache with the MongoDB database",
+                "description": "Syncs the in-memory strategy cache with MongoDB",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Strategy"
                 ],
                 "summary": "Reload strategies",
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         },
         "/user/theme": {
             "patch": {
-                "description": "Updates the theme preference (LIGHT/DARK) for the authenticated user",
+                "description": "Updates preference (LIGHT/DARK) for the authenticated user",
                 "consumes": [
                     "application/json"
                 ],
@@ -1255,7 +1259,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "user"
+                    "User"
                 ],
                 "summary": "Update User Theme",
                 "parameters": [
@@ -1281,25 +1285,13 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
                     }
                 }
             }
         },
         "/user/username": {
             "patch": {
-                "description": "Updates the username and returns the updated user object",
+                "description": "Updates the username and invalidates the auth cache",
                 "consumes": [
                     "application/json"
                 ],
@@ -1336,12 +1328,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1399,6 +1385,18 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/model.Recipient"
+                    }
+                }
+            }
+        },
+        "model.ChartInkResponseDto": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "json:\"data\" tells the parser to map the JSON key \"data\" to this field",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.StockData"
                     }
                 }
             }
