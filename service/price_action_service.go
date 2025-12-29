@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"backend/cache"
@@ -109,6 +110,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
 	}
 
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
+	count := 0
 	for _, dto := range data {
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			candle := history[2]
@@ -116,9 +118,11 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
 				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
 					Symbol: dto.Symbol, Date: date, High: candle.High, Low: candle.Low,
 				})
+				count++
 			}
 		}
 	}
+	log.Printf("%d Order block's inserted", count)
 	return nil
 }
 
@@ -130,15 +134,18 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context) error {
 	}
 
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
+	count := 0
 	for _, dto := range data {
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			if date, err := util.ParseNseDate(history[1].Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
-					Symbol: dto.Symbol, Date: date, High: history[2].High, Low: history[0].Low,
+					Symbol: dto.Symbol, Date: date, High: history[0].Low, Low: history[2].High,
 				})
+				count++
 			}
 		}
 	}
+	log.Printf("%d Fvg's inserted", count)
 	return nil
 }
 
