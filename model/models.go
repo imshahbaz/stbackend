@@ -23,22 +23,6 @@ const (
 	ThemeDark  UserTheme = "DARK"
 )
 
-// --- SYSTEM CONFIG ---
-// EnvConfig holds sensitive environment settings
-// @Description Private configuration (usually not exposed in public endpoints)
-type EnvConfig struct {
-	Port          string `json:"port"`
-	Environment   string `json:"environment"`
-	FrontendUrl   string `json:"frontendUrl"`
-	BrevoEmail    string `json:"brevoEmail"`
-	BrevoApiKey   string `json:"brevoApiKey"`
-	ApiKey        string `json:"apiKey"`
-	MongoUser     string `json:"mongoUser"`
-	MongoPassword string `json:"mongoPassword"`
-	Leverage      string `json:"leverage"`
-	DebugMode     string `json:"debug"`
-}
-
 // --- MARGIN ---
 // Margin represents the database entity for stock leverage
 type Margin struct {
@@ -187,4 +171,16 @@ type Response struct {
 	Message string `json:"message" example:"Update successful"`
 	Data    any    `json:"data,omitempty"`
 	Error   string `json:"error,omitempty"`
+}
+
+type ObRequest struct {
+	Symbol string  `json:"symbol"`
+	Date   string  `json:"date"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+}
+
+type ObResponse struct {
+	StockMarginDto
+	Date string `json:"date"`
 }

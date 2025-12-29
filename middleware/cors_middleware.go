@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CORS(cfg *config.SystemConfigs) gin.HandlerFunc {
+func CORS(cfg *config.ConfigManager) gin.HandlerFunc {
 	return cors.New(cors.Config{
 		// 1. Specify your exact frontend origin (avoid "*" when using credentials)
-		AllowOrigins: []string{cfg.Config.FrontendUrl},
+		AllowOrigins: []string{cfg.GetConfig().FrontendUrl},
 
 		// 2. Methods your React app is allowed to use
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},

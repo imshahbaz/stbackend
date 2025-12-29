@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"backend/cache"
+	"backend/config"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
@@ -23,15 +24,15 @@ type MarginService interface {
 
 // 2. Implementation Struct
 type MarginServiceImpl struct {
-	repo     *repository.MarginRepository
-	leverage float32
+	repo *repository.MarginRepository
+	cfg  *config.ConfigManager
 }
 
 // NewMarginService acts as the @RequiredArgsConstructor + @PostConstruct
-func NewMarginService(repo *repository.MarginRepository, leverage float32) MarginService {
+func NewMarginService(repo *repository.MarginRepository, cfg *config.ConfigManager) MarginService {
 	s := &MarginServiceImpl{
-		repo:     repo,
-		leverage: leverage,
+		repo: repo,
+		cfg:  cfg,
 	}
 
 	// Trigger initial load (PostConstruct equivalent)
@@ -87,7 +88,7 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 		return fmt.Errorf("invalid file type: must be .csv")
 	}
 
-	margins, err := util.Read(file, s.leverage)
+	margins, err := util.Read(file, s.cfg.GetConfig().Leverage)
 	if err != nil {
 		return fmt.Errorf("csv parsing failed: %w", err)
 	}

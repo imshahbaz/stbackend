@@ -14,18 +14,22 @@ func AuthMiddleware(isProduction bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := c.Cookie("auth_token")
 		if err != nil {
-			c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, model.Response{
+				Success: false,
+				Error:   "Unauthorized",
+			})
 			return
 		}
 
-		claims, err := auth.ValidateToken(tokenString) // Your validation logic
+		claims, err := auth.ValidateToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(401, gin.H{"error": "Invalid session"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, model.Response{
+				Success: false,
+				Error:   "Invalid session",
+			})
 			return
 		}
 
-		// --- SLIDING EXPIRY ---
-		// If more than 15 minutes of the 30-minute token has passed, refresh it
 		if time.Until(claims.ExpiresAt.Time) < 15*time.Minute {
 			if isProduction {
 				c.SetSameSite(http.SameSiteNoneMode)
@@ -45,7 +49,10 @@ func AdminOnly() gin.HandlerFunc {
 		user, ok := GetUser(c)
 
 		if !ok || user.Role != model.RoleAdmin {
-			c.AbortWithStatusJSON(403, gin.H{"error": "Forbidden: Admin access required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, model.Response{
+				Success: false,
+				Error:   "Forbidden: Admin access required",
+			})
 			return
 		}
 

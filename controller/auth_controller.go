@@ -20,13 +20,15 @@ import (
 )
 
 type AuthController struct {
-	userSvc service.UserService
-	cfg     *config.SystemConfigs
-	otpSvc  service.OtpService
+	userSvc      service.UserService
+	cfgManager   *config.ConfigManager
+	otpSvc       service.OtpService
+	isProduction bool
 }
 
-func NewAuthController(s service.UserService, cfg *config.SystemConfigs, otpSvc service.OtpService) *AuthController {
-	return &AuthController{userSvc: s, cfg: cfg, otpSvc: otpSvc}
+func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
+	otpSvc service.OtpService, isProduction bool) *AuthController {
+	return &AuthController{userSvc: s, cfgManager: cfgManager, otpSvc: otpSvc, isProduction: isProduction}
 }
 
 func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
@@ -39,8 +41,7 @@ func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
 
 	// 2. Protected Routes (Apply middleware to this sub-group)
 	protected := authGroup.Group("/")
-	isProduction := ctrl.cfg.Config.Environment == "production"
-	protected.Use(middleware.AuthMiddleware(isProduction))
+	protected.Use(middleware.AuthMiddleware(ctrl.isProduction))
 	{
 		protected.POST("/logout", ctrl.Logout)
 		protected.GET("/me", ctrl.GetMe)
@@ -90,20 +91,18 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		return
 	}
 
-	isProduction := ctrl.cfg.Config.Environment == "production"
-	// 3. Set HttpOnly Cookie
-	if isProduction {
+	if ctrl.isProduction {
 		c.SetSameSite(http.SameSiteNoneMode)
 	}
 
 	c.SetCookie(
-		"auth_token", // name
-		token,        // value
-		1800,         // maxAge in seconds (30 mins)
-		"/",          // path
-		"",           // domain (empty for localhost)
-		isProduction, // secure (set to TRUE in production for HTTPS)
-		true,         // httpOnly (PREVENTS JAVASCRIPT ACCESS)
+		"auth_token",      // name
+		token,             // value
+		1800,              // maxAge in seconds (30 mins)
+		"/",               // path
+		"",                // domain (empty for localhost)
+		ctrl.isProduction, // secure (set to TRUE in production for HTTPS)
+		true,              // httpOnly (PREVENTS JAVASCRIPT ACCESS)
 	)
 
 	// 4. Return DTO (Response)
@@ -121,13 +120,10 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 // @Success      200  {object}  map[string]string  "message: Logged out successfully"
 // @Router       /auth/logout [post]
 func (ctrl *AuthController) Logout(c *gin.Context) {
-	// Set the cookie with a MaxAge of -1 to delete it instantly
-	// In production, ensure 'secure' is set to true if using HTTPS
-	isProduction := ctrl.cfg.Config.Environment == "production"
-	if isProduction {
+	if ctrl.isProduction {
 		c.SetSameSite(http.SameSiteNoneMode)
 	}
-	c.SetCookie("auth_token", "", -1, "/", "", isProduction, true)
+	c.SetCookie("auth_token", "", -1, "/", "", ctrl.isProduction, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
@@ -182,14 +178,17 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 // @Produce      json
 // @Param        user  body      model.UserDto  true  "User Registration Details"
 // @Success      200   {object}  model.MessageResponse
-// @Failure      400   {object}  map[string]string
+// @Failure      400   {object}  model.MessageResponse
 // @Router       /auth/signup [post]
 func (ctrl *AuthController) Signup(c *gin.Context) {
 	var user model.UserDto
 
 	// 1. Validation
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, model.MessageResponse{
+			OtpSent: false,
+			Message: "Invalid request",
+		})
 		return
 	}
 
@@ -205,12 +204,16 @@ func (ctrl *AuthController) Signup(c *gin.Context) {
 
 		if errors.Is(err, service.ErrDuplicateOtp) {
 			c.JSON(http.StatusConflict, model.MessageResponse{
+				OtpSent: false,
 				Message: err.Error(),
 			})
 			return
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong please try again later"})
+		c.JSON(http.StatusInternalServerError, model.MessageResponse{
+			OtpSent: false,
+			Message: "Something went wrong please try again later",
+		})
 		return
 	}
 

@@ -144,10 +144,7 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/model.MessageResponse"
                         }
                     }
                 }
@@ -290,6 +287,112 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/config": {
+            "get": {
+                "description": "Returns the current system settings (Leverage, API Keys, etc.) from the real-time cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Get Active Configuration",
+                "responses": {
+                    "200": {
+                        "description": "Current active config",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.MongoEnvConfig"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache across all services.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Reload System Configuration",
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates the configuration document in MongoDB and hot-swaps the active memory pointer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Update System Configuration",
+                "parameters": [
+                    {
+                        "description": "Update Config Fields",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.MongoEnvConfig"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Request Body",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     }
                 }
@@ -514,6 +617,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/nse/allindices": {
+            "get": {
+                "description": "Fetches the latest all indices performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stocks"
+                ],
+                "summary": "Get NSE Sectoral Heatmap",
+                "responses": {
+                    "200": {
+                        "description": "Fetch Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.AllIndicesResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/nse/heatmap": {
             "get": {
                 "description": "Fetches the latest sectoral index performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
@@ -616,6 +763,346 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob": {
+            "post": {
+                "description": "Creates a new order block for a specific symbol and date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Save an Order Block",
+                "parameters": [
+                    {
+                        "description": "Order Block Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Removes a specific order block entry from a stock's record based on symbol and date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Delete an Order Block",
+                "parameters": [
+                    {
+                        "description": "Symbol and Date of block to delete",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates an existing one for a specific symbol and date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Update an Order Block",
+                "parameters": [
+                    {
+                        "description": "Order Block Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/automate": {
+            "post": {
+                "description": "Fetches stocks based on the \"BULLISH CLOSE 200\" strategy, retrieves historical data from NSE (utilizing time cache), and persists Order Blocks.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Price Action"
+                ],
+                "summary": "Automate Order Block Discovery",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/check": {
+            "post": {
+                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Check and Refresh Order Block Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.ObResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/mitigation": {
+            "get": {
+                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Check and Refresh Order Block Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.ObResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/{symbol}": {
+            "get": {
+                "description": "Retrieves the full list of order blocks for a specific stock symbol from the MongoDB cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Get Order Blocks by Symbol",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stock Symbol (e.g., RELIANCE)",
+                        "name": "symbol",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved order blocks",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.StockRecord"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid symbol provided",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Stock symbol not found in cache",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -910,6 +1397,38 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "model.AllIndicesResponse": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "string"
+                },
+                "indexSymbol": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "last": {
+                    "type": "number"
+                },
+                "oneWeekAgoVal": {
+                    "type": "number"
+                },
+                "perChange1w": {
+                    "type": "number"
+                },
+                "perChange30d": {
+                    "type": "number"
+                },
+                "perChange365d": {
+                    "type": "number"
+                },
+                "percentChange": {
+                    "type": "number"
+                }
+            }
+        },
         "model.BrevoEmailRequest": {
             "type": "object",
             "properties": {
@@ -927,6 +1446,20 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/model.Recipient"
                     }
+                }
+            }
+        },
+        "model.Info": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "high": {
+                    "type": "number"
+                },
+                "low": {
+                    "type": "number"
                 }
             }
         },
@@ -960,6 +1493,35 @@ const docTemplate = `{
                 }
             }
         },
+        "model.MongoEnvConfig": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "brevoApiKey": {
+                    "type": "string"
+                },
+                "brevoEmail": {
+                    "type": "string"
+                },
+                "debug": {
+                    "type": "boolean"
+                },
+                "frontendUrl": {
+                    "type": "string"
+                },
+                "jwtSecret": {
+                    "type": "string"
+                },
+                "leverage": {
+                    "type": "number"
+                },
+                "rateLimiter": {
+                    "type": "boolean"
+                }
+            }
+        },
         "model.NSEHistoricalData": {
             "type": "object",
             "properties": {
@@ -979,6 +1541,43 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "mtimestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ObRequest": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "high": {
+                    "type": "number"
+                },
+                "low": {
+                    "type": "number"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ObResponse": {
+            "type": "object",
+            "properties": {
+                "close": {
+                    "type": "number"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "margin": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
                     "type": "string"
                 }
             }
@@ -1068,6 +1667,26 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.StockRecord": {
+            "type": "object",
+            "properties": {
+                "fvg": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Info"
+                    }
+                },
+                "orderBlocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Info"
+                    }
                 },
                 "symbol": {
                     "type": "string"

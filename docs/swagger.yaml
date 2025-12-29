@@ -1,5 +1,26 @@
 basePath: /api
 definitions:
+  model.AllIndicesResponse:
+    properties:
+      index:
+        type: string
+      indexSymbol:
+        type: string
+      key:
+        type: string
+      last:
+        type: number
+      oneWeekAgoVal:
+        type: number
+      perChange1w:
+        type: number
+      perChange30d:
+        type: number
+      perChange365d:
+        type: number
+      percentChange:
+        type: number
+    type: object
   model.BrevoEmailRequest:
     properties:
       htmlContent:
@@ -12,6 +33,15 @@ definitions:
         items:
           $ref: '#/definitions/model.Recipient'
         type: array
+    type: object
+  model.Info:
+    properties:
+      date:
+        type: string
+      high:
+        type: number
+      low:
+        type: number
     type: object
   model.Margin:
     properties:
@@ -34,6 +64,25 @@ definitions:
         example: true
         type: boolean
     type: object
+  model.MongoEnvConfig:
+    properties:
+      apiKey:
+        type: string
+      brevoApiKey:
+        type: string
+      brevoEmail:
+        type: string
+      debug:
+        type: boolean
+      frontendUrl:
+        type: string
+      jwtSecret:
+        type: string
+      leverage:
+        type: number
+      rateLimiter:
+        type: boolean
+    type: object
   model.NSEHistoricalData:
     properties:
       chClosingPrice:
@@ -47,6 +96,30 @@ definitions:
       chTradeLowPrice:
         type: number
       mtimestamp:
+        type: string
+    type: object
+  model.ObRequest:
+    properties:
+      date:
+        type: string
+      high:
+        type: number
+      low:
+        type: number
+      symbol:
+        type: string
+    type: object
+  model.ObResponse:
+    properties:
+      close:
+        type: number
+      date:
+        type: string
+      margin:
+        type: number
+      name:
+        type: string
+      symbol:
         type: string
     type: object
   model.Recipient:
@@ -106,6 +179,19 @@ definitions:
         type: number
       name:
         type: string
+      symbol:
+        type: string
+    type: object
+  model.StockRecord:
+    properties:
+      fvg:
+        items:
+          $ref: '#/definitions/model.Info'
+        type: array
+      orderBlocks:
+        items:
+          $ref: '#/definitions/model.Info'
+        type: array
       symbol:
         type: string
     type: object
@@ -280,9 +366,7 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/model.MessageResponse'
       summary: User Signup
       tags:
       - auth
@@ -383,6 +467,76 @@ paths:
       summary: Fetch ChartInk data with Margin info
       tags:
       - ChartInk
+  /config:
+    get:
+      description: Returns the current system settings (Leverage, API Keys, etc.)
+        from the real-time cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current active config
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.MongoEnvConfig'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get Active Configuration
+      tags:
+      - Config
+    patch:
+      consumes:
+      - application/json
+      description: Updates the configuration document in MongoDB and hot-swaps the
+        active memory pointer.
+      parameters:
+      - description: Update Config Fields
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.MongoEnvConfig'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Invalid Request Body
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update System Configuration
+      tags:
+      - Config
+    post:
+      description: Triggers a fresh fetch from MongoDB to update the in-memory cache
+        across all services.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully reloaded
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Reload System Configuration
+      tags:
+      - Config
   /email/send:
     post:
       consumes:
@@ -530,6 +684,33 @@ paths:
       summary: Reload margins
       tags:
       - Margin
+  /nse/allindices:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the latest all indices performance data. Uses a warmup
+        time-cache strategy to serve data efficiently and avoid NSE rate limits.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fetch Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.AllIndicesResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get NSE Sectoral Heatmap
+      tags:
+      - Stocks
   /nse/heatmap:
     get:
       consumes:
@@ -598,6 +779,217 @@ paths:
       summary: Get Historical Stock Data
       tags:
       - Stocks
+  /price-action/ob:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a specific order block entry from a stock's record based
+        on symbol and date.
+      parameters:
+      - description: Symbol and Date of block to delete
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Delete an Order Block
+      tags:
+      - PriceAction
+    patch:
+      consumes:
+      - application/json
+      description: Updates an existing one for a specific symbol and date.
+      parameters:
+      - description: Order Block Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update an Order Block
+      tags:
+      - PriceAction
+    post:
+      consumes:
+      - application/json
+      description: Creates a new order block for a specific symbol and date.
+      parameters:
+      - description: Order Block Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Save an Order Block
+      tags:
+      - PriceAction
+  /price-action/ob/{symbol}:
+    get:
+      description: Retrieves the full list of order blocks for a specific stock symbol
+        from the MongoDB cache.
+      parameters:
+      - description: Stock Symbol (e.g., RELIANCE)
+        in: path
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved order blocks
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.StockRecord'
+              type: object
+        "400":
+          description: Invalid symbol provided
+          schema:
+            $ref: '#/definitions/model.Response'
+        "404":
+          description: Stock symbol not found in cache
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get Order Blocks by Symbol
+      tags:
+      - PriceAction
+  /price-action/ob/automate:
+    post:
+      consumes:
+      - application/json
+      description: Fetches stocks based on the "BULLISH CLOSE 200" strategy, retrieves
+        historical data from NSE (utilizing time cache), and persists Order Blocks.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Automate Order Block Discovery
+      tags:
+      - Price Action
+  /price-action/ob/check:
+    post:
+      description: Fetches strategy symbols, checks them against NSE live data, identifies
+        non-mitigated blocks, and updates the cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.ObResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check and Refresh Order Block Mitigations
+      tags:
+      - PriceAction
+  /price-action/ob/mitigation:
+    get:
+      description: Fetches strategy symbols, checks them against NSE live data, identifies
+        non-mitigated blocks, and updates the cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.ObResponse'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Check and Refresh Order Block Mitigations
+      tags:
+      - PriceAction
   /strategy:
     delete:
       description: Removes a strategy from the system using its ID (Name)
