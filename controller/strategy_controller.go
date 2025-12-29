@@ -22,40 +22,45 @@ func NewStrategyController(ss service.StrategyService, isProduction bool) *Strat
 	}
 }
 
-// RegisterRoutes maps endpoints to the /api/strategy group
+// RegisterRoutes maps endpoints to the /strategy group with appropriate middleware.
 func (ctrl *StrategyController) RegisterRoutes(router *gin.RouterGroup) {
 	strategyGroup := router.Group("/strategy")
 	{
+		// Public route - typically used by the scanner dashboard
 		strategyGroup.GET("", ctrl.getAllStrategies)
-	}
 
-	protectedGroup := strategyGroup.Group("")
-	protectedGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
-	{
-		protectedGroup.POST("", ctrl.createStrategy)
-		protectedGroup.PUT("", ctrl.updateStrategy)
-		protectedGroup.DELETE("", ctrl.deleteStrategy)
-		protectedGroup.POST("/reload", ctrl.reloadAllStrategies)
-		protectedGroup.GET("/admin", ctrl.getAllStrategiesAdmin)
+		// Protected routes - requires Admin role and JWT
+		adminGroup := strategyGroup.Group("")
+		adminGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
+		{
+			adminGroup.POST("", ctrl.createStrategy)
+			adminGroup.PUT("", ctrl.updateStrategy)
+			adminGroup.DELETE("", ctrl.deleteStrategy)
+			adminGroup.POST("/reload", ctrl.reloadAllStrategies)
+			adminGroup.GET("/admin", ctrl.getAllStrategiesAdmin)
+		}
 	}
-
 }
 
-// getAllStrategies retrieves all trading strategies
+// getAllStrategies retrieves active trading strategies.
 // @Summary      Get all strategies
-// @Description  Returns a list of all configured trading strategies
+// @Description  Returns a list of all configured active trading strategies
 // @Tags         Strategy
 // @Produce      json
 // @Success      200  {array}  model.StrategyDto
 // @Router       /strategy [get]
 func (ctrl *StrategyController) getAllStrategies(c *gin.Context) {
 	strategies := ctrl.strategyService.GetAllStrategies()
+	if strategies == nil {
+		c.JSON(http.StatusOK, []model.StrategyDto{})
+		return
+	}
 	c.JSON(http.StatusOK, strategies)
 }
 
-// createStrategy adds a new strategy
+// createStrategy adds a new strategy.
 // @Summary      Create a strategy
-// @Description  Saves a new trading strategy configuration to the database
+// @Description  Saves a new trading strategy configuration to MongoDB
 // @Tags         Strategy
 // @Accept       json
 // @Produce      json
@@ -65,9 +70,8 @@ func (ctrl *StrategyController) getAllStrategies(c *gin.Context) {
 // @Router       /strategy [post]
 func (ctrl *StrategyController) createStrategy(c *gin.Context) {
 	var request model.StrategyDto
-	// ShouldBindJSON validates against `binding:"required"` tags in the struct
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid strategy format: " + err.Error()})
 		return
 	}
 
@@ -79,20 +83,19 @@ func (ctrl *StrategyController) createStrategy(c *gin.Context) {
 	c.JSON(http.StatusCreated, res)
 }
 
-// updateStrategy modifies an existing strategy
+// updateStrategy modifies an existing strategy.
 // @Summary      Update a strategy
-// @Description  Updates the configuration of an existing strategy by name
+// @Description  Updates an existing strategy configuration by name/ID
 // @Tags         Strategy
 // @Accept       json
 // @Produce      json
-// @Param        request  body      model.StrategyDto  true  "Updated Strategy Details"
+// @Param        request  body      model.StrategyDto  true  "Updated Details"
 // @Success      200      {object}  model.Strategy
-// @Failure      400      {object}  map[string]string
 // @Router       /strategy [put]
 func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
 	var request model.StrategyDto
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -104,53 +107,54 @@ func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-// deleteStrategy removes a strategy
+// deleteStrategy removes a strategy.
 // @Summary      Delete a strategy
-// @Description  Removes a strategy from the system using its ID (Name)
+// @Description  Removes a strategy from the system using its ID/Name
 // @Tags         Strategy
 // @Param        id   query     string  true  "Strategy ID (Name)"
 // @Success      204  "No Content"
-// @Failure      400  {object}  map[string]string
-// @Failure      500  {object}  map[string]string
 // @Router       /strategy [delete]
 func (ctrl *StrategyController) deleteStrategy(c *gin.Context) {
 	id := c.Query("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Strategy ID is required"})
 		return
 	}
 
-	err := ctrl.strategyService.DeleteStrategy(c.Request.Context(), id)
-	if err != nil {
+	if err := ctrl.strategyService.DeleteStrategy(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
 
-// reloadAllStrategies refreshes cache from DB
+// reloadAllStrategies refreshes cache from DB.
 // @Summary      Reload strategies
-// @Description  Syncs the in-memory strategy cache with the MongoDB database
+// @Description  Syncs the in-memory strategy cache with MongoDB
 // @Tags         Strategy
-// @Success      200
+// @Produce      json
+// @Success      200  {object}  map[string]string
 // @Router       /strategy/reload [post]
 func (ctrl *StrategyController) reloadAllStrategies(c *gin.Context) {
-	err := ctrl.strategyService.ReloadAllStrategies(c.Request.Context())
-	if err != nil {
+	if err := ctrl.strategyService.ReloadAllStrategies(c.Request.Context()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusOK, gin.H{"message": "Strategies reloaded successfully"})
 }
 
-// getAllStrategies retrieves all trading strategies
-// @Summary      Get all strategies
-// @Description  Returns a list of all configured trading strategies
+// getAllStrategiesAdmin retrieves all strategies including internal details.
+// @Summary      Get all strategies (Admin)
+// @Description  Returns all trading strategies with full administrative details
 // @Tags         Strategy
 // @Produce      json
 // @Success      200  {array}  model.StrategyDto
 // @Router       /strategy/admin [get]
 func (ctrl *StrategyController) getAllStrategiesAdmin(c *gin.Context) {
 	strategies := ctrl.strategyService.GetAllStrategiesAdmin()
+	if strategies == nil {
+		c.JSON(http.StatusOK, []model.StrategyDto{})
+		return
+	}
 	c.JSON(http.StatusOK, strategies)
 }

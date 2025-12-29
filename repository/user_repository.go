@@ -1,9 +1,10 @@
 package repository
 
 import (
-	"backend/model"
 	"context"
 	"errors"
+
+	"backend/model"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -20,44 +21,19 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 	}
 }
 
-// FindByEmail replaces Optional<User> findByEmail(String email)
+// --- Finder Methods ---
+
+// FindByEmail retrieves a user by their primary key (email)
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
-	var user model.User
-	err := r.collection.FindOne(ctx, bson.M{"_id": email}).Decode(&user)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, nil // Return nil, nil to represent an empty Optional
-		}
-		return nil, err
-	}
-	return &user, nil
+	return r.findOne(ctx, bson.M{"_id": email})
 }
 
-// FindByUsername replaces Optional<User> findByUsername(String username)
+// FindByUsername retrieves a user by their username field
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
-	var user model.User
-	// Using "_id" because in your User entity, Username is tagged as bson:"_id"
-	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
+	return r.findOne(ctx, bson.M{"username": username})
 }
 
-// Save (Insert or Update)
-func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
-	filter := bson.M{"_id": user.Email}
-	update := bson.M{"$set": user}
-	opts := options.Update().SetUpsert(true)
-
-	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
-	return err
-}
-
-// FindAll
+// FindAll retrieves all users in the collection
 func (r *UserRepository) FindAll(ctx context.Context) ([]model.User, error) {
 	var users []model.User
 	cursor, err := r.collection.Find(ctx, bson.D{})
@@ -72,33 +48,55 @@ func (r *UserRepository) FindAll(ctx context.Context) ([]model.User, error) {
 	return users, nil
 }
 
-// DeleteByUsername
-func (r *UserRepository) DeleteByUsername(ctx context.Context, username string) error {
-	_, err := r.collection.DeleteOne(ctx, bson.M{"_id": username})
+// --- Persistence Methods ---
+
+// Save performs an Upsert based on the User's Email (_id)
+func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
+	opts := options.Update().SetUpsert(true)
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": user.Email},
+		bson.M{"$set": user},
+		opts,
+	)
 	return err
 }
 
-// ExistsByEmail
+// UpdateTheme performs a partial update on the theme field only
+func (r *UserRepository) UpdateTheme(ctx context.Context, email string, theme model.UserTheme) error {
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": email},
+		bson.M{"$set": bson.M{"theme": theme}},
+	)
+	return err
+}
+
+// --- Existence & Deletion ---
+
+// ExistsByEmail checks if a record exists using the primary key
 func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	count, err := r.collection.CountDocuments(ctx, bson.M{"email": email})
+	count, err := r.collection.CountDocuments(ctx, bson.M{"_id": email})
 	return count > 0, err
 }
 
-func (r *UserRepository) UpdateTheme(ctx context.Context, email string, theme model.UserTheme) (bool, error) {
-	filter := bson.M{"_id": email}
-	update := bson.M{
-		"$set": bson.M{
-			"theme": theme,
-		},
-	}
+// DeleteByUsername removes a record by the username field
+func (r *UserRepository) DeleteByUsername(ctx context.Context, username string) error {
+	_, err := r.collection.DeleteOne(ctx, bson.M{"username": username})
+	return err
+}
 
-	// Enable Upsert
-	opts := options.Update().SetUpsert(true)
+// --- Private Helpers ---
 
-	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
+// findOne handles the repetitive logic of FindOne and ErrNoDocuments checking
+func (r *UserRepository) findOne(ctx context.Context, filter bson.M) (*model.User, error) {
+	var user model.User
+	err := r.collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
-		return false, err
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, nil
+		}
+		return nil, err
 	}
-
-	return true, nil
+	return &user, nil
 }

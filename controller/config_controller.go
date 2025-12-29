@@ -1,10 +1,11 @@
 package controller
 
 import (
+	"net/http"
+
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,59 +22,61 @@ func NewConfigController(cfgSvc service.ConfigService, isProduction bool) *Confi
 	}
 }
 
+// RegisterRoutes sets up protected admin-only configuration endpoints.
 func (ctrl *ConfigController) RegisterRoutes(router *gin.RouterGroup) {
-	protectedGrp := router.Group("/config")
-	protectedGrp.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
+	configGroup := router.Group("/config")
+	// Enforce both Authentication and Admin RBAC
+	configGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
 	{
-		protectedGrp.POST("", ctrl.reloadMongoEnvConfig)
-		protectedGrp.GET("", ctrl.getActiveMongoEnvConfig)
-		protectedGrp.PATCH("", ctrl.updateMongoEnvConfig)
+		configGroup.POST("/reload", ctrl.reloadMongoEnvConfig)
+		configGroup.GET("/active", ctrl.getActiveMongoEnvConfig)
+		configGroup.PATCH("/update", ctrl.updateMongoEnvConfig)
 	}
 }
 
 // reloadMongoEnvConfig godoc
 // @Summary      Reload System Configuration
-// @Description  Triggers a fresh fetch from MongoDB to update the in-memory cache across all services.
+// @Description  Triggers a fresh fetch from MongoDB to update the in-memory cache.
 // @Tags         Config
 // @Produce      json
-// @Success      200  {object}  model.Response  "Successfully reloaded"
-// @Failure      500  {object}  model.Response  "Internal Server Error"
-// @Router       /config [post]
-func (s *ConfigController) reloadMongoEnvConfig(ctx *gin.Context) {
-	s.cfgSvc.LoadMongoEnvConfig(ctx)
+// @Success      200  {object}  model.Response
+// @Failure      500  {object}  model.Response
+// @Router       /config/reload [post]
+func (ctrl *ConfigController) reloadMongoEnvConfig(ctx *gin.Context) {
+	ctrl.cfgSvc.LoadMongoEnvConfig(ctx)
 }
 
 // updateMongoEnvConfig godoc
 // @Summary      Update System Configuration
-// @Description  Updates the configuration document in MongoDB and hot-swaps the active memory pointer.
+// @Description  Updates MongoDB and hot-swaps active memory config.
 // @Tags         Config
 // @Accept       json
 // @Produce      json
 // @Param        request  body      model.MongoEnvConfig  true  "Update Config Fields"
-// @Success      200      {object}  model.Response        "Successfully updated"
-// @Failure      400      {object}  model.Response        "Invalid Request Body"
-// @Failure      500      {object}  model.Response        "Internal Server Error"
-// @Router       /config [patch]
-func (s *ConfigController) updateMongoEnvConfig(ctx *gin.Context) {
+// @Success      200      {object}  model.Response
+// @Failure      400      {object}  model.Response
+// @Failure      500      {object}  model.Response
+// @Router       /config/update [patch]
+func (ctrl *ConfigController) updateMongoEnvConfig(ctx *gin.Context) {
 	var request model.MongoEnvConfig
 	if err := ctx.ShouldBindJSON(&request); err != nil {
 		ctx.JSON(http.StatusBadRequest, model.Response{
 			Success: false,
-			Error:   "Invalid Request",
+			Error:   "Invalid Request Body",
 		})
 		return
 	}
-	s.cfgSvc.UpdateMongoEnvConfig(ctx, request)
+	ctrl.cfgSvc.UpdateMongoEnvConfig(ctx, request)
 }
 
 // getActiveMongoEnvConfig godoc
 // @Summary      Get Active Configuration
-// @Description  Returns the current system settings (Leverage, API Keys, etc.) from the real-time cache.
+// @Description  Returns current system settings (Leverage, API Keys, etc.) from memory.
 // @Tags         Config
 // @Produce      json
-// @Success      200  {object}  model.Response{data=model.MongoEnvConfig}  "Current active config"
-// @Failure      500  {object}  model.Response                             "Internal Server Error"
-// @Router       /config [get]
-func (s *ConfigController) getActiveMongoEnvConfig(ctx *gin.Context) {
-	s.cfgSvc.GetActiveMongoEnvConfig(ctx)
+// @Success      200  {object}  model.MongoEnvConfig
+// @Failure      500  {object}  model.Response
+// @Router       /config/active [get]
+func (ctrl *ConfigController) getActiveMongoEnvConfig(ctx *gin.Context) {
+	ctrl.cfgSvc.GetActiveMongoEnvConfig(ctx)
 }
