@@ -32,6 +32,7 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 		{
 			ob.POST("/check", ctrl.CheckOBMitigation)
 			ob.GET("/mitigation", ctrl.GetOBMitigation)
+			ob.POST("/old/:stopDate", ctrl.AddOlderObController)
 			admin := ob.Group("")
 			admin.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
 			{
@@ -46,6 +47,7 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 		{
 			fvg.POST("/check", ctrl.CheckFvgMitigation)
 			fvg.GET("/mitigation", ctrl.GetFvgMitigation)
+			fvg.POST("/old/:stopDate", ctrl.AddOlderFvgController)
 			admin := fvg.Group("")
 			admin.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
 			{
@@ -242,4 +244,66 @@ func (ctrl *PriceActionController) respond(c *gin.Context, data any, err error) 
 		return
 	}
 	c.JSON(http.StatusOK, model.Response{Success: true, Data: data})
+}
+
+// AddOlderObController
+// @Summary      Process Historical Order Blocks
+// @Description  Upload a CSV to find and save Order Blocks from a specific stop date backwards.
+// @Tags         PriceAction
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file      formData  file    true  "CSV File"
+// @Param        stopDate  path      string  true  "Stop Date (YYYY-MM-DD)"
+// @Success      200       {object}  map[string]string
+// @Router       /price-action/ob/old/{stopDate} [post]
+func (pc *PriceActionController) AddOlderObController(c *gin.Context) {
+	stopDate := c.Param("stopDate")
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file required"})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	// Using your service logic
+	pc.paService.AddOlderOb(c.Request.Context(), fileHeader.Filename, file, stopDate)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Order Block processing completed"})
+}
+
+// AddOlderFvgController
+// @Summary      Process Historical Fair Value Gaps (FVG)
+// @Description  Upload a CSV to find and save FVGs from a specific stop date backwards.
+// @Tags         PriceAction
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file      formData  file    true  "CSV File"
+// @Param        stopDate  path      string  true  "Stop Date (YYYY-MM-DD)"
+// @Success      200       {object}  map[string]string
+// @Router       /price-action/fvg/old/{stopDate} [post]
+func (pc *PriceActionController) AddOlderFvgController(c *gin.Context) {
+	stopDate := c.Param("stopDate")
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file required"})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	// Using your service logic
+	pc.paService.AddOlderFvg(c.Request.Context(), fileHeader.Filename, file, stopDate)
+
+	c.JSON(http.StatusOK, gin.H{"message": "FVG processing completed"})
 }
