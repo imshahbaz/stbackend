@@ -806,8 +806,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Delete FVG
       tags:
       - PriceAction (Admin)
@@ -824,8 +822,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Update FVG
       tags:
       - PriceAction (Admin)
@@ -842,11 +838,28 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Save FVG
       tags:
       - PriceAction (Admin)
+  /price-action/fvg/check:
+    post:
+      description: Triggers a fresh scan of all stocks against saved Fair Value Gaps
+        (FVG) to identify active mitigations. This bypasses the cache and updates
+        it.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Force Refresh FVG Mitigations
+      tags:
+      - PriceAction
   /price-action/fvg/mitigation:
     get:
       responses: {}
@@ -867,8 +880,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Delete OB
       tags:
       - PriceAction (Admin)
@@ -885,8 +896,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Update OB
       tags:
       - PriceAction (Admin)
@@ -903,11 +912,27 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Response'
-      security:
-      - BearerAuth: []
       summary: Save OB
       tags:
       - PriceAction (Admin)
+  /price-action/ob/check:
+    post:
+      description: Triggers a fresh scan of all stocks against saved Order Blocks
+        to find active mitigations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Force Refresh OB Mitigations
+      tags:
+      - PriceAction
   /price-action/ob/mitigation:
     get:
       responses: {}
