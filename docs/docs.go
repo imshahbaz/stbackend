@@ -920,6 +920,48 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/price-action/fvg/old/{stopDate}": {
+            "post": {
+                "description": "Upload a CSV to find and save FVGs from a specific stop date backwards.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Process Historical Fair Value Gaps (FVG)",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV File",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stop Date (YYYY-MM-DD)",
+                        "name": "stopDate",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/price-action/ob": {
             "post": {
                 "tags": [
@@ -1030,6 +1072,48 @@ const docTemplate = `{
                 ],
                 "summary": "Get Cached OB Mitigations",
                 "responses": {}
+            }
+        },
+        "/price-action/ob/old/{stopDate}": {
+            "post": {
+                "description": "Upload a CSV to find and save Order Blocks from a specific stop date backwards.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Process Historical Order Blocks",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV File",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stop Date (YYYY-MM-DD)",
+                        "name": "stopDate",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/price-action/{symbol}": {

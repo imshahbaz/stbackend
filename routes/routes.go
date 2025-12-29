@@ -58,7 +58,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	}
 
 	priceActionRepo := repository.NewPriceActionRepo(db)
-	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo)
+	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 
 	// --- 4. Routes & Controllers ---
 	api := r.Group("/api")

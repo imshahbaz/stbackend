@@ -866,6 +866,34 @@ paths:
       summary: Get Cached FVG Mitigations
       tags:
       - PriceAction
+  /price-action/fvg/old/{stopDate}:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a CSV to find and save FVGs from a specific stop date backwards.
+      parameters:
+      - description: CSV File
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Stop Date (YYYY-MM-DD)
+        in: path
+        name: stopDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Process Historical Fair Value Gaps (FVG)
+      tags:
+      - PriceAction
   /price-action/ob:
     delete:
       parameters:
@@ -937,6 +965,35 @@ paths:
     get:
       responses: {}
       summary: Get Cached OB Mitigations
+      tags:
+      - PriceAction
+  /price-action/ob/old/{stopDate}:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a CSV to find and save Order Blocks from a specific stop
+        date backwards.
+      parameters:
+      - description: CSV File
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Stop Date (YYYY-MM-DD)
+        in: path
+        name: stopDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Process Historical Order Blocks
       tags:
       - PriceAction
   /strategy:

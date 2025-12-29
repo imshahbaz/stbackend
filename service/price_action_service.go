@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"time"
 
@@ -27,19 +28,25 @@ type PriceActionService interface {
 	DeleteFvg(ctx context.Context, symbol string, date string) error
 	CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error)
 	AutomateFvg(ctx context.Context) error
+
+	AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string)
+	AddOlderFvg(ctx context.Context, fileName string, file io.Reader, stopDate string)
 }
 
 type PriceActionServiceImpl struct {
 	chartInkService ChartInkService
 	nseService      NseService
 	priceActionRepo *repository.PriceActionRepo
+	marginSvc       MarginService
 }
 
-func NewPriceActionService(c ChartInkService, n NseService, repo *repository.PriceActionRepo) PriceActionService {
+func NewPriceActionService(c ChartInkService, n NseService,
+	repo *repository.PriceActionRepo, marginSvc MarginService) PriceActionService {
 	return &PriceActionServiceImpl{
 		chartInkService: c,
 		nseService:      n,
 		priceActionRepo: repo,
+		marginSvc:       marginSvc,
 	}
 }
 
@@ -184,4 +191,73 @@ func (s *PriceActionServiceImpl) UpdateFvg(ctx context.Context, req model.ObRequ
 
 func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d string) error {
 	return s.priceActionRepo.DeleteFvgByDate(ctx, sym, d)
+}
+
+// Shared logic to find the index and data for a specific date
+func (s *PriceActionServiceImpl) processHistory(stock string, date string) (string, []model.NSEHistoricalData, int, bool) {
+	m, exists := s.marginSvc.GetMargin(stock)
+	if !exists {
+		return "", nil, 0, false
+	}
+
+	// Uses your time cache strategy internally
+	history, err := s.nseService.FetchStockData(m.Symbol)
+	if err != nil || len(history) < 3 {
+		return "", nil, 0, false
+	}
+
+	for i := 0; i <= len(history)-3; i++ {
+		candleDate, err := util.ParseNseDate(history[i].Timestamp)
+		if err == nil && candleDate == date {
+			return m.Symbol, history, i, true
+		}
+	}
+	return "", nil, 0, false
+}
+
+func (s *PriceActionServiceImpl) AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string) {
+	req, err := util.ReadCSVReversed(file, stopDate)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for _, stock := range req {
+		if symbol, history, i, found := s.processHistory(stock.Symbol, stock.Date); found {
+			target := history[i+2]
+			if actualDate, err := util.ParseNseDate(target.Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
+					Symbol: symbol,
+					Date:   actualDate,
+					High:   target.High,
+					Low:    target.Low,
+				})
+				count++
+			}
+		}
+	}
+	log.Printf("%d Order block's inserted", count)
+}
+
+func (s *PriceActionServiceImpl) AddOlderFvg(ctx context.Context, fileName string, file io.Reader, stopDate string) {
+	req, err := util.ReadCSVReversed(file, stopDate)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for _, stock := range req {
+		if symbol, history, i, found := s.processHistory(stock.Symbol, stock.Date); found {
+			if actualDate, err := util.ParseNseDate(history[i+1].Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
+					Symbol: symbol,
+					Date:   actualDate,
+					High:   history[i].Low,
+					Low:    history[i+2].High,
+				})
+				count++
+			}
+		}
+	}
+	log.Printf("%d Fvg's inserted", count)
 }
