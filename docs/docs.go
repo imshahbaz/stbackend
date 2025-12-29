@@ -885,6 +885,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/price-action/fvg/check": {
+            "post": {
+                "description": "Triggers a fresh scan of all stocks against saved Fair Value Gaps (FVG) to identify active mitigations. This bypasses the cache and updates it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Force Refresh FVG Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/price-action/fvg/mitigation": {
             "get": {
                 "tags": [
@@ -964,6 +990,32 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob/check": {
+            "post": {
+                "description": "Triggers a fresh scan of all stocks against saved Order Blocks to find active mitigations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Force Refresh OB Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }

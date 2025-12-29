@@ -146,6 +146,14 @@ func (ctrl *PriceActionController) GetOBMitigation(c *gin.Context) {
 	ctrl.respond(c, data, err)
 }
 
+// CheckOBMitigation godoc
+// @Summary      Force Refresh OB Mitigations
+// @Description  Triggers a fresh scan of all stocks against saved Order Blocks to find active mitigations.
+// @Tags         PriceAction
+// @Produce      json
+// @Success      200      {object}  model.Response
+// @Failure      500      {object}  model.Response
+// @Router       /price-action/ob/check [post]
 func (ctrl *PriceActionController) CheckOBMitigation(c *gin.Context) {
 	data, err := ctrl.paService.CheckOBMitigation(c.Request.Context())
 	ctrl.respond(c, data, err)
@@ -213,6 +221,14 @@ func (ctrl *PriceActionController) GetFvgMitigation(c *gin.Context) {
 	ctrl.respond(c, data, err)
 }
 
+// CheckFvgMitigation godoc
+// @Summary      Force Refresh FVG Mitigations
+// @Description  Triggers a fresh scan of all stocks against saved Fair Value Gaps (FVG) to identify active mitigations. This bypasses the cache and updates it.
+// @Tags         PriceAction
+// @Produce      json
+// @Success      200      {object}  model.Response
+// @Failure      500      {object}  model.Response
+// @Router       /price-action/fvg/check [post]
 func (ctrl *PriceActionController) CheckFvgMitigation(c *gin.Context) {
 	data, err := ctrl.paService.CheckFvgMitigation(c.Request.Context())
 	ctrl.respond(c, data, err)
@@ -220,7 +236,7 @@ func (ctrl *PriceActionController) CheckFvgMitigation(c *gin.Context) {
 
 // --- Helper ---
 
-func (ctrl *PriceActionController) respond(c *gin.Context, data interface{}, err error) {
+func (ctrl *PriceActionController) respond(c *gin.Context, data any, err error) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Response{Success: false, Error: err.Error()})
 		return
