@@ -794,17 +794,13 @@ const docTemplate = `{
         },
         "/price-action/automate": {
             "post": {
-                "description": "Triggers scanners to automatically find and save Order Blocks.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Automate Order Block Discovery",
+                "summary": "Trigger PA Automation",
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Accepted",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -814,13 +810,15 @@ const docTemplate = `{
         },
         "/price-action/fvg": {
             "post": {
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
                 "tags": [
-                    "FVG"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Save Fair Value Gap",
+                "summary": "Save FVG",
                 "parameters": [
                     {
                         "description": "FVG Details",
@@ -842,10 +840,15 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "tags": [
-                    "FVG"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
-                "summary": "Delete Fair Value Gap",
+                "tags": [
+                    "PriceAction (Admin)"
+                ],
+                "summary": "Delete FVG",
                 "parameters": [
                     {
                         "description": "Delete Details",
@@ -867,13 +870,15 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
                 "tags": [
-                    "FVG"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Update Fair Value Gap",
+                "summary": "Update FVG",
                 "parameters": [
                     {
                         "description": "Update Details",
@@ -895,36 +900,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/price-action/fvg/check": {
-            "post": {
-                "tags": [
-                    "FVG"
-                ],
-                "summary": "Check Fvg Mitigations",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/price-action/fvg/mitigation": {
             "get": {
                 "tags": [
-                    "FVG"
+                    "PriceAction"
                 ],
-                "summary": "Get Cached Fvg Mitigations",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
+                "summary": "Get Cached FVG Mitigations",
+                "responses": {}
             }
         },
         "/price-action/ob": {
@@ -934,16 +916,13 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
                 "tags": [
-                    "PriceAction"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Save an Order Block",
+                "summary": "Save OB",
                 "parameters": [
                     {
-                        "description": "Order Block Details",
+                        "description": "OB Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -968,9 +947,9 @@ const docTemplate = `{
                     }
                 ],
                 "tags": [
-                    "PriceAction"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Delete an Order Block",
+                "summary": "Delete OB",
                 "parameters": [
                     {
                         "description": "Delete Details",
@@ -997,13 +976,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
                 "tags": [
-                    "PriceAction"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Update an Order Block",
+                "summary": "Update OB",
                 "parameters": [
                     {
                         "description": "Update Details",
@@ -1025,52 +1001,25 @@ const docTemplate = `{
                 }
             }
         },
-        "/price-action/ob/check": {
-            "post": {
-                "tags": [
-                    "PriceAction"
-                ],
-                "summary": "Check OB Mitigations",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/price-action/ob/mitigation": {
             "get": {
                 "tags": [
                     "PriceAction"
                 ],
                 "summary": "Get Cached OB Mitigations",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
+                "responses": {}
             }
         },
         "/price-action/{symbol}": {
             "get": {
-                "description": "Retrieves the full list of price action data for a specific stock symbol.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Get Price Action by Symbol",
+                "summary": "Get PA by Symbol",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Stock Symbol",
+                        "description": "Symbol",
                         "name": "symbol",
                         "in": "path",
                         "required": true

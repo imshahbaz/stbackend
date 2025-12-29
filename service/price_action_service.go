@@ -1,32 +1,31 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"time"
+
 	"backend/cache"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
-	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/copier"
 )
 
 type PriceActionService interface {
-	GetPABySymbol(ctx *gin.Context)
+	GetPABySymbol(ctx context.Context, symbol string) (model.StockRecord, error)
+	SaveOrderBlock(ctx context.Context, req model.ObRequest) error
+	UpdateOrderBlock(ctx context.Context, req model.ObRequest) error
+	DeleteOrderBlock(ctx context.Context, symbol string, date string) error
+	CheckOBMitigation(ctx context.Context) ([]model.ObResponse, error)
+	AutomateOrderBlock(ctx context.Context) error
 
-	// Order Block (OB) Operations
-	SaveOrderBlock(ctx *gin.Context)
-	DeleteOrderBlock(ctx *gin.Context)
-	CheckOBMitigation(ctx *gin.Context)
-	AutomateOrderBlock(ctx *gin.Context)
-	UpdateOrderBlock(ctx *gin.Context)
-
-	// Fair Value Gap (FVG) Operations
-	SaveFvg(ctx *gin.Context)
-	DeleteFvg(ctx *gin.Context)
-	CheckFvgMitigation(ctx *gin.Context)
-	AutomateFvg(ctx *gin.Context)
-	UpdateFvg(ctx *gin.Context)
+	SaveFvg(ctx context.Context, req model.ObRequest) error
+	UpdateFvg(ctx context.Context, req model.ObRequest) error
+	DeleteFvg(ctx context.Context, symbol string, date string) error
+	CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error)
+	AutomateFvg(ctx context.Context) error
 }
 
 type PriceActionServiceImpl struct {
@@ -43,37 +42,18 @@ func NewPriceActionService(c ChartInkService, n NseService, repo *repository.Pri
 	}
 }
 
-// --- Helper Methods ---
+// --- Internal Engine ---
 
-func (s *PriceActionServiceImpl) sendError(ctx *gin.Context, code int, msg string) {
-	ctx.JSON(code, model.Response{Success: false, Error: msg})
-}
-
-func (s *PriceActionServiceImpl) sendSuccess(ctx *gin.Context, msg string, data interface{}) {
-	ctx.JSON(http.StatusOK, model.Response{Success: true, Message: msg, Data: data})
-}
-
-func (s *PriceActionServiceImpl) bindObRequest(ctx *gin.Context) (model.ObRequest, bool) {
-	var req model.ObRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		s.sendError(ctx, http.StatusBadRequest, err.Error())
-		return req, false
+func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategyName string, cacheKey string, isOB bool) ([]model.ObResponse, error) {
+	rawStrategy, found := cache.StrategyCache.Get(strategyName)
+	if !found {
+		return nil, errors.New("strategy not found in cache: " + strategyName)
 	}
-	return req, true
-}
-
-func (s *PriceActionServiceImpl) processMitigation(ctx *gin.Context, strategyName string, cacheKey string, isOB bool) {
-	rawStrategy, ok := cache.StrategyCache.Get(strategyName)
-	strategy, ok := rawStrategy.(model.StrategyDto)
-	if !ok {
-		s.sendError(ctx, http.StatusInternalServerError, strategyName+" error")
-		return
-	}
+	strategy := rawStrategy.(model.StrategyDto)
 
 	data, err := s.chartInkService.FetchWithMargin(strategy)
 	if err != nil {
-		s.sendError(ctx, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
 
 	idMap := make(map[string]model.StockMarginDto)
@@ -85,8 +65,7 @@ func (s *PriceActionServiceImpl) processMitigation(ctx *gin.Context, strategyNam
 
 	pas, err := s.priceActionRepo.GetAllPAIn(ctx, ids)
 	if err != nil {
-		s.sendError(ctx, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
 
 	var response []model.ObResponse
@@ -103,6 +82,7 @@ func (s *PriceActionServiceImpl) processMitigation(ctx *gin.Context, strategyNam
 		}
 
 		for _, block := range blocks {
+			// Mitigation Logic: Price pierces the zone but stays within bounds
 			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High {
 				var obResp model.ObResponse
 				copier.Copy(&obResp, idMap[pa.Symbol])
@@ -114,68 +94,18 @@ func (s *PriceActionServiceImpl) processMitigation(ctx *gin.Context, strategyNam
 	}
 
 	if len(response) > 0 {
-		cache.PriceActionCache.Set(cacheKey, response, -1)
+		cache.PriceActionCache.Set(cacheKey, response, 1*time.Hour)
 	}
-	s.sendSuccess(ctx, strategyName+" fetch success", response)
+	return response, nil
 }
 
-// --- Interface Implementations ---
+// --- Interface Methods ---
 
-func (s *PriceActionServiceImpl) GetPABySymbol(ctx *gin.Context) {
-	symbol := ctx.Param("symbol")
-	if symbol == "" {
-		s.sendError(ctx, http.StatusBadRequest, "Invalid request")
-		return
-	}
-	data, err := s.priceActionRepo.GetPAByID(ctx, symbol)
-	if err != nil {
-		s.sendError(ctx, http.StatusNotFound, err.Error())
-		return
-	}
-	s.sendSuccess(ctx, "Price action found", data)
-}
-
-// Order Block Methods
-func (s *PriceActionServiceImpl) SaveOrderBlock(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.SaveOrderBlock(ctx, req); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Order block created", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.UpdateOrderBlock(ctx, req); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Order block updated", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) DeleteOrderBlock(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.DeleteOrderBlockByDate(ctx, req.Symbol, req.Date); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Order block deleted", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
-	s.processMitigation(ctx, "BULLISH CLOSE 200", "ObCache", true)
-}
-
-func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx *gin.Context) {
-	rawStrategy, _ := cache.StrategyCache.Get("BULLISH OB 1D")
-	strategy, ok := rawStrategy.(model.StrategyDto)
+func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
+	raw, _ := cache.StrategyCache.Get("BULLISH OB 1D")
+	strategy, ok := raw.(model.StrategyDto)
 	if !ok {
-		s.sendError(ctx, http.StatusInternalServerError, "OB strategy error")
-		return
+		return errors.New("OB strategy not in cache")
 	}
 
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
@@ -183,67 +113,68 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx *gin.Context) {
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			candle := history[2]
 			if date, err := util.ParseNseDate(candle.Timestamp); err == nil {
-				s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
+				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
 					Symbol: dto.Symbol, Date: date, High: candle.High, Low: candle.Low,
 				})
 			}
 		}
 	}
-	s.sendSuccess(ctx, "Order block automation completed", nil)
+	return nil
 }
 
-// FVG Methods
-func (s *PriceActionServiceImpl) SaveFvg(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.SaveFvg(ctx, req); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Fvg created", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) UpdateFvg(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.UpdateFvg(ctx, req); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Fvg updated", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) DeleteFvg(ctx *gin.Context) {
-	if req, ok := s.bindObRequest(ctx); ok {
-		if err := s.priceActionRepo.DeleteFvgByDate(ctx, req.Symbol, req.Date); err != nil {
-			s.sendError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.sendSuccess(ctx, "Fvg deleted", nil)
-	}
-}
-
-func (s *PriceActionServiceImpl) CheckFvgMitigation(ctx *gin.Context) {
-	s.processMitigation(ctx, "BULLISH CLOSE 200", "FvgCache", false)
-}
-
-func (s *PriceActionServiceImpl) AutomateFvg(ctx *gin.Context) {
-	rawStrategy, _ := cache.StrategyCache.Get("FAIR VALUE GAP")
-	strategy, ok := rawStrategy.(model.StrategyDto)
+func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context) error {
+	raw, _ := cache.StrategyCache.Get("FAIR VALUE GAP")
+	strategy, ok := raw.(model.StrategyDto)
 	if !ok {
-		s.sendError(ctx, http.StatusInternalServerError, "Fvg strategy error")
-		return
+		return errors.New("FVG strategy not in cache")
 	}
 
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
 	for _, dto := range data {
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			if date, err := util.ParseNseDate(history[1].Timestamp); err == nil {
-				s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
+				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
 					Symbol: dto.Symbol, Date: date, High: history[2].High, Low: history[0].Low,
 				})
 			}
 		}
 	}
-	s.sendSuccess(ctx, "Fvg automation completed", nil)
+	return nil
+}
+
+func (s *PriceActionServiceImpl) GetPABySymbol(ctx context.Context, symbol string) (model.StockRecord, error) {
+	return s.priceActionRepo.GetPAByID(ctx, symbol)
+}
+
+func (s *PriceActionServiceImpl) CheckOBMitigation(ctx context.Context) ([]model.ObResponse, error) {
+	return s.processMitigation(ctx, "BULLISH CLOSE 200", "ObCache", true)
+}
+
+func (s *PriceActionServiceImpl) CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error) {
+	return s.processMitigation(ctx, "BULLISH CLOSE 200", "FvgCache", false)
+}
+
+// Pass-through CRUD methods
+func (s *PriceActionServiceImpl) SaveOrderBlock(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.SaveOrderBlock(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.UpdateOrderBlock(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) DeleteOrderBlock(ctx context.Context, sym string, d string) error {
+	return s.priceActionRepo.DeleteOrderBlockByDate(ctx, sym, d)
+}
+
+func (s *PriceActionServiceImpl) SaveFvg(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.SaveFvg(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) UpdateFvg(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.UpdateFvg(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d string) error {
+	return s.priceActionRepo.DeleteFvgByDate(ctx, sym, d)
 }
