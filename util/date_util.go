@@ -3,6 +3,8 @@ package util
 import (
 	"strings"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
 var (
@@ -17,4 +19,21 @@ func ParseNseDate(nseDate string) (string, error) {
 		return "", err
 	}
 	return t.Format(outputLayout), nil
+}
+
+func NseCacheExpiryTime() time.Duration {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		return cache.DefaultExpiration
+	}
+
+	now := time.Now().In(loc)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, loc)
+	end := time.Date(now.Year(), now.Month(), now.Day(), 17, 30, 0, 0, loc)
+
+	if now.After(start) && now.Before(end) {
+		return 10 * time.Minute
+	}
+
+	return cache.DefaultExpiration
 }
