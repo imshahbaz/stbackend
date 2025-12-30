@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	localCache "backend/cache"
+	"backend/client"
 	"backend/middleware"
 	"backend/model"
 	"backend/util"
@@ -28,20 +30,21 @@ const (
 )
 
 type NseService interface {
-	FetchStockData(symbol string) ([]model.NSEHistoricalData, error)
+	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchHeatMap() ([]model.SectorData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
 }
 
 type NseServiceImpl struct {
-	client     *resty.Client
-	sfGroup    singleflight.Group
-	lastWarmup time.Time
-	warmupLock sync.RWMutex
+	client      *resty.Client
+	sfGroup     singleflight.Group
+	lastWarmup  time.Time
+	warmupLock  sync.RWMutex
+	yahooClient *client.YahooClient
 }
 
-func NewNseService() NseService {
+func NewNseService(yahooClient *client.YahooClient) NseService {
 	client := resty.New().
 		SetBaseURL(nseUrl).
 		SetTimeout(30*time.Second).
@@ -51,7 +54,7 @@ func NewNseService() NseService {
 
 	client.OnAfterResponse(middleware.DecompressMiddleware)
 
-	return &NseServiceImpl{client: client}
+	return &NseServiceImpl{client: client, yahooClient: yahooClient}
 }
 
 // WarmUp ensures we have a valid session cookie from NSE.
@@ -91,7 +94,13 @@ func (s *NseServiceImpl) WarmUp() error {
 	return err
 }
 
-func (s *NseServiceImpl) FetchStockData(symbol string) ([]model.NSEHistoricalData, error) {
+func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error) {
+
+	yahooResp, ok := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
+	if ok == nil {
+		return yahooResp, nil
+	}
+
 	cacheKey := "history_" + symbol
 	if val, found := localCache.NseHistoryCache.Get(cacheKey); found {
 		return val.([]model.NSEHistoricalData), nil
