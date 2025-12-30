@@ -70,8 +70,8 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 func (ctrl *PriceActionController) TriggerAutomation(c *gin.Context) {
 	bgCtx := context.Background()
 	go func() {
-		_ = ctrl.paService.AutomateOrderBlock(bgCtx)
-		_ = ctrl.paService.AutomateFvg(bgCtx)
+		_ = ctrl.paService.AutomateOrderBlock(bgCtx, 0)
+		_ = ctrl.paService.AutomateFvg(bgCtx, 0)
 	}()
 	c.JSON(http.StatusAccepted, model.Response{Success: true, Message: "Scanning started"})
 }

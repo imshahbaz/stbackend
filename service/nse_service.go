@@ -30,6 +30,7 @@ type NseService interface {
 	FetchStockData(symbol string) ([]model.NSEHistoricalData, error)
 	FetchHeatMap() ([]model.SectorData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
+	ClearStockDataCache(symbol string)
 }
 
 type NseServiceImpl struct {
@@ -207,4 +208,9 @@ func (s *NseServiceImpl) convertIndices(input []model.NseIndexData) []model.AllI
 func (s *NseServiceImpl) formatToTwo(n float64) float64 {
 	val, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", n), 64)
 	return val
+}
+
+func (s *NseServiceImpl) ClearStockDataCache(symbol string) {
+	cacheKey := "history_" + symbol
+	localCache.NseHistoryCache.Delete(cacheKey)
 }
