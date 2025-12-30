@@ -130,10 +130,11 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
 	count := 0
 	for _, dto := range data {
+		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
 				log.Printf("Rescheduling Ob automation for %d time", attempt+1)
-				time.AfterFunc(30*time.Minute, func() {
+				time.AfterFunc(25*time.Minute, func() {
 					s.AutomateOrderBlock(context.Background(), attempt+1)
 				})
 			}
@@ -163,6 +164,7 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
 	count := 0
 	for _, dto := range data {
+		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
 				log.Printf("Rescheduling Fvg automation for %d time", attempt+1)
