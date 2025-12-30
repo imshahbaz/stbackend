@@ -50,7 +50,7 @@ func (ctrl *NseController) GetStockHistory(c *gin.Context) {
 		return
 	}
 
-	data, err := ctrl.nseService.FetchStockData(symbol)
+	data, err := ctrl.nseService.FetchStockData(c.Request.Context(), symbol)
 	if err != nil {
 		ctrl.handleError(c, "Failed to get history", err)
 		return

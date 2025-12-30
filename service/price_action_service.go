@@ -80,7 +80,7 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 
 	var response []model.ObResponse
 	for _, pa := range pas {
-		history, err := s.nseService.FetchStockData(pa.Symbol)
+		history, err := s.nseService.FetchStockData(ctx, pa.Symbol)
 		if err != nil || len(history) == 0 {
 			continue
 		}
@@ -131,7 +131,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 	count := 0
 	for _, dto := range data {
 		s.nseService.ClearStockDataCache(dto.Symbol)
-		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
+		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
 				log.Printf("Rescheduling Ob automation for %d time", attempt+1)
 				time.AfterFunc(25*time.Minute, func() {
@@ -166,7 +166,7 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 	count := 0
 	for _, dto := range data {
 		s.nseService.ClearStockDataCache(dto.Symbol)
-		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
+		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
 				log.Printf("Rescheduling Fvg automation for %d time", attempt+1)
 				time.AfterFunc(30*time.Minute, func() {
@@ -224,14 +224,14 @@ func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d st
 }
 
 // Shared logic to find the index and data for a specific date
-func (s *PriceActionServiceImpl) processHistory(stock string, date string) (string, []model.NSEHistoricalData, int, bool) {
+func (s *PriceActionServiceImpl) processHistory(ctx context.Context, stock string, date string) (string, []model.NSEHistoricalData, int, bool) {
 	m, exists := s.marginSvc.GetMargin(stock)
 	if !exists {
 		return "", nil, 0, false
 	}
 
 	// Uses your time cache strategy internally
-	history, err := s.nseService.FetchStockData(m.Symbol)
+	history, err := s.nseService.FetchStockData(ctx, m.Symbol)
 	if err != nil || len(history) < 3 {
 		return "", nil, 0, false
 	}
@@ -253,7 +253,7 @@ func (s *PriceActionServiceImpl) AddOlderOb(ctx context.Context, fileName string
 
 	count := 0
 	for _, stock := range req {
-		if symbol, history, i, found := s.processHistory(stock.Symbol, stock.Date); found {
+		if symbol, history, i, found := s.processHistory(ctx, stock.Symbol, stock.Date); found {
 			target := history[i+2]
 			if actualDate, err := util.ParseNseDate(target.Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
@@ -277,7 +277,7 @@ func (s *PriceActionServiceImpl) AddOlderFvg(ctx context.Context, fileName strin
 
 	count := 0
 	for _, stock := range req {
-		if symbol, history, i, found := s.processHistory(stock.Symbol, stock.Date); found {
+		if symbol, history, i, found := s.processHistory(ctx, stock.Symbol, stock.Date); found {
 			if actualDate, err := util.ParseNseDate(history[i+1].Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
 					Symbol: symbol,
@@ -304,7 +304,7 @@ func (s *PriceActionServiceImpl) FvgCleanUp(ctx context.Context) error {
 			continue
 		}
 
-		history, err := s.nseService.FetchStockData(record.Symbol)
+		history, err := s.nseService.FetchStockData(ctx, record.Symbol)
 		if err != nil {
 			continue
 		}

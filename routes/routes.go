@@ -50,7 +50,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	marginSvc := service.NewMarginService(marginRepo, configmanager)
 	strategySvc := service.NewStrategyService(strategyRepo)
 	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
-	nseSvc := service.NewNseService()
+	yahooClient := client.NewYahooClient()
+	nseSvc := service.NewNseService(yahooClient)
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
 	if !isProduction {
