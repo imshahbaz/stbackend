@@ -137,6 +137,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 				time.AfterFunc(25*time.Minute, func() {
 					s.AutomateOrderBlock(context.Background(), attempt+1)
 				})
+				return nil
 			}
 			candle := history[2]
 			if date, err := util.ParseNseDate(candle.Timestamp); err == nil {
@@ -171,6 +172,7 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 				time.AfterFunc(30*time.Minute, func() {
 					s.AutomateFvg(context.Background(), attempt+1)
 				})
+				return nil
 			}
 			if date, err := util.ParseNseDate(history[1].Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
