@@ -12,6 +12,7 @@ import (
 	localCache "backend/cache"
 	"backend/middleware"
 	"backend/model"
+	"backend/util"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/patrickmn/go-cache"
@@ -111,7 +112,7 @@ func (s *NseServiceImpl) FetchStockData(symbol string) ([]model.NSEHistoricalDat
 	)
 
 	if err == nil {
-		localCache.NseHistoryCache.Set(cacheKey, data, cache.DefaultExpiration)
+		localCache.NseHistoryCache.Set(cacheKey, data, util.NseCacheExpiryTime())
 	}
 	return data, err
 }
