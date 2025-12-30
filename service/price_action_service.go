@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"sort"
+	"time"
 
 	"backend/cache"
 	"backend/model"
@@ -21,13 +22,13 @@ type PriceActionService interface {
 	UpdateOrderBlock(ctx context.Context, req model.ObRequest) error
 	DeleteOrderBlock(ctx context.Context, symbol string, date string) error
 	CheckOBMitigation(ctx context.Context) ([]model.ObResponse, error)
-	AutomateOrderBlock(ctx context.Context) error
+	AutomateOrderBlock(ctx context.Context, attempt int) error
 
 	SaveFvg(ctx context.Context, req model.ObRequest) error
 	UpdateFvg(ctx context.Context, req model.ObRequest) error
 	DeleteFvg(ctx context.Context, symbol string, date string) error
 	CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error)
-	AutomateFvg(ctx context.Context) error
+	AutomateFvg(ctx context.Context, attempt int) error
 	FvgCleanUp(ctx context.Context) error
 
 	AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string)
@@ -116,7 +117,10 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 
 // --- Interface Methods ---
 
-func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
+func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt int) error {
+	if attempt >= 3 {
+		return nil
+	}
 	raw, _ := cache.StrategyCache.Get("BULLISH OB 1D")
 	strategy, ok := raw.(model.StrategyDto)
 	if !ok {
@@ -126,7 +130,14 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
 	count := 0
 	for _, dto := range data {
+		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
+			if s.automationReschedule(history[0]) {
+				log.Printf("Rescheduling Ob automation for %d time", attempt+1)
+				time.AfterFunc(25*time.Minute, func() {
+					s.AutomateOrderBlock(context.Background(), attempt+1)
+				})
+			}
 			candle := history[2]
 			if date, err := util.ParseNseDate(candle.Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
@@ -140,7 +151,10 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context) error {
 	return nil
 }
 
-func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context) error {
+func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) error {
+	if attempt >= 3 {
+		return nil
+	}
 	raw, _ := cache.StrategyCache.Get("FAIR VALUE GAP")
 	strategy, ok := raw.(model.StrategyDto)
 	if !ok {
@@ -150,7 +164,14 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context) error {
 	data, _ := s.chartInkService.FetchWithMargin(strategy)
 	count := 0
 	for _, dto := range data {
+		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(dto.Symbol); err == nil && len(history) >= 3 {
+			if s.automationReschedule(history[0]) {
+				log.Printf("Rescheduling Fvg automation for %d time", attempt+1)
+				time.AfterFunc(30*time.Minute, func() {
+					s.AutomateFvg(context.Background(), attempt+1)
+				})
+			}
 			if date, err := util.ParseNseDate(history[1].Timestamp); err == nil {
 				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
 					Symbol: dto.Symbol, Date: date, High: history[0].Low, Low: history[2].High,
@@ -323,4 +344,21 @@ func (s *PriceActionServiceImpl) checkValidMitigation(candle model.NSEHistorical
 		return false
 	}
 	return true
+}
+
+func (s *PriceActionServiceImpl) automationReschedule(candle model.NSEHistoricalData) bool {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		return true
+	}
+
+	now := time.Now().In(loc)
+	day := now.Weekday()
+	if day == 0 || day == 6 {
+		return false
+	}
+
+	today := now.Format("2006-01-02")
+	candleDate, _ := util.ParseNseDate(candle.Timestamp)
+	return candleDate < today
 }
