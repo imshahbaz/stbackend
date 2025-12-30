@@ -911,6 +911,38 @@ const docTemplate = `{
                 }
             }
         },
+        "/price-action/fvg/cleanup": {
+            "post": {
+                "description": "Triggers a maintenance task that fetches NSE history for all stored symbols and deletes FVGs that have been breached or filled by subsequent price action.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Clean up filled FVGs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/price-action/fvg/mitigation": {
             "get": {
                 "tags": [

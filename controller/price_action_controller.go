@@ -48,6 +48,7 @@ func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
 			fvg.POST("/check", ctrl.CheckFvgMitigation)
 			fvg.GET("/mitigation", ctrl.GetFvgMitigation)
 			fvg.POST("/old/:stopDate", ctrl.AddOlderFvgController)
+			fvg.POST("/cleanup", ctrl.FvgCleanUp)
 			admin := fvg.Group("")
 			admin.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
 			{
@@ -306,4 +307,30 @@ func (pc *PriceActionController) AddOlderFvgController(c *gin.Context) {
 	pc.paService.AddOlderFvg(c.Request.Context(), fileHeader.Filename, file, stopDate)
 
 	c.JSON(http.StatusOK, gin.H{"message": "FVG processing completed"})
+}
+
+// FvgCleanUp handles the removal of mitigated/filled Fair Value Gaps
+// @Summary      Clean up filled FVGs
+// @Description  Triggers a maintenance task that fetches NSE history for all stored symbols and deletes FVGs that have been breached or filled by subsequent price action.
+// @Tags         PriceAction
+// @Produce      json
+// @Success      200 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /price-action/fvg/cleanup [post]
+func (pc *PriceActionController) FvgCleanUp(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	err := pc.paService.FvgCleanUp(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to complete FVG cleanup: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "FVG cleanup task executed successfully",
+	})
 }

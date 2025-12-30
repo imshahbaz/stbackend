@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"sort"
-	"time"
 
 	"backend/cache"
 	"backend/model"
@@ -29,6 +28,7 @@ type PriceActionService interface {
 	DeleteFvg(ctx context.Context, symbol string, date string) error
 	CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error)
 	AutomateFvg(ctx context.Context) error
+	FvgCleanUp(ctx context.Context) error
 
 	AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string)
 	AddOlderFvg(ctx context.Context, fileName string, file io.Reader, stopDate string)
@@ -91,8 +91,7 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 		}
 
 		for _, block := range blocks {
-			// Mitigation Logic: Price pierces the zone but stays within bounds
-			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High {
+			if s.checkValidMitigation(today, block) {
 				var obResp model.ObResponse
 				copier.Copy(&obResp, idMap[pa.Symbol])
 				obResp.Date = block.Date
@@ -106,7 +105,7 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 		sort.Slice(response, func(i, j int) bool {
 			return response[i].Margin > response[j].Margin
 		})
-		cache.PriceActionCache.Set(cacheKey, response, 1*time.Hour)
+		cache.PriceActionCache.Set(cacheKey, response, -1)
 	}
 	return response, nil
 }
@@ -264,4 +263,60 @@ func (s *PriceActionServiceImpl) AddOlderFvg(ctx context.Context, fileName strin
 		}
 	}
 	log.Printf("%d Fvg's inserted", count)
+}
+
+func (s *PriceActionServiceImpl) FvgCleanUp(ctx context.Context) error {
+	cleanCount := 0
+	data, err := s.priceActionRepo.GetAllPriceAction(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, record := range data {
+		if len(record.Fvg) == 0 {
+			continue
+		}
+
+		history, err := s.nseService.FetchStockData(record.Symbol)
+		if err != nil {
+			continue
+		}
+
+		for _, info := range record.Fvg {
+			fvgDate := info.Date
+			count := 0
+			delete := false
+			for _, candle := range history {
+
+				candleDate, _ := util.ParseNseDate(candle.Timestamp)
+				if fvgDate >= candleDate {
+					break
+				}
+
+				if candle.Close < info.Low || candle.Low < info.Low {
+					delete = true
+					break
+				}
+
+				if candle.Close > candle.Open && candle.Low < info.High {
+					count++
+				}
+			}
+
+			if delete || count > 1 {
+				s.priceActionRepo.DeleteFvgByDate(ctx, record.Symbol, fvgDate)
+				cleanCount++
+			}
+		}
+	}
+
+	log.Printf("Total cleaned fvg %d", cleanCount)
+	return nil
+}
+
+func (s *PriceActionServiceImpl) checkValidMitigation(candle model.NSEHistoricalData, info model.Info) bool {
+	if candle.Close < info.Low || candle.Low < info.Low || candle.Low > info.High {
+		return false
+	}
+	return true
 }

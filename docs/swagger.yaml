@@ -860,6 +860,29 @@ paths:
       summary: Force Refresh FVG Mitigations
       tags:
       - PriceAction
+  /price-action/fvg/cleanup:
+    post:
+      description: Triggers a maintenance task that fetches NSE history for all stored
+        symbols and deletes FVGs that have been breached or filled by subsequent price
+        action.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Clean up filled FVGs
+      tags:
+      - PriceAction
   /price-action/fvg/mitigation:
     get:
       responses: {}
