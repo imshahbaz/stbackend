@@ -91,6 +91,10 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 		}
 
 		for _, block := range blocks {
+			checkDate, _ := util.ParseNseDate(history[1].Timestamp)
+			if !isOB && block.Date == checkDate {
+				continue
+			}
 			if s.checkValidMitigation(today, block) {
 				var obResp model.ObResponse
 				copier.Copy(&obResp, idMap[pa.Symbol])
