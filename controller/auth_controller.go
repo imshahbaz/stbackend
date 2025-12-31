@@ -16,11 +16,11 @@ import (
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
-	"backend/util"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-resty/resty/v2"
 	"github.com/jinzhu/copier"
+	"github.com/mitchellh/mapstructure"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -225,10 +225,11 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 	}}, nil
 }
 
-func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.Request) (*model.ResponseWrapper, error) {
 
 	var body model.TruecallerDto
-	if err := util.BindDynamic(ctx, &body); err != nil {
+
+	if err := mapstructure.Decode(input.Body, &body); err != nil {
 		return nil, huma.Error400BadRequest("Invalid Request")
 	}
 
