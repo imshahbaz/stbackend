@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"backend/cache"
@@ -55,7 +56,7 @@ func (ctrl *UserController) UpdateUsername(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	_, err := ctrl.userSvc.UpdateUsername(ctx, req.Email, req.Username)
+	_, err := ctrl.userSvc.UpdateUsername(ctx, req.UserID, req.Username)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
@@ -65,7 +66,7 @@ func (ctrl *UserController) UpdateUsername(c *gin.Context) {
 	}
 
 	// Cache Invalidation: Force refresh on next GetMe call
-	cache.UserAuthCache.Delete(req.Email)
+	cache.UserAuthCache.Delete(strconv.FormatInt(req.UserID, 10))
 
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,
@@ -116,7 +117,7 @@ func (ctrl *UserController) UpdateTheme(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	if _, err := ctrl.userSvc.UpdateUserTheme(ctx, userDto.Email, req.Theme); err != nil {
+	if _, err := ctrl.userSvc.UpdateUserTheme(ctx, userDto.UserID, req.Theme); err != nil {
 		c.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
 			Error:   "Internal server error",
@@ -125,7 +126,7 @@ func (ctrl *UserController) UpdateTheme(c *gin.Context) {
 	}
 
 	// Clear cache so that subsequent requests reflect the new theme
-	cache.UserAuthCache.Delete(userDto.Email)
+	cache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
 
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,

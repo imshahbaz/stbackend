@@ -221,12 +221,16 @@ definitions:
         type: string
       mobile:
         type: integer
+      name:
+        type: string
       password:
         type: string
       role:
         $ref: '#/definitions/model.UserRole'
       theme:
         $ref: '#/definitions/model.UserTheme'
+      userId:
+        type: integer
       username:
         type: string
     required:

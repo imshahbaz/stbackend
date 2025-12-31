@@ -1943,6 +1943,9 @@ const docTemplate = `{
                 "mobile": {
                     "type": "integer"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "password": {
                     "type": "string"
                 },
@@ -1951,6 +1954,9 @@ const docTemplate = `{
                 },
                 "theme": {
                     "$ref": "#/definitions/model.UserTheme"
+                },
+                "userId": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"
