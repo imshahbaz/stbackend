@@ -100,3 +100,7 @@ func (r *UserRepository) findOne(ctx context.Context, filter bson.M) (*model.Use
 	}
 	return &user, nil
 }
+
+func (r *UserRepository) FindByMobile(ctx context.Context, mobile string) (*model.User, error) {
+	return r.findOne(ctx, bson.M{"mobile": mobile})
+}

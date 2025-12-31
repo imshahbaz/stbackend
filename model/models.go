@@ -65,11 +65,12 @@ func (d *StrategyDto) ToEntity() Strategy {
 // --- USER ---
 // User is the main account entity
 type User struct {
-	Email    string    `bson:"_id" json:"email"` // Primary Key in MongoDB
+	Email    string    `bson:"_id" json:"email"`
 	Username string    `bson:"username" json:"username"`
 	Password string    `bson:"password" json:"password"`
 	Role     UserRole  `bson:"role" json:"role"`
 	Theme    UserTheme `bson:"theme" json:"theme"`
+	Mobile   int64     `bson:"mobile" json:"mobile"`
 }
 
 // ToDto maps the Entity to the API Response object
@@ -79,7 +80,7 @@ func (u *User) ToDto() UserDto {
 		Username: u.Username,
 		Role:     u.Role,
 		Theme:    u.Theme,
-		// Password fields are left empty in the DTO
+		Mobile:   u.Mobile,
 	}
 }
 
@@ -91,6 +92,7 @@ type UserDto struct {
 	ConfirmPassword string    `json:"confirmPassword,omitempty" validate:"required,eqfield=Password"`
 	Role            UserRole  `json:"role"`
 	Theme           UserTheme `json:"theme"`
+	Mobile          int64     `json:"mobile"`
 }
 
 func (d *UserDto) ToEntity() (*User, error) {
@@ -104,6 +106,7 @@ func (d *UserDto) ToEntity() (*User, error) {
 		Password: string(hashed),
 		Role:     RoleUser,
 		Theme:    ThemeDark,
+		Mobile:   d.Mobile,
 	}, nil
 }
 

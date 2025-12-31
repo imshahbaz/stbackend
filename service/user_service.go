@@ -24,6 +24,7 @@ type UserService interface {
 	UpdateUserTheme(ctx context.Context, email string, theme model.UserTheme) (*model.User, error)
 	UpdateUsername(ctx context.Context, email string, username string) (*model.User, error)
 	DeleteUser(ctx context.Context, username string) error
+	GetUserByMobile(ctx context.Context, mobile string) (*model.User, error)
 }
 
 // --- 3. Implementation Struct ---
@@ -123,5 +124,16 @@ func (s *UserServiceImpl) applyUpdate(ctx context.Context, email string, updateF
 		return nil, err
 	}
 
+	return user, nil
+}
+
+func (s *UserServiceImpl) GetUserByMobile(ctx context.Context, mobile string) (*model.User, error) {
+	user, err := s.repo.FindByMobile(ctx, mobile)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
 	return user, nil
 }
