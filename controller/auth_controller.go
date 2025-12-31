@@ -254,14 +254,17 @@ func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
 		return
 	}
 
+	detachedCtx := context.WithoutCancel(c.Request.Context())
+
 	var profile model.TruecallerProfile
 	resp, err := ctrl.restyClient.R().
 		SetHeader("Authorization", "Bearer "+data.AccessToken).
+		SetHeader("Cache-Control", "no-cache").
 		SetResult(&profile).
 		Get(data.Endpoint)
 
 	if err == nil && resp.IsSuccess() {
-		user, err := ctrl.userSvc.FindUser(c.Request.Context(), profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
+		user, err := ctrl.userSvc.FindUser(detachedCtx, profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
 		if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
 			c.JSON(http.StatusBadRequest, model.Response{
 				Success: false,
@@ -280,7 +283,7 @@ func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
 				Name:     strings.TrimSpace(profile.Name.First + " " + profile.Name.Last),
 			}
 
-			newUser, err := ctrl.userSvc.CreateUser(c.Request.Context(), dto)
+			newUser, err := ctrl.userSvc.CreateUser(detachedCtx, dto)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, model.Response{
 					Success: false,
@@ -321,16 +324,10 @@ func (ctrl *AuthController) TrueCallerStatus(c *gin.Context) {
 	reqID := c.Param("requestId")
 	if token, ok := localCache.PendingUserCache.Get(reqID); ok {
 		userDto := token.(model.UserDto)
-		if _, err := ctrl.userSvc.CreateUser(c.Request.Context(), userDto); err != nil {
-			c.JSON(http.StatusInternalServerError, model.Response{
-				Success: false,
-				Message: "Failed to create user"})
-			return
-		}
-
 		localCache.PendingUserCache.Delete(reqID)
 		token, err := auth.GenerateToken(userDto)
 		if err != nil {
+			log.Printf("Error while generating token %v", err.Error())
 			c.JSON(http.StatusInternalServerError, model.Response{
 				Success: false,
 				Error:   "Internal server error",
@@ -339,7 +336,7 @@ func (ctrl *AuthController) TrueCallerStatus(c *gin.Context) {
 		}
 
 		ctrl.setAuthCookie(c, token, 1800)
-		localCache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
+		localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
 		c.JSON(http.StatusCreated, model.Response{
 			Success: true,
 			Message: "User created",
