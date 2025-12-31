@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -233,13 +234,22 @@ func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
 // @Success      200   {object}  model.Response{success=bool,error=string} "Callback Successful"
 // @Failure      400   {object}  model.Response{success=bool,error=string} "Invalid Request"
 // @Failure      500   {object}  model.Response{success=bool,error=string} "Internal Server Error"
-// @Router       /api/auth/truecaller [post]
+// @Router       /auth/truecaller [post]
 func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
 	var data model.TruecallerDto
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(http.StatusBadRequest, model.Response{
 			Success: false,
 			Error:   "Invalid Request",
+		})
+		return
+	}
+
+	if data.Status == "flow_invoked" {
+		log.Printf("Handshake received for Nonce: %s", data.RequestId)
+		c.JSON(http.StatusOK, model.Response{
+			Success: true,
+			Message: "Flow invocation success",
 		})
 		return
 	}
@@ -306,7 +316,7 @@ func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
 // @Success      201        {object}  model.Response{success=bool,message=string,data=model.UserDto} "User created and JWT issued"
 // @Failure      404        {object}  model.Response{success=bool,error=string} "Waiting for Truecaller callback"
 // @Failure      500        {object}  model.Response{success=bool,message=string} "Failed to create user or generate token"
-// @Router       /api/auth/status/{requestId} [get]
+// @Router       /auth/truecaller/status/{requestId} [get]
 func (ctrl *AuthController) TrueCallerStatus(c *gin.Context) {
 	reqID := c.Param("requestId")
 	if token, ok := localCache.PendingUserCache.Get(reqID); ok {

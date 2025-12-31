@@ -200,6 +200,8 @@ definitions:
         type: string
       requestId:
         type: string
+      status:
+        type: string
     type: object
   model.UpdateThemeRequest:
     properties:
@@ -273,109 +275,6 @@ info:
   title: Trades Management API
   version: "1.0"
 paths:
-  /api/auth/status/{requestId}:
-    get:
-      description: Polls for the status of a login request. If successful, creates
-        the user, generates a JWT, and sets an auth cookie.
-      parameters:
-      - description: Unique Request ID
-        in: path
-        name: requestId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: User created and JWT issued
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.UserDto'
-                message:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-        "404":
-          description: Waiting for Truecaller callback
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-        "500":
-          description: Failed to create user or generate token
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                message:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-      summary: Check Truecaller Auth Status
-      tags:
-      - Authentication
-  /api/auth/truecaller:
-    post:
-      consumes:
-      - application/json
-      description: Receives the access token from Truecaller, fetches user profile,
-        and warms up the local cache for NSE data.
-      parameters:
-      - description: Truecaller Data
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/model.TruecallerDto'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Callback Successful
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-        "400":
-          description: Invalid Request
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-                success:
-                  type: boolean
-              type: object
-      summary: Process Truecaller Login Callback
-      tags:
-      - Authentication
   /auth/login:
     post:
       consumes:
@@ -464,6 +363,109 @@ paths:
       summary: User Signup Initiation
       tags:
       - Auth
+  /auth/truecaller:
+    post:
+      consumes:
+      - application/json
+      description: Receives the access token from Truecaller, fetches user profile,
+        and warms up the local cache for NSE data.
+      parameters:
+      - description: Truecaller Data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/model.TruecallerDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Callback Successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "400":
+          description: Invalid Request
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+      summary: Process Truecaller Login Callback
+      tags:
+      - Authentication
+  /auth/truecaller/status/{requestId}:
+    get:
+      description: Polls for the status of a login request. If successful, creates
+        the user, generates a JWT, and sets an auth cookie.
+      parameters:
+      - description: Unique Request ID
+        in: path
+        name: requestId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created and JWT issued
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.UserDto'
+                message:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "404":
+          description: Waiting for Truecaller callback
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "500":
+          description: Failed to create user or generate token
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                message:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+      summary: Check Truecaller Auth Status
+      tags:
+      - Authentication
   /auth/verify-otp:
     post:
       consumes:

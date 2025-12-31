@@ -4,6 +4,7 @@ type TruecallerDto struct {
 	AccessToken string `json:"accessToken"`
 	RequestId   string `json:"requestId"`
 	Endpoint    string `json:"endpoint"`
+	Status      string `json:"status"`
 }
 
 type TruecallerProfile struct {
