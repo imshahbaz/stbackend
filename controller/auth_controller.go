@@ -4,17 +4,20 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"backend/auth"
 	localCache "backend/cache"
 	"backend/config"
+	"backend/customerrors"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-resty/resty/v2"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -24,6 +27,7 @@ type AuthController struct {
 	cfgManager   *config.ConfigManager
 	otpSvc       service.OtpService
 	isProduction bool
+	restyClient  *resty.Client
 }
 
 func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
@@ -33,6 +37,7 @@ func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
 		cfgManager:   cfgManager,
 		otpSvc:       otpSvc,
 		isProduction: isProduction,
+		restyClient:  resty.New().SetTimeout(10 * time.Second),
 	}
 }
 
@@ -48,6 +53,12 @@ func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
 		{
 			protected.POST("/logout", ctrl.Logout)
 			protected.GET("/me", ctrl.GetMe)
+		}
+
+		trueCallerGrp := authGroup.Group("/truecaller")
+		{
+			trueCallerGrp.POST("", ctrl.TrueCallerCallBack)
+			trueCallerGrp.GET("/status/:requestId", ctrl.TrueCallerStatus)
 		}
 	}
 }
@@ -69,7 +80,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		return
 	}
 
-	user, err := ctrl.userSvc.GetUser(c.Request.Context(), req.Email)
+	user, err := ctrl.userSvc.FindUser(c.Request.Context(), 0, req.Email, 0)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
 		return
@@ -88,7 +99,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	}
 
 	ctrl.setAuthCookie(c, token, 1800)
-	localCache.UserAuthCache.Delete(req.Email)
+	localCache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
 	c.JSON(http.StatusOK, userDto)
 }
 
@@ -119,19 +130,20 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 		return
 	}
 
-	if cached, found := localCache.UserAuthCache.Get(tokenUser.Email); found {
+	cacheKey := strconv.FormatInt(tokenUser.UserID, 10)
+	if cached, found := localCache.UserAuthCache.Get(cacheKey); found {
 		c.JSON(http.StatusOK, cached.(model.UserDto))
 		return
 	}
 
-	user, err := ctrl.userSvc.GetUser(c.Request.Context(), tokenUser.Email)
+	user, err := ctrl.userSvc.FindUser(c.Request.Context(), tokenUser.Mobile, tokenUser.Email, tokenUser.UserID)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
 	dto := user.ToDto()
-	localCache.UserAuthCache.Set(dto.Email, dto, cache.DefaultExpiration)
+	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
 	c.JSON(http.StatusOK, dto)
 }
 
@@ -209,6 +221,127 @@ func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
 
 	localCache.PendingUserCache.Delete(req.Email)
 	c.JSON(http.StatusCreated, model.MessageResponse{Message: "Signup successful"})
+}
+
+// TrueCallerCallBack godoc
+// @Summary      Process Truecaller Login Callback
+// @Description  Receives the access token from Truecaller, fetches user profile, and warms up the local cache for NSE data.
+// @Tags         Authentication
+// @Accept       json
+// @Produce      json
+// @Param        data  body      model.TruecallerDto  true  "Truecaller Data"
+// @Success      200   {object}  model.Response{success=bool,error=string} "Callback Successful"
+// @Failure      400   {object}  model.Response{success=bool,error=string} "Invalid Request"
+// @Failure      500   {object}  model.Response{success=bool,error=string} "Internal Server Error"
+// @Router       /api/auth/truecaller [post]
+func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
+	var data model.TruecallerDto
+	if err := c.ShouldBindJSON(&data); err != nil {
+		c.JSON(http.StatusBadRequest, model.Response{
+			Success: false,
+			Error:   "Invalid Request",
+		})
+		return
+	}
+
+	var profile model.TruecallerProfile
+	resp, err := ctrl.restyClient.R().
+		SetHeader("Authorization", "Bearer "+data.AccessToken).
+		SetResult(&profile).
+		Get(data.Endpoint)
+
+	if err == nil && resp.IsSuccess() {
+		user, err := ctrl.userSvc.FindUser(c.Request.Context(), profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
+		if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
+			c.JSON(http.StatusBadRequest, model.Response{
+				Success: false,
+				Error:   "Invalid Request",
+			})
+			return
+		}
+
+		if user == nil {
+			dto := model.UserDto{
+				Email:    profile.OnlineIdentities.Email,
+				Username: profile.Name.First + "_" + profile.Name.Last,
+				Role:     model.RoleUser,
+				Theme:    model.ThemeDark,
+				Mobile:   profile.PhoneNumbers[0],
+				Name:     strings.TrimSpace(profile.Name.First + " " + profile.Name.Last),
+			}
+
+			newUser, err := ctrl.userSvc.CreateUser(c.Request.Context(), dto)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, model.Response{
+					Success: false,
+					Error:   "Invalid Request",
+				})
+				return
+			}
+
+			user = newUser
+		}
+
+		localCache.PendingUserCache.Set(data.RequestId, user.ToDto(), cache.DefaultExpiration)
+
+		c.JSON(http.StatusOK, model.Response{
+			Success: true,
+			Error:   "Callback Successfull",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, model.Response{
+		Success: false,
+		Error:   "Invalid Request",
+	})
+}
+
+// TrueCallerStatus godoc
+// @Summary      Check Truecaller Auth Status
+// @Description  Polls for the status of a login request. If successful, creates the user, generates a JWT, and sets an auth cookie.
+// @Tags         Authentication
+// @Produce      json
+// @Param        requestId  path      string  true  "Unique Request ID"
+// @Success      201        {object}  model.Response{success=bool,message=string,data=model.UserDto} "User created and JWT issued"
+// @Failure      404        {object}  model.Response{success=bool,error=string} "Waiting for Truecaller callback"
+// @Failure      500        {object}  model.Response{success=bool,message=string} "Failed to create user or generate token"
+// @Router       /api/auth/status/{requestId} [get]
+func (ctrl *AuthController) TrueCallerStatus(c *gin.Context) {
+	reqID := c.Param("requestId")
+	if token, ok := localCache.PendingUserCache.Get(reqID); ok {
+		userDto := token.(model.UserDto)
+		if _, err := ctrl.userSvc.CreateUser(c.Request.Context(), userDto); err != nil {
+			c.JSON(http.StatusInternalServerError, model.Response{
+				Success: false,
+				Message: "Failed to create user"})
+			return
+		}
+
+		localCache.PendingUserCache.Delete(reqID)
+		token, err := auth.GenerateToken(userDto)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, model.Response{
+				Success: false,
+				Error:   "Internal server error",
+			})
+			return
+		}
+
+		ctrl.setAuthCookie(c, token, 1800)
+		localCache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
+		c.JSON(http.StatusCreated, model.Response{
+			Success: true,
+			Message: "User created",
+			Data:    userDto,
+		})
+		return
+	}
+
+	c.JSON(http.StatusNotFound, model.Response{
+		Success: false,
+		Error:   "Waiting for truecaller",
+	})
 }
 
 func (ctrl *AuthController) setAuthCookie(c *gin.Context, token string, maxAge int) {

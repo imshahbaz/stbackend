@@ -11,7 +11,7 @@ import (
 func CORS(cfg *config.ConfigManager) gin.HandlerFunc {
 	return cors.New(cors.Config{
 		// 1. Specify your exact frontend origin (avoid "*" when using credentials)
-		AllowOrigins: []string{cfg.GetConfig().FrontendUrl},
+		AllowOrigins: cfg.GetConfig().FrontendUrls,
 
 		// 2. Methods your React app is allowed to use
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
