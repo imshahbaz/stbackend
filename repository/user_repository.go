@@ -23,7 +23,6 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 	}
 }
 
-// Save performs an Upsert based on the User's Email (_id)
 func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
 	opts := options.Update().SetUpsert(true)
 	_, err := r.collection.UpdateOne(

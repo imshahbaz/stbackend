@@ -14,7 +14,6 @@ func NewHealthController() *HealthController {
 	return &HealthController{}
 }
 
-// RegisterRoutes sets up the health check endpoint.
 func (ctrl *HealthController) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-health",

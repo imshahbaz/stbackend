@@ -14,14 +14,12 @@ type StrategyRepository struct {
 	collection *mongo.Collection
 }
 
-// NewStrategyRepository initializes the repository for the chartink_strategy collection.
 func NewStrategyRepository(db *mongo.Database) *StrategyRepository {
 	return &StrategyRepository{
 		collection: db.Collection("chartink_strategy"),
 	}
 }
 
-// Save handles both Insert and Update using Upsert logic.
 func (r *StrategyRepository) Save(ctx context.Context, strategy model.Strategy) error {
 	opts := options.Update().SetUpsert(true)
 	_, err := r.collection.UpdateOne(
@@ -33,7 +31,6 @@ func (r *StrategyRepository) Save(ctx context.Context, strategy model.Strategy) 
 	return err
 }
 
-// FindById retrieves a single strategy by its name (_id).
 func (r *StrategyRepository) FindById(ctx context.Context, name string) (*model.Strategy, error) {
 	var strategy model.Strategy
 	err := r.collection.FindOne(ctx, bson.M{"_id": name}).Decode(&strategy)
@@ -46,7 +43,6 @@ func (r *StrategyRepository) FindById(ctx context.Context, name string) (*model.
 	return &strategy, nil
 }
 
-// FindAll retrieves all stored strategies.
 func (r *StrategyRepository) FindAll(ctx context.Context) ([]model.Strategy, error) {
 	var strategies []model.Strategy
 	cursor, err := r.collection.Find(ctx, bson.D{})
@@ -59,14 +55,12 @@ func (r *StrategyRepository) FindAll(ctx context.Context) ([]model.Strategy, err
 		return nil, err
 	}
 
-	// Return empty slice instead of nil if no strategies found
 	if strategies == nil {
 		return []model.Strategy{}, nil
 	}
 	return strategies, nil
 }
 
-// DeleteById removes a strategy from the collection by its name.
 func (r *StrategyRepository) DeleteById(ctx context.Context, name string) error {
 	_, err := r.collection.DeleteOne(ctx, bson.M{"_id": name})
 	return err

@@ -14,10 +14,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateToken creates a new JWT with a specific email and issued-at time
 func GenerateToken(user model.UserDto) (string, error) {
 	now := time.Now()
-	// 30 minutes for sliding window
 	expirationTime := now.Add(30 * time.Minute)
 
 	claims := &Claims{
@@ -32,7 +30,6 @@ func GenerateToken(user model.UserDto) (string, error) {
 	return token.SignedString(SecretKey)
 }
 
-// ValidateToken now returns *Claims so the middleware can check expiration timing
 func ValidateToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 

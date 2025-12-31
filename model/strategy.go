@@ -2,15 +2,12 @@ package model
 
 import "strings"
 
-// --- STRATEGY ---
-// Strategy is the core scanner entity
 type Strategy struct {
 	Name       string `bson:"_id" json:"name"`
 	ScanClause string `bson:"scanClause" json:"scanClause"`
 	Active     bool   `bson:"active" json:"active"`
 }
 
-// StrategyDto is used for creating/updating strategies
 type StrategyDto struct {
 	Name       string `json:"name" validate:"required"`
 	ScanClause string `json:"scanClause" validate:"required"`
@@ -25,7 +22,6 @@ func (d *StrategyDto) ToEntity() Strategy {
 	}
 }
 
-// --- Huma Structs ---
 
 type CreateStrategyRequest struct {
 	Body StrategyDto

@@ -19,7 +19,6 @@ type EnvConfig struct {
 	Environment   string `json:"environment"`
 }
 
-// --- Huma Structs ---
 
 type UpdateConfigInput struct {
 	Body MongoEnvConfig

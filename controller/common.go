@@ -2,7 +2,6 @@ package controller
 
 import "backend/model"
 
-// NewResponse creates a success response with the given data and message.
 func NewResponse(data any, message string) *model.DefaultResponse {
 	return &model.DefaultResponse{
 		Body: model.Response{
@@ -13,7 +12,6 @@ func NewResponse(data any, message string) *model.DefaultResponse {
 	}
 }
 
-// NewErrorResponse creates an error response (conceptually, though Huma handles HTTP errors separately).
 func NewErrorResponse(err string) *model.DefaultResponse {
 	return &model.DefaultResponse{
 		Body: model.Response{

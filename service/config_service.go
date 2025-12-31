@@ -28,7 +28,6 @@ type ConfigServiceImpl struct {
 func NewConfigService(db *mongo.Database, mongoId string) ConfigService {
 	collection := db.Collection("configs")
 
-	// Initial boot-up load
 	var mongoConfig model.MongoEnvConfig
 	err := collection.FindOne(context.Background(), bson.M{"_id": mongoId}).Decode(&mongoConfig)
 	if err != nil {
@@ -46,7 +45,6 @@ func (s *ConfigServiceImpl) GetConfigManager() *config.ConfigManager {
 	return s.configManager
 }
 
-// LoadMongoEnvConfig refreshes the in-memory ConfigManager from the Database
 func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx context.Context) error {
 	val, err := s.FindMongoEnvConfig(ctx)
 	if err != nil {
@@ -59,7 +57,6 @@ func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx context.Context) error {
 	return nil
 }
 
-// UpdateMongoEnvConfig updates the DB and then reloads the ConfigManager
 func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx context.Context, cfg model.MongoEnvConfig) error {
 	filter := bson.M{"_id": s.mongoId}
 	update := bson.M{"$set": cfg}
@@ -70,11 +67,9 @@ func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx context.Context, cfg model.
 		return err
 	}
 
-	// Trigger reload to sync in-memory ConfigManager
 	return s.LoadMongoEnvConfig(ctx)
 }
 
-// FindMongoEnvConfig is a pure data fetcher
 func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.MongoEnvConfig, error) {
 	var cfg model.MongoEnvConfig
 	err := s.collection.FindOne(ctx, bson.M{"_id": s.mongoId}).Decode(&cfg)
@@ -84,7 +79,6 @@ func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.Mong
 	return &cfg, nil
 }
 
-// GetActiveMongoEnvConfig returns the current in-memory configuration
 func (s *ConfigServiceImpl) GetActiveMongoEnvConfig() model.MongoEnvConfig {
 	return *s.configManager.GetConfig()
 }

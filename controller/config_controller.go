@@ -72,7 +72,6 @@ func (ctrl *ConfigController) getActiveMongoEnvConfig(ctx context.Context, input
 
 func (ctrl *ConfigController) updateMongoEnvConfig(ctx context.Context, input *model.UpdateConfigInput) (*model.DefaultResponse, error) {
 	req := input.Body
-	// Validate?
 
 	if err := ctrl.cfgSvc.UpdateMongoEnvConfig(ctx, req); err != nil {
 		return NewErrorResponse("Error Updating Mongo Configs: " + err.Error()), nil

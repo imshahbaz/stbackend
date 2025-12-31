@@ -41,7 +41,6 @@ type NseResponseWrapper[T any] struct {
 	Data []T `json:"data"`
 }
 
-// --- Huma Structs ---
 
 type NseHistoryInput struct {
 	Symbol string `query:"symbol" doc:"Stock Symbol (e.g. RELIANCE)" required:"true"`

@@ -26,7 +26,6 @@ type ObResponse struct {
 	Date string `json:"date"`
 }
 
-// --- Huma Structs ---
 
 type TriggerAutomationResponse struct {
 	Body Response

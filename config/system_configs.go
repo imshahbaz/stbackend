@@ -22,7 +22,6 @@ func LoadConfigs() (*SystemConfigs, error) {
 		return nil, fmt.Errorf("environment variable 'config' is empty or not set")
 	}
 
-	// 2. Parse JSON into the struct
 	var envCfg model.EnvConfig
 	err := json.Unmarshal([]byte(rawJson), &envCfg)
 	if err != nil {

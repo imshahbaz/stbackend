@@ -15,16 +15,13 @@ type MarginRepository struct {
 	collection *mongo.Collection
 }
 
-// NewMarginRepository initializes the repository for the margin collection.
 func NewMarginRepository(db *mongo.Database) *MarginRepository {
 	return &MarginRepository{
 		collection: db.Collection("margin"),
 	}
 }
 
-// --- Query Methods ---
 
-// FindAll retrieves all stock margins from the collection.
 func (r *MarginRepository) FindAll(ctx context.Context) ([]model.Margin, error) {
 	var margins []model.Margin
 	cursor, err := r.collection.Find(ctx, bson.M{})
@@ -37,14 +34,12 @@ func (r *MarginRepository) FindAll(ctx context.Context) ([]model.Margin, error) 
 		return nil, fmt.Errorf("failed to decode margins: %w", err)
 	}
 
-	// Ensure we return an empty slice rather than nil for easier iteration in service
 	if margins == nil {
 		return []model.Margin{}, nil
 	}
 	return margins, nil
 }
 
-// FindBySymbol retrieves a single margin by its ID.
 func (r *MarginRepository) FindBySymbol(ctx context.Context, symbol string) (*model.Margin, error) {
 	var margin model.Margin
 	err := r.collection.FindOne(ctx, bson.M{"_id": symbol}).Decode(&margin)
@@ -57,15 +52,12 @@ func (r *MarginRepository) FindBySymbol(ctx context.Context, symbol string) (*mo
 	return &margin, nil
 }
 
-// --- Bulk & Persistence Operations ---
 
-// SaveAll performs a high-performance bulk upsert of margin records.
 func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) error {
 	if len(margins) == 0 {
 		return nil
 	}
 
-	// Pre-allocate slice capacity for better performance
 	models := make([]mongo.WriteModel, len(margins))
 	for i, m := range margins {
 		models[i] = mongo.NewUpdateOneModel().
@@ -74,7 +66,6 @@ func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) 
 			SetUpsert(true)
 	}
 
-	// Ordered(false) allows MongoDB to execute operations in parallel for speed
 	opts := options.BulkWrite().SetOrdered(false)
 	_, err := r.collection.BulkWrite(ctx, models, opts)
 	if err != nil {
@@ -84,7 +75,6 @@ func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) 
 	return nil
 }
 
-// Save handles a single record upsert.
 func (r *MarginRepository) Save(ctx context.Context, margin model.Margin) error {
 	opts := options.Update().SetUpsert(true)
 	_, err := r.collection.UpdateOne(
@@ -96,9 +86,7 @@ func (r *MarginRepository) Save(ctx context.Context, margin model.Margin) error 
 	return err
 }
 
-// --- Deletion Logic ---
 
-// DeleteByIdNotIn removes all records whose symbols are not present in the provided slice.
 func (r *MarginRepository) DeleteByIdNotIn(ctx context.Context, ids []string) (int64, error) {
 	filter := bson.M{"_id": bson.M{"$nin": ids}}
 

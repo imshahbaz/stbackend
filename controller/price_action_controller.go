@@ -22,7 +22,6 @@ func NewPriceActionController(s service.PriceActionService, isProd bool) *PriceA
 }
 
 func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
-	// Public or Generic
 	huma.Register(api, huma.Operation{
 		OperationID: "trigger-automation",
 		Method:      http.MethodPost,
@@ -39,7 +38,6 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"PriceAction"},
 	}, ctrl.GetPABySymbol)
 
-	// OB
 	huma.Register(api, huma.Operation{
 		OperationID: "check-ob-mitigation",
 		Method:      http.MethodPost,
@@ -56,7 +54,6 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"PriceAction"},
 	}, ctrl.GetOBMitigation)
 
-	// Admin OB
 	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
 	adminMw := middleware.HumaAdminOnly(api)
 
@@ -90,7 +87,6 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"PriceAction (Admin)"},
 	}, ctrl.DeleteOrderBlock)
 
-	// FVG
 	huma.Register(api, huma.Operation{
 		OperationID: "check-fvg-mitigation",
 		Method:      http.MethodPost,
@@ -115,7 +111,6 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"PriceAction"},
 	}, ctrl.FvgCleanUp)
 
-	// Admin FVG
 	huma.Register(api, huma.Operation{
 		OperationID: "save-fvg",
 		Method:      http.MethodPost,
@@ -149,7 +144,6 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 
 func (ctrl *PriceActionController) TriggerAutomation(ctx context.Context, input *struct{}) (*model.TriggerAutomationResponse, error) {
 	bgCtx := context.Background()
-	// Using background context since Huma context is cancelled after request
 	go func() {
 		_ = ctrl.paService.AutomateOrderBlock(bgCtx, 0)
 		_ = ctrl.paService.AutomateFvg(bgCtx, 0)
@@ -209,7 +203,6 @@ func (ctrl *PriceActionController) DeleteOrderBlock(ctx context.Context, input *
 	return NewResponse(nil, "Order Block deleted successfully"), nil
 }
 
-// FVG
 
 func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	data, err := ctrl.paService.CheckFvgMitigation(ctx)
