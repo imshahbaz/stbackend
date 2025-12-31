@@ -1,12 +1,13 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type MarginController struct {
@@ -19,98 +20,72 @@ func NewMarginController(ms service.MarginService) *MarginController {
 	}
 }
 
-// RegisterRoutes sets up the route group for margin management.
-func (ctrl *MarginController) RegisterRoutes(router *gin.RouterGroup) {
-	marginGroup := router.Group("/margin")
-	{
-		marginGroup.GET("/all", ctrl.getAllMargins)
-		marginGroup.GET("/symbol/:symbol", ctrl.getMargin)
-		marginGroup.POST("/reload", ctrl.reloadAllMargins) // Changed to POST for action
-		marginGroup.POST("/load-from-csv", ctrl.loadFromCsv)
-	}
+func (ctrl *MarginController) RegisterRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-all-margins",
+		Method:      http.MethodGet,
+		Path:        "/api/margin/all",
+		Summary:     "Get all margins",
+		Description: "Returns a list of all stock margins from the local memory cache",
+		Tags:        []string{"Margin"},
+	}, ctrl.getAllMargins)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-margin",
+		Method:      http.MethodGet,
+		Path:        "/api/margin/symbol/{symbol}",
+		Summary:     "Get margin by symbol",
+		Description: "Fetches the margin details for a specific stock symbol",
+		Tags:        []string{"Margin"},
+	}, ctrl.getMargin)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "reload-margins",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/reload",
+		Summary:     "Reload margins",
+		Description: "Forces a reload of all margins from MongoDB into the memory cache",
+		Tags:        []string{"Margin"},
+	}, ctrl.reloadAllMargins)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "load-margin-from-csv",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/load-from-csv",
+		Summary:     "Load margins from CSV",
+		Tags:        []string{"Margin"},
+	}, ctrl.loadFromCsv)
+
 }
 
-// getAllMargins retrieves all stock margins.
-// @Summary      Get all margins
-// @Description  Returns a list of all stock margins from the local memory cache
-// @Tags         Margin
-// @Produce      json
-// @Success      200  {array}  model.Margin
-// @Router       /margin/all [get]
-func (ctrl *MarginController) getAllMargins(c *gin.Context) {
+func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	margins := ctrl.marginService.GetAllMargins()
-	// Return empty array instead of nil if no margins exist
 	if margins == nil {
-		c.JSON(http.StatusOK, []model.Margin{})
-		return
+		margins = []model.Margin{}
 	}
-	c.JSON(http.StatusOK, margins)
+	return NewResponse(margins, "Success"), nil
 }
 
-// getMargin retrieves a single margin by symbol.
-// @Summary      Get margin by symbol
-// @Description  Fetches the margin details for a specific stock symbol
-// @Tags         Margin
-// @Produce      json
-// @Param        symbol  path      string  true  "Stock Symbol"  example(RELIANCE)
-// @Success      200     {object}  model.Margin
-// @Failure      404     {object}  map[string]string
-// @Router       /margin/symbol/{symbol} [get]
-func (ctrl *MarginController) getMargin(c *gin.Context) {
-	symbol := c.Param("symbol")
-	margin, exists := ctrl.marginService.GetMargin(symbol)
+func (ctrl *MarginController) getMargin(ctx context.Context, input *model.GetMarginInput) (*model.DefaultResponse, error) {
+	margin, exists := ctrl.marginService.GetMargin(input.Symbol)
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Margin not found for symbol: " + symbol})
-		return
+		return NewErrorResponse("Margin not found for symbol: " + input.Symbol), nil
 	}
-	c.JSON(http.StatusOK, margin)
+	return NewResponse(margin, "Success"), nil
 }
 
-// reloadAllMargins refreshes the margin cache from DB.
-// @Summary      Reload margins
-// @Description  Forces a reload of all margins from MongoDB into the memory cache
-// @Tags         Margin
-// @Produce      json
-// @Success      200     {object}  map[string]string
-// @Failure      500     {object}  map[string]string
-// @Router       /margin/reload [post]
-func (ctrl *MarginController) reloadAllMargins(c *gin.Context) {
-	if err := ctrl.marginService.ReloadAllMargins(c.Request.Context()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload margins: " + err.Error()})
-		return
+func (ctrl *MarginController) reloadAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	if err := ctrl.marginService.ReloadAllMargins(ctx); err != nil {
+		return NewErrorResponse("Failed to reload margins: " + err.Error()), nil
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Margins reloaded successfully"})
+	return NewResponse(nil, "Margins reloaded successfully"), nil
 }
 
-// loadFromCsv handles CSV file upload for margins.
-// @Summary      Upload Margin CSV
-// @Description  Uploads a CSV file to bulk load or update margin data
-// @Tags         Margin
-// @Accept       multipart/form-data
-// @Produce      json
-// @Param        file  formData  file  true  "Margin CSV file"
-// @Success      200   {object}  map[string]string
-// @Failure      400   {object}  map[string]string
-// @Failure      500   {object}  map[string]string
-// @Router       /margin/load-from-csv [post]
-func (ctrl *MarginController) loadFromCsv(c *gin.Context) {
-	fileHeader, err := c.FormFile("file")
+func (ctrl *MarginController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.DefaultResponse, error) {
+	formData := input.RawBody.Data()
+	err := ctrl.marginService.LoadFromCsv(ctx, formData.File.Filename, formData.File.File)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file is required"})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not open uploaded file"})
-		return
-	}
-	defer file.Close()
-
-	if err = ctrl.marginService.LoadFromCsv(c.Request.Context(), fileHeader.Filename, file); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "CSV data processed successfully"})
+	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
 }

@@ -9,9 +9,9 @@ import (
 	"backend/repository"
 	"backend/service"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -54,42 +54,51 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	nseSvc := service.NewNseService(yahooClient)
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
-	if !isProduction {
-		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	}
-
 	priceActionRepo := repository.NewPriceActionRepo(db)
 	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 
 	// --- 4. Routes & Controllers ---
-	api := r.Group("/api")
-	{
 
+	humaConfig := huma.DefaultConfig("Shahbaz Trades Management API", "1.0.0")
+	if isProduction {
+		humaConfig.DocsPath = ""
+		humaConfig.OpenAPIPath = ""
+	}
+	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"bearer": {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "JWT",
+		},
+	}
+	humaApi := humagin.New(r, humaConfig)
+
+	{
 		// Health Check
-		controller.NewHealthController().RegisterRoutes(api)
+		controller.NewHealthController().RegisterRoutes(humaApi)
 
 		// Email Endpoints
-		controller.NewEmailController(emailSvc).RegisterRoutes(api)
+		controller.NewEmailController(emailSvc).RegisterRoutes(humaApi)
 
 		// Margin Endpoints
-		controller.NewMarginController(marginSvc).RegisterRoutes(api)
+		controller.NewMarginController(marginSvc).RegisterRoutes(humaApi)
 
 		// Strategy Endpoints
-		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(api)
+		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(humaApi)
 
 		// ChartInk Endpoints
-		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(api)
+		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		//User/Auth Endpoints (Once implemented)
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction).RegisterRoutes(api)
+		//User/Auth Endpoints
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewUserController(userSvc, isProduction).RegisterRoutes(api)
+		controller.NewUserController(userSvc, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewNseController(nseSvc).RegisterRoutes(api)
+		controller.NewNseController(nseSvc).RegisterRoutes(humaApi)
 
-		controller.NewConfigController(configService, isProduction).RegisterRoutes(api)
+		controller.NewConfigController(configService, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(api)
+		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r

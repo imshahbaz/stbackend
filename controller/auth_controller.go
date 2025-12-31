@@ -17,8 +17,9 @@ import (
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-resty/resty/v2"
+	"github.com/jinzhu/copier"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -42,235 +43,217 @@ func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
 	}
 }
 
-func (ctrl *AuthController) RegisterRoutes(router *gin.RouterGroup) {
-	authGroup := router.Group("/auth")
-	{
-		authGroup.POST("/login", ctrl.Login)
-		authGroup.POST("/signup", ctrl.Signup)
-		authGroup.POST("/verify-otp", ctrl.VerifyOtp)
+func (ctrl *AuthController) RegisterRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "login",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/login",
+		Summary:     "User Login",
+		Description: "Authenticates user via HttpOnly cookie and JWT",
+		Tags:        []string{"Auth"},
+	}, ctrl.Login)
 
-		protected := authGroup.Group("/")
-		protected.Use(middleware.AuthMiddleware(ctrl.isProduction))
-		{
-			protected.POST("/logout", ctrl.Logout)
-			protected.GET("/me", ctrl.GetMe)
-		}
+	huma.Register(api, huma.Operation{
+		OperationID: "signup",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/signup",
+		Summary:     "User Signup Initiation",
+		Tags:        []string{"Auth"},
+	}, ctrl.Signup)
 
-		trueCallerGrp := authGroup.Group("/truecaller")
-		{
-			trueCallerGrp.POST("", ctrl.TrueCallerCallBack)
-			trueCallerGrp.GET("/status/:requestId", ctrl.TrueCallerStatus)
-		}
-	}
+	huma.Register(api, huma.Operation{
+		OperationID: "verify-otp",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/verify-otp",
+		Summary:     "Verify OTP",
+		Tags:        []string{"Auth"},
+	}, ctrl.VerifyOtp)
+
+	// Protected routes
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "logout",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/logout",
+		Summary:     "User Logout",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Auth"},
+	}, ctrl.Logout)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-me",
+		Method:      http.MethodGet,
+		Path:        "/api/auth/me",
+		Summary:     "Get Current User",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Auth"},
+	}, ctrl.GetMe)
+
+	// TrueCaller
+	huma.Register(api, huma.Operation{
+		OperationID: "truecaller-callback",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/truecaller",
+		Summary:     "Process Truecaller Login Callback",
+		Tags:        []string{"Authentication"},
+	}, ctrl.TrueCallerCallBack)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "truecaller-status",
+		Method:      http.MethodGet,
+		Path:        "/api/auth/truecaller/status/{requestId}",
+		Summary:     "Check Truecaller Auth Status",
+		Tags:        []string{"Authentication"},
+	}, ctrl.TrueCallerStatus)
 }
 
-// Login godoc
-// @Summary      User Login
-// @Description  Authenticates user via HttpOnly cookie and JWT
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        login  body      model.UserDto  true  "Login Credentials"
-// @Success      200    {object}  model.UserDto
-// @Failure      401    {object}  map[string]string
-// @Router       /auth/login [post]
-func (ctrl *AuthController) Login(c *gin.Context) {
-	var req model.UserDto
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
-		return
-	}
-
-	user, err := ctrl.userSvc.FindUser(c.Request.Context(), 0, req.Email, 0)
+func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest) (*model.LoginResponse, error) {
+	req := input.Body
+	user, err := ctrl.userSvc.FindUser(ctx, 0, req.Email, 0)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
-		return
+		return nil, huma.Error401Unauthorized("Invalid email or password")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(strings.TrimSpace(user.Password)), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
-		return
+		return nil, huma.Error401Unauthorized("Invalid email or password")
 	}
 
 	userDto := user.ToDto()
 	token, err := auth.GenerateToken(userDto)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-		return
+		return nil, huma.Error500InternalServerError("Internal server error")
 	}
 
-	ctrl.setAuthCookie(c, token, 1800)
+	cookie := ctrl.createAuthCookie(token, 1800)
 	localCache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
-	c.JSON(http.StatusOK, userDto)
+
+	return &model.LoginResponse{
+		SetCookie: cookie,
+		Body: model.Response{
+			Success: true,
+			Message: "Login successful",
+			Data:    userDto,
+		},
+	}, nil
 }
 
-// Logout godoc
-// @Summary      User Logout
-// @Description  Clears the authentication cookie
-// @Tags         Auth
-// @Produce      json
-// @Success      200    {object}  map[string]string
-// @Router       /auth/logout [post]
-func (ctrl *AuthController) Logout(c *gin.Context) {
-	ctrl.setAuthCookie(c, "", -1)
-	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
-}
+func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupRequest) (*model.MessageResponseWrapper, error) {
+	user := input.Body
+	var userDto model.UserDto
+	copier.Copy(&userDto, &user)
+	localCache.PendingUserCache.Set(user.Email, userDto, 5*time.Minute)
 
-// GetMe godoc
-// @Summary      Get Current User
-// @Description  Retrieves authenticated user details from session
-// @Tags         Auth
-// @Produce      json
-// @Success      200    {object}  model.UserDto
-// @Failure      401    {object}  map[string]string
-// @Router       /auth/me [get]
-func (ctrl *AuthController) GetMe(c *gin.Context) {
-	tokenUser, ok := middleware.GetUser(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	cacheKey := strconv.FormatInt(tokenUser.UserID, 10)
-	if cached, found := localCache.UserAuthCache.Get(cacheKey); found {
-		c.JSON(http.StatusOK, cached.(model.UserDto))
-		return
-	}
-
-	user, err := ctrl.userSvc.FindUser(c.Request.Context(), tokenUser.Mobile, tokenUser.Email, tokenUser.UserID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-		return
-	}
-
-	dto := user.ToDto()
-	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
-	c.JSON(http.StatusOK, dto)
-}
-
-// Signup godoc
-// @Summary      User Signup Initiation
-// @Description  Caches user data and sends OTP for verification
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        user  body      model.UserDto  true  "Signup Details"
-// @Success      200   {object}  model.MessageResponse
-// @Failure      409   {object}  model.MessageResponse
-// @Router       /auth/signup [post]
-func (ctrl *AuthController) Signup(c *gin.Context) {
-	var user model.UserDto
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Invalid request"})
-		return
-	}
-
-	localCache.PendingUserCache.Set(user.Email, user, 5*time.Minute)
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := ctrl.otpSvc.SendSignUpOtp(ctx, user); err != nil {
-		status := http.StatusInternalServerError
+	if err := ctrl.otpSvc.SendSignUpOtp(ctxt, user); err != nil {
 		if errors.Is(err, service.ErrDuplicateOtp) {
-			status = http.StatusConflict
+			return nil, huma.Error409Conflict(err.Error())
 		}
-		c.JSON(status, model.MessageResponse{Message: err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
-	c.JSON(http.StatusOK, model.MessageResponse{
-		OtpSent: true,
-		Message: "OTP sent to " + user.Email,
-	})
+	return &model.MessageResponseWrapper{
+		Body: model.Response{
+			Success: true,
+			Message: "OTP sent to " + user.Email,
+			Data:    model.MessageResponse{OtpSent: true, Message: "OTP sent to " + user.Email},
+		},
+	}, nil
 }
 
-// VerifyOtp godoc
-// @Summary      Verify OTP and Complete Signup
-// @Description  Validates OTP and persists user to database
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        request  body      model.VerifyOtpRequest  true  "OTP Verification"
-// @Success      201      {object}  model.MessageResponse
-// @Failure      400      {object}  model.MessageResponse
-// @Router       /auth/verify-otp [post]
-func (ctrl *AuthController) VerifyOtp(c *gin.Context) {
-	var req model.VerifyOtpRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Invalid request"})
-		return
-	}
-
+func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
+	req := input.Body
 	val, found := localCache.PendingUserCache.Get(req.Email)
 	if !found {
-		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Signup session expired"})
-		return
+		return nil, huma.Error400BadRequest("Signup session expired")
 	}
 
 	match, err := ctrl.otpSvc.VerifyOtp(req.Email, req.Otp)
 	if err != nil || !match {
-		c.JSON(http.StatusBadRequest, model.MessageResponse{Message: "Invalid OTP"})
-		return
+		return nil, huma.Error400BadRequest("Invalid OTP")
 	}
 
 	pendingDto := val.(model.UserDto)
-	if _, err := ctrl.userSvc.CreateUser(c.Request.Context(), pendingDto); err != nil {
-		c.JSON(http.StatusInternalServerError, model.MessageResponse{Message: "Failed to create user"})
-		return
+	if _, err := ctrl.userSvc.CreateUser(ctx, pendingDto); err != nil {
+		return nil, huma.Error500InternalServerError("Failed to create user")
 	}
 
 	localCache.PendingUserCache.Delete(req.Email)
-	c.JSON(http.StatusCreated, model.MessageResponse{Message: "Signup successful"})
+	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Signup successful"}}, nil
 }
 
-// TrueCallerCallBack godoc
-// @Summary      Process Truecaller Login Callback
-// @Description  Receives the access token from Truecaller, fetches user profile, and warms up the local cache for NSE data.
-// @Tags         Authentication
-// @Accept       json
-// @Produce      json
-// @Param        data  body      model.TruecallerDto  true  "Truecaller Data"
-// @Success      200   {object}  model.Response{success=bool,error=string} "Callback Successful"
-// @Failure      400   {object}  model.Response{success=bool,error=string} "Invalid Request"
-// @Failure      500   {object}  model.Response{success=bool,error=string} "Internal Server Error"
-// @Router       /auth/truecaller [post]
-func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
-	var data model.TruecallerDto
-	if err := c.ShouldBindJSON(&data); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid Request",
-		})
-		return
-	}
+func (ctrl *AuthController) Logout(ctx context.Context, input *struct{}) (*model.LogoutResponse, error) {
+	cookie := ctrl.createAuthCookie("", -1)
+	return &model.LogoutResponse{
+		SetCookie: cookie,
+		Body:      model.Response{Success: true, Message: "Logged out successfully"},
+	}, nil
+}
 
-	if data.Status == "flow_invoked" {
-		log.Printf("Handshake received for Nonce: %s", data.RequestId)
-		c.JSON(http.StatusOK, model.Response{
+func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.LoginResponse, error) {
+	val := ctx.Value("user")
+	if val == nil {
+		return nil, huma.Error401Unauthorized("Unauthorized")
+	}
+	tokenUser := val.(model.UserDto)
+
+	cacheKey := strconv.FormatInt(tokenUser.UserID, 10)
+	if cached, found := localCache.UserAuthCache.Get(cacheKey); found {
+		return &model.LoginResponse{Body: model.Response{
 			Success: true,
-			Message: "Flow invocation success",
-		})
-		return
+			Message: "User details fetched",
+			Data:    cached.(model.UserDto),
+		}}, nil
 	}
 
-	detachedCtx := context.WithoutCancel(c.Request.Context())
+	user, err := ctrl.userSvc.FindUser(ctx, tokenUser.Mobile, tokenUser.Email, tokenUser.UserID)
+	if err != nil {
+		return nil, huma.Error401Unauthorized("User not found")
+	}
+
+	dto := user.ToDto()
+	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
+	return &model.LoginResponse{Body: model.Response{
+		Success: true,
+		Message: "User details fetched",
+		Data:    dto,
+	}}, nil
+}
+
+func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.TrueCallerInput) (*model.ResponseWrapper, error) {
+	data := input.Body
+	if data.Status != nil {
+		if *data.Status == "flow_invoked" {
+			log.Printf("Handshake received for Nonce: %s", data.RequestId)
+			return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
+		}
+
+		if *data.Status == "user_rejected" {
+			return nil, huma.Error400BadRequest("User rejected the Truecaller authentication")
+		}
+	}
+
+	if data.AccessToken == nil || data.Endpoint == nil || *data.AccessToken == "" || *data.Endpoint == "" {
+		return nil, huma.Error400BadRequest("Invalid Request")
+	}
+
+	detachedCtx := context.WithoutCancel(ctx)
 
 	var profile model.TruecallerProfile
 	resp, err := ctrl.restyClient.R().
-		SetHeader("Authorization", "Bearer "+data.AccessToken).
+		SetHeader("Authorization", "Bearer "+*data.AccessToken).
 		SetHeader("Cache-Control", "no-cache").
 		SetResult(&profile).
-		Get(data.Endpoint)
+		Get(*data.Endpoint)
 
 	if err == nil && resp.IsSuccess() {
 		user, err := ctrl.userSvc.FindUser(detachedCtx, profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
 		if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
-			c.JSON(http.StatusBadRequest, model.Response{
-				Success: false,
-				Error:   "Invalid Request",
-			})
-			return
+			return nil, huma.Error400BadRequest("Invalid Request")
 		}
 
 		if user == nil {
@@ -285,75 +268,57 @@ func (ctrl *AuthController) TrueCallerCallBack(c *gin.Context) {
 
 			newUser, err := ctrl.userSvc.CreateUser(detachedCtx, dto)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, model.Response{
-					Success: false,
-					Error:   "Invalid Request",
-				})
-				return
+				return nil, huma.Error500InternalServerError("Invalid Request")
 			}
 
 			user = newUser
 		}
 
 		localCache.PendingUserCache.Set(data.RequestId, user.ToDto(), cache.DefaultExpiration)
-
-		c.JSON(http.StatusOK, model.Response{
-			Success: true,
-			Error:   "Callback Successfull",
-		})
-		return
+		return &model.ResponseWrapper{Body: model.Response{Success: true, Error: "Callback Successfull"}}, nil
 	}
 
-	c.JSON(http.StatusInternalServerError, model.Response{
-		Success: false,
-		Error:   "Invalid Request",
-	})
+	return nil, huma.Error500InternalServerError("Invalid Request")
 }
 
-// TrueCallerStatus godoc
-// @Summary      Check Truecaller Auth Status
-// @Description  Polls for the status of a login request. If successful, creates the user, generates a JWT, and sets an auth cookie.
-// @Tags         Authentication
-// @Produce      json
-// @Param        requestId  path      string  true  "Unique Request ID"
-// @Success      201        {object}  model.Response{success=bool,message=string,data=model.UserDto} "User created and JWT issued"
-// @Failure      404        {object}  model.Response{success=bool,error=string} "Waiting for Truecaller callback"
-// @Failure      500        {object}  model.Response{success=bool,message=string} "Failed to create user or generate token"
-// @Router       /auth/truecaller/status/{requestId} [get]
-func (ctrl *AuthController) TrueCallerStatus(c *gin.Context) {
-	reqID := c.Param("requestId")
+func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.DetailedResponseWrapper, error) {
+	reqID := input.RequestId
 	if token, ok := localCache.PendingUserCache.Get(reqID); ok {
 		userDto := token.(model.UserDto)
 		localCache.PendingUserCache.Delete(reqID)
-		token, err := auth.GenerateToken(userDto)
+		tokenStr, err := auth.GenerateToken(userDto)
 		if err != nil {
 			log.Printf("Error while generating token %v", err.Error())
-			c.JSON(http.StatusInternalServerError, model.Response{
-				Success: false,
-				Error:   "Internal server error",
-			})
-			return
+			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
-		ctrl.setAuthCookie(c, token, 1800)
+		cookie := ctrl.createAuthCookie(tokenStr, 1800)
 		localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
-		c.JSON(http.StatusCreated, model.Response{
-			Success: true,
-			Message: "User created",
-			Data:    userDto,
-		})
-		return
+
+		return &model.DetailedResponseWrapper{
+			SetCookie: cookie,
+			Body: model.Response{
+				Success: true,
+				Message: "User created",
+				Data:    userDto,
+			},
+		}, nil
 	}
 
-	c.JSON(http.StatusNotFound, model.Response{
-		Success: false,
-		Error:   "Waiting for truecaller",
-	})
+	return nil, huma.Error404NotFound("Waiting for truecaller")
 }
 
-func (ctrl *AuthController) setAuthCookie(c *gin.Context, token string, maxAge int) {
-	if ctrl.isProduction {
-		c.SetSameSite(http.SameSiteNoneMode)
+func (ctrl *AuthController) createAuthCookie(token string, maxAge int) string {
+	cookie := http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		MaxAge:   maxAge,
+		Path:     "/",
+		Secure:   ctrl.isProduction,
+		HttpOnly: true,
 	}
-	c.SetCookie("auth_token", token, maxAge, "/", "", ctrl.isProduction, true)
+	if ctrl.isProduction {
+		cookie.SameSite = http.SameSiteNoneMode
+	}
+	return cookie.String()
 }

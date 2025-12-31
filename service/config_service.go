@@ -3,22 +3,20 @@ package service
 import (
 	"context"
 	"log"
-	"net/http"
 
 	"backend/config"
 	"backend/model"
 
-	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ConfigService interface {
 	GetConfigManager() *config.ConfigManager
-	LoadMongoEnvConfig(ctx *gin.Context)
-	UpdateMongoEnvConfig(ctx *gin.Context, cfg model.MongoEnvConfig)
+	LoadMongoEnvConfig(ctx context.Context) error
+	UpdateMongoEnvConfig(ctx context.Context, cfg model.MongoEnvConfig) error
 	FindMongoEnvConfig(ctx context.Context) (*model.MongoEnvConfig, error)
-	GetActiveMongoEnvConfig(ctx *gin.Context)
+	GetActiveMongoEnvConfig() model.MongoEnvConfig
 }
 
 type ConfigServiceImpl struct {
@@ -49,46 +47,34 @@ func (s *ConfigServiceImpl) GetConfigManager() *config.ConfigManager {
 }
 
 // LoadMongoEnvConfig refreshes the in-memory ConfigManager from the Database
-func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx *gin.Context) {
-	val, err := s.FindMongoEnvConfig(ctx.Request.Context())
+func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx context.Context) error {
+	val, err := s.FindMongoEnvConfig(ctx)
 	if err != nil {
 		log.Printf("Error Loading Mongo Configs: %v", err)
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Error Loading Mongo Configs",
-		})
-		return
+		return err
 	}
 
 	s.configManager.UpdateConfig(val)
-
 	log.Printf("Mongo Configs Loaded Successfully")
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Mongo Configs Loaded Successfully",
-	})
+	return nil
 }
 
 // UpdateMongoEnvConfig updates the DB and then reloads the ConfigManager
-func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx *gin.Context, cfg model.MongoEnvConfig) {
+func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx context.Context, cfg model.MongoEnvConfig) error {
 	filter := bson.M{"_id": s.mongoId}
 	update := bson.M{"$set": cfg}
 
-	_, err := s.collection.UpdateOne(ctx.Request.Context(), filter, update)
+	_, err := s.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		log.Printf("Error Updating Mongo Configs: %v", err)
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Error Updating Mongo Configs",
-		})
-		return
+		return err
 	}
 
 	// Trigger reload to sync in-memory ConfigManager
-	s.LoadMongoEnvConfig(ctx)
+	return s.LoadMongoEnvConfig(ctx)
 }
 
-// FindMongoEnvConfig is a pure data fetcher (Decoupled from Gin)
+// FindMongoEnvConfig is a pure data fetcher
 func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.MongoEnvConfig, error) {
 	var cfg model.MongoEnvConfig
 	err := s.collection.FindOne(ctx, bson.M{"_id": s.mongoId}).Decode(&cfg)
@@ -99,6 +85,6 @@ func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.Mong
 }
 
 // GetActiveMongoEnvConfig returns the current in-memory configuration
-func (s *ConfigServiceImpl) GetActiveMongoEnvConfig(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, s.configManager.GetConfig())
+func (s *ConfigServiceImpl) GetActiveMongoEnvConfig() model.MongoEnvConfig {
+	return *s.configManager.GetConfig()
 }

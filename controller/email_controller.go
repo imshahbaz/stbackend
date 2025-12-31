@@ -1,12 +1,13 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type EmailController struct {
@@ -20,44 +21,21 @@ func NewEmailController(es service.EmailService) *EmailController {
 }
 
 // RegisterRoutes sets up the route group for email operations.
-func (ctrl *EmailController) RegisterRoutes(router *gin.RouterGroup) {
-	emailGroup := router.Group("/email")
-	{
-		// Mapping to POST /api/email/send
-		emailGroup.POST("/send", ctrl.sendEmail)
-	}
+func (ctrl *EmailController) RegisterRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "send-email",
+		Method:      http.MethodPost,
+		Path:        "/api/email/send",
+		Summary:     "Send an email",
+		Description: "Sends a transactional email using the Brevo API provider",
+		Tags:        []string{"Email"},
+	}, ctrl.sendEmail)
 }
 
-// sendEmail handles email dispatching via Brevo.
-// @Summary      Send an email
-// @Description  Sends a transactional email using the Brevo API provider
-// @Tags         Email
-// @Accept       json
-// @Produce      json
-// @Param        request  body      model.BrevoEmailRequest  true  "Email content and recipients"
-// @Success      200      {object}  map[string]string "Email sent successfully"
-// @Failure      400      {object}  map[string]string "Invalid request body"
-// @Failure      500      {object}  map[string]string "Failed to send email"
-// @Router       /email/send [post]
-func (ctrl *EmailController) sendEmail(c *gin.Context) {
-	var request model.BrevoEmailRequest
-
-	// 1. Bind JSON body
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
-		return
+func (ctrl *EmailController) sendEmail(ctx context.Context, input *model.SendEmailRequest) (*model.DefaultResponse, error) {
+	if err := ctrl.emailService.SendEmail(ctx, input.Body); err != nil {
+		return NewErrorResponse("Failed to send email: " + err.Error()), nil
 	}
 
-	// 2. Call service layer with Request Context
-	// This ensures that if the client disconnects, the email process can be cancelled
-	if err := ctrl.emailService.SendEmail(c.Request.Context(), request); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to send email",
-			"message": err.Error(),
-		})
-		return
-	}
-
-	// 3. Return a consistent JSON response
-	c.JSON(http.StatusOK, gin.H{"message": "Email sent successfully"})
+	return NewResponse(nil, "Email sent successfully"), nil
 }
