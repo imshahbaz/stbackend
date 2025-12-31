@@ -16,6 +16,7 @@ import (
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
+	"backend/util"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-resty/resty/v2"
@@ -224,31 +225,30 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 	}}, nil
 }
 
-func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.TrueCallerInput) (*model.ResponseWrapper, error) {
-	data := input.Body
-	if data.Status != nil {
-		if *data.Status == "flow_invoked" {
-			log.Printf("Handshake received for Nonce: %s", data.RequestId)
-			return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
-		}
+func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
 
-		if *data.Status == "user_rejected" {
-			return nil, huma.Error400BadRequest("User rejected the Truecaller authentication")
-		}
+	var body model.TruecallerDto
+	if err := util.BindDynamic(ctx, &body); err != nil {
+		return nil, huma.Error400BadRequest("Invalid Request")
 	}
 
-	if data.AccessToken == nil || data.Endpoint == nil || *data.AccessToken == "" || *data.Endpoint == "" {
-		return nil, huma.Error400BadRequest("Invalid Request")
+	if body.Status == "user_rejected" {
+		return nil, huma.Error400BadRequest("User rejected the Truecaller authentication")
+	}
+
+	if body.Status == "flow_invoked" {
+		log.Printf("Handshake received for Nonce: %s", body.RequestId)
+		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
 	}
 
 	detachedCtx := context.WithoutCancel(ctx)
 
 	var profile model.TruecallerProfile
 	resp, err := ctrl.restyClient.R().
-		SetHeader("Authorization", "Bearer "+*data.AccessToken).
+		SetHeader("Authorization", "Bearer "+body.AccessToken).
 		SetHeader("Cache-Control", "no-cache").
 		SetResult(&profile).
-		Get(*data.Endpoint)
+		Get(body.Endpoint)
 
 	if err == nil && resp.IsSuccess() {
 		user, err := ctrl.userSvc.FindUser(detachedCtx, profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
@@ -274,8 +274,9 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 			user = newUser
 		}
 
-		localCache.PendingUserCache.Set(data.RequestId, user.ToDto(), cache.DefaultExpiration)
-		return &model.ResponseWrapper{Body: model.Response{Success: true, Error: "Callback Successfull"}}, nil
+		localCache.PendingUserCache.Set(body.RequestId, user.ToDto(), cache.DefaultExpiration)
+
+		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Callback Successfull"}}, nil
 	}
 
 	return nil, huma.Error500InternalServerError("Invalid Request")

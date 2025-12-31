@@ -1,10 +1,10 @@
 package model
 
 type TruecallerDto struct {
-	AccessToken *string `json:"accessToken" doc:"Optional access token"`
-	RequestId   string  `json:"requestId"`
-	Endpoint    *string `json:"endpoint" doc:"Optional endpoint"`
-	Status      *string `json:"status" doc:"Optional status"`
+	AccessToken string `json:"accessToken"`
+	RequestId   string `json:"requestId"`
+	Endpoint    string `json:"endpoint"`
+	Status      string `json:"status"`
 }
 
 type TruecallerProfile struct {
