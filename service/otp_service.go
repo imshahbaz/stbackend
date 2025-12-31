@@ -22,7 +22,7 @@ var (
 
 // --- 2. Interface Definition ---
 type OtpService interface {
-	SendSignUpOtp(ctx context.Context, request model.UserDto) error
+	SendSignUpOtp(ctx context.Context, request model.SignupDto) error
 	VerifyOtp(email, otp string) (bool, error)
 }
 
@@ -43,7 +43,7 @@ func NewOtpService(emailService EmailService, cfg *config.ConfigManager) OtpServ
 // --- 4. Service Methods ---
 
 // SendSignUpOtp handles generating, sending, and caching the registration OTP.
-func (s *OtpServiceImpl) SendSignUpOtp(ctx context.Context, request model.UserDto) error {
+func (s *OtpServiceImpl) SendSignUpOtp(ctx context.Context, request model.SignupDto) error {
 	// 1. Rate Limit: Check if an OTP is already active in cache
 	if _, found := localCache.OtpCache.Get(request.Email); found {
 		return ErrDuplicateOtp

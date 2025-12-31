@@ -9,7 +9,7 @@ import (
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type PriceActionController struct {
@@ -21,316 +21,244 @@ func NewPriceActionController(s service.PriceActionService, isProd bool) *PriceA
 	return &PriceActionController{paService: s, isProduction: isProd}
 }
 
-func (ctrl *PriceActionController) RegisterRoutes(router *gin.RouterGroup) {
-	pa := router.Group("/price-action")
-	{
-		pa.POST("/automate", ctrl.TriggerAutomation)
-		pa.GET("/:symbol", ctrl.GetPABySymbol)
+func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
+	// Public or Generic
+	huma.Register(api, huma.Operation{
+		OperationID: "trigger-automation",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/automate",
+		Summary:     "Trigger PA Automation",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.TriggerAutomation)
 
-		// Order Block Group
-		ob := pa.Group("/ob")
-		{
-			ob.POST("/check", ctrl.CheckOBMitigation)
-			ob.GET("/mitigation", ctrl.GetOBMitigation)
-			ob.POST("/old/:stopDate", ctrl.AddOlderObController)
-			admin := ob.Group("")
-			admin.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
-			{
-				admin.POST("", ctrl.SaveOrderBlock)
-				admin.PATCH("", ctrl.UpdateOrderBlock)
-				admin.DELETE("", ctrl.DeleteOrderBlock)
-			}
-		}
+	huma.Register(api, huma.Operation{
+		OperationID: "get-pa-by-symbol",
+		Method:      http.MethodGet,
+		Path:        "/api/price-action/{symbol}",
+		Summary:     "Get PA by Symbol",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.GetPABySymbol)
 
-		// FVG Group
-		fvg := pa.Group("/fvg")
-		{
-			fvg.POST("/check", ctrl.CheckFvgMitigation)
-			fvg.GET("/mitigation", ctrl.GetFvgMitigation)
-			fvg.POST("/old/:stopDate", ctrl.AddOlderFvgController)
-			fvg.POST("/cleanup", ctrl.FvgCleanUp)
-			admin := fvg.Group("")
-			admin.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
-			{
-				admin.POST("", ctrl.SaveFvg)
-				admin.PATCH("", ctrl.UpdateFvg)
-				admin.DELETE("", ctrl.DeleteFvg)
-			}
-		}
-	}
+	// OB
+	huma.Register(api, huma.Operation{
+		OperationID: "check-ob-mitigation",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/ob/check",
+		Summary:     "Force Refresh OB Mitigations",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.CheckOBMitigation)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-ob-mitigation",
+		Method:      http.MethodGet,
+		Path:        "/api/price-action/ob/mitigation",
+		Summary:     "Get Cached OB Mitigations",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.GetOBMitigation)
+
+	// Admin OB
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	adminMw := middleware.HumaAdminOnly(api)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "save-ob",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/ob",
+		Summary:     "Save OB",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.SaveOrderBlock)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-ob",
+		Method:      http.MethodPatch,
+		Path:        "/api/price-action/ob",
+		Summary:     "Update OB",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.UpdateOrderBlock)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-ob",
+		Method:      http.MethodDelete,
+		Path:        "/api/price-action/ob",
+		Summary:     "Delete OB",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.DeleteOrderBlock)
+
+	// FVG
+	huma.Register(api, huma.Operation{
+		OperationID: "check-fvg-mitigation",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/fvg/check",
+		Summary:     "Force Refresh FVG Mitigations",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.CheckFvgMitigation)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-fvg-mitigation",
+		Method:      http.MethodGet,
+		Path:        "/api/price-action/fvg/mitigation",
+		Summary:     "Get Cached FVG Mitigations",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.GetFvgMitigation)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cleanup-fvg",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/fvg/cleanup",
+		Summary:     "Clean up filled FVGs",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.FvgCleanUp)
+
+	// Admin FVG
+	huma.Register(api, huma.Operation{
+		OperationID: "save-fvg",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/fvg",
+		Summary:     "Save FVG",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.SaveFvg)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-fvg",
+		Method:      http.MethodPatch,
+		Path:        "/api/price-action/fvg",
+		Summary:     "Update FVG",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.UpdateFvg)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-fvg",
+		Method:      http.MethodDelete,
+		Path:        "/api/price-action/fvg",
+		Summary:     "Delete FVG",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"PriceAction (Admin)"},
+	}, ctrl.DeleteFvg)
 }
 
-// --- General Handlers ---
-
-// TriggerAutomation godoc
-// @Summary      Trigger PA Automation
-// @Tags         PriceAction
-// @Success      202      {object}  model.Response
-// @Router       /price-action/automate [post]
-func (ctrl *PriceActionController) TriggerAutomation(c *gin.Context) {
+func (ctrl *PriceActionController) TriggerAutomation(ctx context.Context, input *struct{}) (*model.TriggerAutomationResponse, error) {
 	bgCtx := context.Background()
+	// Using background context since Huma context is cancelled after request
 	go func() {
 		_ = ctrl.paService.AutomateOrderBlock(bgCtx, 0)
 		_ = ctrl.paService.AutomateFvg(bgCtx, 0)
 	}()
-	c.JSON(http.StatusAccepted, model.Response{Success: true, Message: "Scanning started"})
+	return &model.TriggerAutomationResponse{Body: model.Response{Success: true, Message: "Scanning started"}}, nil
 }
 
-// GetPABySymbol godoc
-// @Summary      Get PA by Symbol
-// @Tags         PriceAction
-// @Param        symbol   path      string  true  "Symbol"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/{symbol} [get]
-func (ctrl *PriceActionController) GetPABySymbol(c *gin.Context) {
-	data, err := ctrl.paService.GetPABySymbol(c.Request.Context(), c.Param("symbol"))
-	ctrl.respond(c, data, err)
-}
-
-// --- OB Handlers ---
-
-// SaveOrderBlock godoc
-// @Summary      Save OB
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "OB Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/ob [post]
-func (ctrl *PriceActionController) SaveOrderBlock(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{Success: false, Error: "Invalid body"})
-		return
+func (ctrl *PriceActionController) GetPABySymbol(ctx context.Context, input *model.GetPAInput) (*model.DefaultResponse, error) {
+	data, err := ctrl.paService.GetPABySymbol(ctx, input.Symbol)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	err := ctrl.paService.SaveOrderBlock(c.Request.Context(), req)
-	ctrl.respond(c, nil, err)
+	return NewResponse(data, "PA data fetched successfully"), nil
 }
 
-// UpdateOrderBlock godoc
-// @Summary      Update OB
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "Update Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/ob [patch]
-func (ctrl *PriceActionController) UpdateOrderBlock(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{Success: false, Error: "Invalid body"})
-		return
+func (ctrl *PriceActionController) CheckOBMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	data, err := ctrl.paService.CheckOBMitigation(ctx)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	err := ctrl.paService.UpdateOrderBlock(c.Request.Context(), req)
-	ctrl.respond(c, nil, err)
+	return NewResponse(data, "OB mitigation check complete"), nil
 }
 
-// DeleteOrderBlock godoc
-// @Summary      Delete OB
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "Delete Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/ob [delete]
-func (ctrl *PriceActionController) DeleteOrderBlock(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		return
-	}
-	err := ctrl.paService.DeleteOrderBlock(c.Request.Context(), req.Symbol, req.Date)
-	ctrl.respond(c, nil, err)
-}
-
-// GetOBMitigation godoc
-// @Summary      Get Cached OB Mitigations
-// @Tags         PriceAction
-// @Router       /price-action/ob/mitigation [get]
-func (ctrl *PriceActionController) GetOBMitigation(c *gin.Context) {
+func (ctrl *PriceActionController) GetOBMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	if val, exists := cache.PriceActionCache.Get("ObCache"); exists {
-		c.JSON(http.StatusOK, model.Response{Success: true, Data: val})
-		return
+		return NewResponse(val, "Cached OB mitigation data fetched"), nil
 	}
-	data, err := ctrl.paService.CheckOBMitigation(c.Request.Context())
-	ctrl.respond(c, data, err)
-}
-
-// CheckOBMitigation godoc
-// @Summary      Force Refresh OB Mitigations
-// @Description  Triggers a fresh scan of all stocks against saved Order Blocks to find active mitigations.
-// @Tags         PriceAction
-// @Produce      json
-// @Success      200      {object}  model.Response
-// @Failure      500      {object}  model.Response
-// @Router       /price-action/ob/check [post]
-func (ctrl *PriceActionController) CheckOBMitigation(c *gin.Context) {
-	data, err := ctrl.paService.CheckOBMitigation(c.Request.Context())
-	ctrl.respond(c, data, err)
-}
-
-// --- FVG Handlers ---
-
-// SaveFvg godoc
-// @Summary      Save FVG
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "FVG Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/fvg [post]
-func (ctrl *PriceActionController) SaveFvg(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{Success: false, Error: "Invalid body"})
-		return
+	data, err := ctrl.paService.CheckOBMitigation(ctx)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	err := ctrl.paService.SaveFvg(c.Request.Context(), req)
-	ctrl.respond(c, nil, err)
+	return NewResponse(data, "OB mitigation data fetched"), nil
 }
 
-// UpdateFvg godoc
-// @Summary      Update FVG
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "Update Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/fvg [patch]
-func (ctrl *PriceActionController) UpdateFvg(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{Success: false, Error: "Invalid body"})
-		return
+func (ctrl *PriceActionController) SaveOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	err := ctrl.paService.SaveOrderBlock(ctx, input.Body)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	err := ctrl.paService.UpdateFvg(c.Request.Context(), req)
-	ctrl.respond(c, nil, err)
+	return NewResponse(nil, "Order Block saved successfully"), nil
 }
 
-// DeleteFvg godoc
-// @Summary      Delete FVG
-// @Tags         PriceAction (Admin)
-// @Param        request  body      model.ObRequest  true  "Delete Details"
-// @Success      200      {object}  model.Response
-// @Router       /price-action/fvg [delete]
-func (ctrl *PriceActionController) DeleteFvg(c *gin.Context) {
-	var req model.ObRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		return
+func (ctrl *PriceActionController) UpdateOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	err := ctrl.paService.UpdateOrderBlock(ctx, input.Body)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	err := ctrl.paService.DeleteFvg(c.Request.Context(), req.Symbol, req.Date)
-	ctrl.respond(c, nil, err)
+	return NewResponse(nil, "Order Block updated successfully"), nil
 }
 
-// GetFvgMitigation godoc
-// @Summary      Get Cached FVG Mitigations
-// @Tags         PriceAction
-// @Router       /price-action/fvg/mitigation [get]
-func (ctrl *PriceActionController) GetFvgMitigation(c *gin.Context) {
+func (ctrl *PriceActionController) DeleteOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	req := input.Body
+	err := ctrl.paService.DeleteOrderBlock(ctx, req.Symbol, req.Date)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+	return NewResponse(nil, "Order Block deleted successfully"), nil
+}
+
+// FVG
+
+func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	data, err := ctrl.paService.CheckFvgMitigation(ctx)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+	return NewResponse(data, "FVG mitigation check complete"), nil
+}
+
+func (ctrl *PriceActionController) GetFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	if val, exists := cache.PriceActionCache.Get("FvgCache"); exists {
-		c.JSON(http.StatusOK, model.Response{Success: true, Data: val})
-		return
+		return NewResponse(val, "Cached FVG mitigation data fetched"), nil
 	}
-	data, err := ctrl.paService.CheckFvgMitigation(c.Request.Context())
-	ctrl.respond(c, data, err)
+	data, err := ctrl.paService.CheckFvgMitigation(ctx)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+	return NewResponse(data, "FVG mitigation data fetched"), nil
 }
 
-// CheckFvgMitigation godoc
-// @Summary      Force Refresh FVG Mitigations
-// @Description  Triggers a fresh scan of all stocks against saved Fair Value Gaps (FVG) to identify active mitigations. This bypasses the cache and updates it.
-// @Tags         PriceAction
-// @Produce      json
-// @Success      200      {object}  model.Response
-// @Failure      500      {object}  model.Response
-// @Router       /price-action/fvg/check [post]
-func (ctrl *PriceActionController) CheckFvgMitigation(c *gin.Context) {
-	data, err := ctrl.paService.CheckFvgMitigation(c.Request.Context())
-	ctrl.respond(c, data, err)
+func (ctrl *PriceActionController) FvgCleanUp(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	err := ctrl.paService.FvgCleanUp(ctx)
+	if err != nil {
+		return NewErrorResponse("Failed to cleanup: " + err.Error()), nil
+	}
+	return NewResponse(nil, "FVG cleanup task executed successfully"), nil
 }
 
-// --- Helper ---
-
-func (ctrl *PriceActionController) respond(c *gin.Context, data any, err error) {
+func (ctrl *PriceActionController) SaveFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	err := ctrl.paService.SaveFvg(ctx, input.Body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.Response{Success: false, Error: err.Error()})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
-	c.JSON(http.StatusOK, model.Response{Success: true, Data: data})
+	return NewResponse(nil, "Saved successfully"), nil
 }
 
-// AddOlderObController
-// @Summary      Process Historical Order Blocks
-// @Description  Upload a CSV to find and save Order Blocks from a specific stop date backwards.
-// @Tags         PriceAction
-// @Accept       multipart/form-data
-// @Produce      json
-// @Param        file      formData  file    true  "CSV File"
-// @Param        stopDate  path      string  true  "Stop Date (YYYY-MM-DD)"
-// @Success      200       {object}  map[string]string
-// @Router       /price-action/ob/old/{stopDate} [post]
-func (pc *PriceActionController) AddOlderObController(c *gin.Context) {
-	stopDate := c.Param("stopDate")
-	fileHeader, err := c.FormFile("file")
+func (ctrl *PriceActionController) UpdateFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	err := ctrl.paService.UpdateFvg(ctx, input.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file required"})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
-		return
-	}
-	defer file.Close()
-
-	// Using your service logic
-	pc.paService.AddOlderOb(c.Request.Context(), fileHeader.Filename, file, stopDate)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Order Block processing completed"})
+	return NewResponse(nil, "Updated successfully"), nil
 }
 
-// AddOlderFvgController
-// @Summary      Process Historical Fair Value Gaps (FVG)
-// @Description  Upload a CSV to find and save FVGs from a specific stop date backwards.
-// @Tags         PriceAction
-// @Accept       multipart/form-data
-// @Produce      json
-// @Param        file      formData  file    true  "CSV File"
-// @Param        stopDate  path      string  true  "Stop Date (YYYY-MM-DD)"
-// @Success      200       {object}  map[string]string
-// @Router       /price-action/fvg/old/{stopDate} [post]
-func (pc *PriceActionController) AddOlderFvgController(c *gin.Context) {
-	stopDate := c.Param("stopDate")
-	fileHeader, err := c.FormFile("file")
+func (ctrl *PriceActionController) DeleteFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+	req := input.Body
+	err := ctrl.paService.DeleteFvg(ctx, req.Symbol, req.Date)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file required"})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
-		return
-	}
-	defer file.Close()
-
-	// Using your service logic
-	pc.paService.AddOlderFvg(c.Request.Context(), fileHeader.Filename, file, stopDate)
-
-	c.JSON(http.StatusOK, gin.H{"message": "FVG processing completed"})
-}
-
-// FvgCleanUp handles the removal of mitigated/filled Fair Value Gaps
-// @Summary      Clean up filled FVGs
-// @Description  Triggers a maintenance task that fetches NSE history for all stored symbols and deletes FVGs that have been breached or filled by subsequent price action.
-// @Tags         PriceAction
-// @Produce      json
-// @Success      200 {object} map[string]string
-// @Failure      500 {object} map[string]string
-// @Router       /price-action/fvg/cleanup [post]
-func (pc *PriceActionController) FvgCleanUp(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	err := pc.paService.FvgCleanUp(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Failed to complete FVG cleanup: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "FVG cleanup task executed successfully",
-	})
+	return NewResponse(nil, "Deleted successfully"), nil
 }

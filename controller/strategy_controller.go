@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type StrategyController struct {
@@ -22,139 +23,123 @@ func NewStrategyController(ss service.StrategyService, isProduction bool) *Strat
 	}
 }
 
-// RegisterRoutes maps endpoints to the /strategy group with appropriate middleware.
-func (ctrl *StrategyController) RegisterRoutes(router *gin.RouterGroup) {
-	strategyGroup := router.Group("/strategy")
-	{
-		// Public route - typically used by the scanner dashboard
-		strategyGroup.GET("", ctrl.getAllStrategies)
+func (ctrl *StrategyController) RegisterRoutes(api huma.API) {
+	// Public route
+	huma.Register(api, huma.Operation{
+		OperationID: "get-strategies",
+		Method:      http.MethodGet,
+		Path:        "/api/strategy",
+		Summary:     "Get all strategies",
+		Description: "Returns a list of all configured active trading strategies",
+		Tags:        []string{"Strategy"},
+	}, ctrl.getAllStrategies)
 
-		// Protected routes - requires Admin role and JWT
-		adminGroup := strategyGroup.Group("")
-		adminGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
-		{
-			adminGroup.POST("", ctrl.createStrategy)
-			adminGroup.PUT("", ctrl.updateStrategy)
-			adminGroup.DELETE("", ctrl.deleteStrategy)
-			adminGroup.POST("/reload", ctrl.reloadAllStrategies)
-			adminGroup.GET("/admin", ctrl.getAllStrategiesAdmin)
-		}
-	}
+	// Protected routes
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	adminMw := middleware.HumaAdminOnly(api)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "create-strategy",
+		Method:      http.MethodPost,
+		Path:        "/api/strategy",
+		Summary:     "Create a strategy",
+		Description: "Saves a new trading strategy configuration to MongoDB",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Strategy"},
+	}, ctrl.createStrategy)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-strategy",
+		Method:      http.MethodPut,
+		Path:        "/api/strategy",
+		Summary:     "Update a strategy",
+		Description: "Updates an existing strategy configuration by name/ID",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Strategy"},
+	}, ctrl.updateStrategy)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-strategy",
+		Method:      http.MethodDelete,
+		Path:        "/api/strategy",
+		Summary:     "Delete a strategy",
+		Description: "Removes a strategy from the system using its ID/Name",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Strategy"},
+	}, ctrl.deleteStrategy)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "reload-strategies",
+		Method:      http.MethodPost,
+		Path:        "/api/strategy/reload",
+		Summary:     "Reload strategies",
+		Description: "Syncs the in-memory strategy cache with MongoDB",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Strategy"},
+	}, ctrl.reloadAllStrategies)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-strategies-admin",
+		Method:      http.MethodGet,
+		Path:        "/api/strategy/admin",
+		Summary:     "Get all strategies (Admin)",
+		Description: "Returns all trading strategies with full administrative details",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Strategy"},
+	}, ctrl.getAllStrategiesAdmin)
 }
 
-// getAllStrategies retrieves active trading strategies.
-// @Summary      Get all strategies
-// @Description  Returns a list of all configured active trading strategies
-// @Tags         Strategy
-// @Produce      json
-// @Success      200  {array}  model.StrategyDto
-// @Router       /strategy [get]
-func (ctrl *StrategyController) getAllStrategies(c *gin.Context) {
+func (ctrl *StrategyController) getAllStrategies(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	strategies := ctrl.strategyService.GetAllStrategies()
 	if strategies == nil {
-		c.JSON(http.StatusOK, []model.StrategyDto{})
-		return
+		strategies = []model.StrategyDto{}
 	}
-	c.JSON(http.StatusOK, strategies)
+	return NewResponse(strategies, "Strategies fetched successfully"), nil
 }
 
-// createStrategy adds a new strategy.
-// @Summary      Create a strategy
-// @Description  Saves a new trading strategy configuration to MongoDB
-// @Tags         Strategy
-// @Accept       json
-// @Produce      json
-// @Param        request  body      model.StrategyDto  true  "Strategy Details"
-// @Success      201      {object}  model.Strategy
-// @Failure      400      {object}  map[string]string
-// @Router       /strategy [post]
-func (ctrl *StrategyController) createStrategy(c *gin.Context) {
-	var request model.StrategyDto
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid strategy format: " + err.Error()})
-		return
-	}
-
-	res, err := ctrl.strategyService.CreateStrategy(c.Request.Context(), request)
+func (ctrl *StrategyController) createStrategy(ctx context.Context, input *model.CreateStrategyRequest) (*model.DefaultResponse, error) {
+	res, err := ctrl.strategyService.CreateStrategy(ctx, input.Body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
-	c.JSON(http.StatusCreated, res)
+	return NewResponse(res, "Strategy created successfully"), nil
 }
 
-// updateStrategy modifies an existing strategy.
-// @Summary      Update a strategy
-// @Description  Updates an existing strategy configuration by name/ID
-// @Tags         Strategy
-// @Accept       json
-// @Produce      json
-// @Param        request  body      model.StrategyDto  true  "Updated Details"
-// @Success      200      {object}  model.Strategy
-// @Router       /strategy [put]
-func (ctrl *StrategyController) updateStrategy(c *gin.Context) {
-	var request model.StrategyDto
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	res, err := ctrl.strategyService.UpdateStrategy(c.Request.Context(), request)
+func (ctrl *StrategyController) updateStrategy(ctx context.Context, input *model.CreateStrategyRequest) (*model.DefaultResponse, error) {
+	res, err := ctrl.strategyService.UpdateStrategy(ctx, input.Body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
-	c.JSON(http.StatusOK, res)
+	return NewResponse(res, "Strategy updated successfully"), nil
 }
 
-// deleteStrategy removes a strategy.
-// @Summary      Delete a strategy
-// @Description  Removes a strategy from the system using its ID/Name
-// @Tags         Strategy
-// @Param        id   query     string  true  "Strategy ID (Name)"
-// @Success      204  "No Content"
-// @Router       /strategy [delete]
-func (ctrl *StrategyController) deleteStrategy(c *gin.Context) {
-	id := c.Query("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Strategy ID is required"})
-		return
+func (ctrl *StrategyController) deleteStrategy(ctx context.Context, input *model.DeleteStrategyInput) (*model.DefaultResponse, error) {
+	if input.ID == "" {
+		return NewErrorResponse("Strategy ID is required"), nil
 	}
 
-	if err := ctrl.strategyService.DeleteStrategy(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	if err := ctrl.strategyService.DeleteStrategy(ctx, input.ID); err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	c.Status(http.StatusNoContent)
+	return NewResponse(nil, "Strategy deleted successfully"), nil
 }
 
-// reloadAllStrategies refreshes cache from DB.
-// @Summary      Reload strategies
-// @Description  Syncs the in-memory strategy cache with MongoDB
-// @Tags         Strategy
-// @Produce      json
-// @Success      200  {object}  map[string]string
-// @Router       /strategy/reload [post]
-func (ctrl *StrategyController) reloadAllStrategies(c *gin.Context) {
-	if err := ctrl.strategyService.ReloadAllStrategies(c.Request.Context()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+func (ctrl *StrategyController) reloadAllStrategies(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	if err := ctrl.strategyService.ReloadAllStrategies(ctx); err != nil {
+		return NewErrorResponse(err.Error()), nil
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Strategies reloaded successfully"})
+	return NewResponse(nil, "Strategies reloaded successfully"), nil
 }
 
-// getAllStrategiesAdmin retrieves all strategies including internal details.
-// @Summary      Get all strategies (Admin)
-// @Description  Returns all trading strategies with full administrative details
-// @Tags         Strategy
-// @Produce      json
-// @Success      200  {array}  model.StrategyDto
-// @Router       /strategy/admin [get]
-func (ctrl *StrategyController) getAllStrategiesAdmin(c *gin.Context) {
+func (ctrl *StrategyController) getAllStrategiesAdmin(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	strategies := ctrl.strategyService.GetAllStrategiesAdmin()
 	if strategies == nil {
-		c.JSON(http.StatusOK, []model.StrategyDto{})
-		return
+		strategies = []model.StrategyDto{}
 	}
-	c.JSON(http.StatusOK, strategies)
+	return NewResponse(strategies, "Admin strategies fetched successfully"), nil
 }

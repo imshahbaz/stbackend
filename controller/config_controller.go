@@ -1,13 +1,14 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type ConfigController struct {
@@ -22,61 +23,60 @@ func NewConfigController(cfgSvc service.ConfigService, isProduction bool) *Confi
 	}
 }
 
-// RegisterRoutes sets up protected admin-only configuration endpoints.
-func (ctrl *ConfigController) RegisterRoutes(router *gin.RouterGroup) {
-	configGroup := router.Group("/config")
-	// Enforce both Authentication and Admin RBAC
-	configGroup.Use(middleware.AuthMiddleware(ctrl.isProduction), middleware.AdminOnly())
-	{
-		configGroup.POST("/reload", ctrl.reloadMongoEnvConfig)
-		configGroup.GET("/active", ctrl.getActiveMongoEnvConfig)
-		configGroup.PATCH("/update", ctrl.updateMongoEnvConfig)
+func (ctrl *ConfigController) RegisterRoutes(api huma.API) {
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	adminMw := middleware.HumaAdminOnly(api)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "reload-config",
+		Method:      http.MethodPost,
+		Path:        "/api/config/reload",
+		Summary:     "Reload System Configuration",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Config"},
+	}, ctrl.reloadMongoEnvConfig)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-active-config",
+		Method:      http.MethodGet,
+		Path:        "/api/config/active",
+		Summary:     "Get Active Configuration",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Config"},
+	}, ctrl.getActiveMongoEnvConfig)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-config",
+		Method:      http.MethodPatch,
+		Path:        "/api/config/update",
+		Summary:     "Update System Configuration",
+		Middlewares: huma.Middlewares{authMw, adminMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Config"},
+	}, ctrl.updateMongoEnvConfig)
+}
+
+func (ctrl *ConfigController) reloadMongoEnvConfig(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	if err := ctrl.cfgSvc.LoadMongoEnvConfig(ctx); err != nil {
+		return NewErrorResponse("Error Loading Mongo Configs: " + err.Error()), nil
 	}
+	return NewResponse(nil, "Mongo Configs Loaded Successfully"), nil
 }
 
-// reloadMongoEnvConfig godoc
-// @Summary      Reload System Configuration
-// @Description  Triggers a fresh fetch from MongoDB to update the in-memory cache.
-// @Tags         Config
-// @Produce      json
-// @Success      200  {object}  model.Response
-// @Failure      500  {object}  model.Response
-// @Router       /config/reload [post]
-func (ctrl *ConfigController) reloadMongoEnvConfig(ctx *gin.Context) {
-	ctrl.cfgSvc.LoadMongoEnvConfig(ctx)
+func (ctrl *ConfigController) getActiveMongoEnvConfig(ctx context.Context, input *struct{}) (*model.ConfigResponse, error) {
+	cfg := ctrl.cfgSvc.GetActiveMongoEnvConfig()
+	return &model.ConfigResponse{Body: cfg}, nil
 }
 
-// updateMongoEnvConfig godoc
-// @Summary      Update System Configuration
-// @Description  Updates MongoDB and hot-swaps active memory config.
-// @Tags         Config
-// @Accept       json
-// @Produce      json
-// @Param        request  body      model.MongoEnvConfig  true  "Update Config Fields"
-// @Success      200      {object}  model.Response
-// @Failure      400      {object}  model.Response
-// @Failure      500      {object}  model.Response
-// @Router       /config/update [patch]
-func (ctrl *ConfigController) updateMongoEnvConfig(ctx *gin.Context) {
-	var request model.MongoEnvConfig
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid Request Body",
-		})
-		return
+func (ctrl *ConfigController) updateMongoEnvConfig(ctx context.Context, input *model.UpdateConfigInput) (*model.DefaultResponse, error) {
+	req := input.Body
+	// Validate?
+
+	if err := ctrl.cfgSvc.UpdateMongoEnvConfig(ctx, req); err != nil {
+		return NewErrorResponse("Error Updating Mongo Configs: " + err.Error()), nil
 	}
-	ctrl.cfgSvc.UpdateMongoEnvConfig(ctx, request)
-}
 
-// getActiveMongoEnvConfig godoc
-// @Summary      Get Active Configuration
-// @Description  Returns current system settings (Leverage, API Keys, etc.) from memory.
-// @Tags         Config
-// @Produce      json
-// @Success      200  {object}  model.MongoEnvConfig
-// @Failure      500  {object}  model.Response
-// @Router       /config/active [get]
-func (ctrl *ConfigController) getActiveMongoEnvConfig(ctx *gin.Context) {
-	ctrl.cfgSvc.GetActiveMongoEnvConfig(ctx)
+	return NewResponse(nil, "Mongo Configs Updated Successfully"), nil
 }

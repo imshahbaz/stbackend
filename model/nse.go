@@ -1,10 +1,5 @@
 package model
 
-type NseResponseWrapper[T any] struct {
-	Data []T `json:"data"`
-}
-
-// NSEHistoricalData represents stock history
 type NSEHistoricalData struct {
 	Symbol    string  `json:"chSymbol"`
 	Open      float64 `json:"chOpeningPrice"`
@@ -26,6 +21,11 @@ type SectorData struct {
 	TimeStamp     string  `json:"timeStamp"`
 }
 
+type AllIndicesResponse struct {
+	NseIndexData
+	PerChange1w float64 `json:"perChange1w"`
+}
+
 type NseIndexData struct {
 	Key           string  `json:"key"`
 	Index         string  `json:"index"`
@@ -37,7 +37,12 @@ type NseIndexData struct {
 	OneWeekAgoVal float64 `json:"oneWeekAgoVal"`
 }
 
-type AllIndicesResponse struct {
-	NseIndexData
-	PerChange1w float64 `json:"perChange1w"`
+type NseResponseWrapper[T any] struct {
+	Data []T `json:"data"`
+}
+
+// --- Huma Structs ---
+
+type NseHistoryInput struct {
+	Symbol string `query:"symbol" doc:"Stock Symbol (e.g. RELIANCE)" required:"true"`
 }

@@ -1,12 +1,13 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type NseController struct {
@@ -19,96 +20,53 @@ func NewNseController(ns service.NseService) *NseController {
 	}
 }
 
-// RegisterRoutes sets up the route group for NSE data retrieval.
-func (ctrl *NseController) RegisterRoutes(router *gin.RouterGroup) {
-	nseGroup := router.Group("/nse")
-	{
-		nseGroup.GET("/history", ctrl.GetStockHistory)
-		nseGroup.GET("/heatmap", ctrl.GetHeatMap)
-		nseGroup.GET("/allindices", ctrl.GetAllIndices)
-	}
+func (ctrl *NseController) RegisterRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-stock-history",
+		Method:      http.MethodGet,
+		Path:        "/api/nse/history",
+		Summary:     "Get Historical Stock Data",
+		Description: "Fetches stock history for a specific symbol. Utilizes a 1-hour time cache.",
+		Tags:        []string{"Stocks"},
+	}, ctrl.GetStockHistory)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-heatmap",
+		Method:      http.MethodGet,
+		Path:        "/api/nse/heatmap",
+		Summary:     "Get NSE Sectoral Heatmap",
+		Tags:        []string{"Stocks"},
+	}, ctrl.GetHeatMap)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-all-indices",
+		Method:      http.MethodGet,
+		Path:        "/api/nse/allindices",
+		Summary:     "Get All NSE Indices",
+		Tags:        []string{"Stocks"},
+	}, ctrl.GetAllIndices)
 }
 
-// GetStockHistory handles historical data requests.
-// @Summary      Get Historical Stock Data
-// @Description  Fetches stock history for a specific symbol. Utilizes a 1-hour time cache.
-// @Tags         Stocks
-// @Accept       json
-// @Produce      json
-// @Param        symbol  query     string  true  "Stock Symbol (e.g. RELIANCE)"
-// @Success      200     {object}  model.Response{data=[]model.NSEHistoricalData}
-// @Failure      400     {object}  model.Response
-// @Failure      500     {object}  model.Response
-// @Router       /nse/history [get]
-func (ctrl *NseController) GetStockHistory(c *gin.Context) {
-	symbol := c.Query("symbol")
-	if symbol == "" {
-		c.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Message: "Symbol parameter is required",
-		})
-		return
-	}
-
-	data, err := ctrl.nseService.FetchStockData(c.Request.Context(), symbol)
+func (ctrl *NseController) GetStockHistory(ctx context.Context, input *model.NseHistoryInput) (*model.DefaultResponse, error) {
+	data, err := ctrl.nseService.FetchStockData(ctx, input.Symbol)
 	if err != nil {
-		ctrl.handleError(c, "Failed to get history", err)
-		return
+		return NewErrorResponse("Failed to get history"), nil
 	}
-
-	ctrl.handleSuccess(c, "Fetch Success", data)
+	return NewResponse(data, "Fetch Success"), nil
 }
 
-// GetHeatMap fetches sectoral performance.
-// @Summary      Get NSE Sectoral Heatmap
-// @Description  Fetches latest sectoral data. Uses warmup time-cache strategy to avoid NSE rate limits.
-// @Tags         Stocks
-// @Produce      json
-// @Success      200     {object}  model.Response{data=[]model.SectorData}
-// @Failure      500     {object}  model.Response
-// @Router       /nse/heatmap [get]
-func (ctrl *NseController) GetHeatMap(c *gin.Context) {
+func (ctrl *NseController) GetHeatMap(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	data, err := ctrl.nseService.FetchHeatMap()
 	if err != nil {
-		ctrl.handleError(c, "Failed to get heat map", err)
-		return
+		return NewErrorResponse("Failed to get heat map"), nil
 	}
-
-	ctrl.handleSuccess(c, "Fetch Success", data)
+	return NewResponse(data, "Fetch Success"), nil
 }
 
-// GetAllIndices fetches all indices performance data.
-// @Summary      Get All NSE Indices
-// @Description  Fetches latest performance data for all indices using the warmup strategy.
-// @Tags         Stocks
-// @Produce      json
-// @Success      200     {object}  model.Response{data=[]model.AllIndicesResponse}
-// @Failure      500     {object}  model.Response
-// @Router       /nse/allindices [get]
-func (ctrl *NseController) GetAllIndices(c *gin.Context) {
+func (ctrl *NseController) GetAllIndices(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	data, err := ctrl.nseService.FetchAllIndices()
 	if err != nil {
-		ctrl.handleError(c, "Failed to get all indices data", err)
-		return
+		return NewErrorResponse("Failed to get all indices data"), nil
 	}
-
-	ctrl.handleSuccess(c, "Fetch Success", data)
-}
-
-// --- Internal Response Helpers ---
-
-func (ctrl *NseController) handleSuccess(c *gin.Context, message string, data any) {
-	c.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: message,
-		Data:    data,
-	})
-}
-
-func (ctrl *NseController) handleError(c *gin.Context, message string, err error) {
-	c.JSON(http.StatusInternalServerError, model.Response{
-		Success: false,
-		Message: message,
-		Error:   err.Error(),
-	})
+	return NewResponse(data, "Fetch Success"), nil
 }

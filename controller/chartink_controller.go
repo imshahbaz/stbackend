@@ -1,12 +1,13 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 
 	"backend/model"
 	"backend/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type ChartInkController struct {
@@ -21,82 +22,54 @@ func NewChartInkController(ci service.ChartInkService, ss service.StrategyServic
 	}
 }
 
-// RegisterRoutes sets up the route group for ChartInk operations.
-func (ctrl *ChartInkController) RegisterRoutes(router *gin.RouterGroup) {
-	chartinkGroup := router.Group("/chartink")
-	{
-		chartinkGroup.GET("/fetch", ctrl.fetchData)
-		chartinkGroup.GET("/fetchWithMargin", ctrl.fetchWithMargin)
-	}
+func (ctrl *ChartInkController) RegisterRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "fetch-chartink-data",
+		Method:      http.MethodGet,
+		Path:        "/api/chartink/fetch",
+		Summary:     "Fetch raw ChartInk data",
+		Description: "Triggers a scan on ChartInk for the given strategy and returns raw stock data",
+		Tags:        []string{"ChartInk"},
+	}, ctrl.fetchData)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "fetch-chartink-with-margin",
+		Method:      http.MethodGet,
+		Path:        "/api/chartink/fetchWithMargin",
+		Summary:     "Fetch ChartInk data with Margin info",
+		Description: "Triggers a scan and maps results with current margin and leverage data",
+		Tags:        []string{"ChartInk"},
+	}, ctrl.fetchWithMargin)
 }
 
-// fetchData retrieves raw scanner results from ChartInk.
-// @Summary      Fetch raw ChartInk data
-// @Description  Triggers a scan on ChartInk for the given strategy and returns raw stock data
-// @Tags         ChartInk
-// @Produce      json
-// @Param        strategy  query     string  true  "Name of the strategy to run"  example(Bullish_Engulfing)
-// @Success      200       {object}  model.ChartInkResponseDto
-// @Failure      400       {object}  map[string]string "Strategy name required"
-// @Failure      404       {object}  map[string]string "Strategy not found"
-// @Failure      500       {object}  map[string]string "Internal server error"
-// @Router       /chartink/fetch [get]
-func (ctrl *ChartInkController) fetchData(c *gin.Context) {
-	strategyName := c.Query("strategy")
-	if strategyName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "strategy query parameter is required"})
-		return
-	}
-
-	strategyDto, exists := ctrl.findStrategy(strategyName)
+func (ctrl *ChartInkController) fetchData(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
-		return
+		return NewErrorResponse("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchData(strategyDto)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
 
-	c.JSON(http.StatusOK, data)
+	return NewResponse(data, "ChartInk data fetched"), nil
 }
 
-// fetchWithMargin retrieves scanner results merged with local Margin data.
-// @Summary      Fetch ChartInk data with Margin info
-// @Description  Triggers a scan and maps results with current margin and leverage data
-// @Tags         ChartInk
-// @Produce      json
-// @Param        strategy  query     string  true  "Name of the strategy to run" example(Nifty_50_Breakout)
-// @Success      200       {array}   model.StockMarginDto
-// @Failure      400       {object}  map[string]string
-// @Failure      404       {object}  map[string]string
-// @Failure      500       {object}  map[string]string
-// @Router       /chartink/fetchWithMargin [get]
-func (ctrl *ChartInkController) fetchWithMargin(c *gin.Context) {
-	strategyName := c.Query("strategy")
-	if strategyName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "strategy query parameter is required"})
-		return
-	}
-
-	strategyDto, exists := ctrl.findStrategy(strategyName)
+func (ctrl *ChartInkController) fetchWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
-		return
+		return NewErrorResponse("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchWithMargin(strategyDto)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return NewErrorResponse(err.Error()), nil
 	}
 
-	c.JSON(http.StatusOK, data)
+	return NewResponse(data, "ChartInk data with margin details fetched"), nil
 }
 
-// Helper to bridge the logic from your StrategyService map
 func (ctrl *ChartInkController) findStrategy(name string) (model.StrategyDto, bool) {
 	strategies := ctrl.strategyService.GetAllStrategies()
 	for _, s := range strategies {
