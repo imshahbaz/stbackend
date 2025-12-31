@@ -1,143 +1,104 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log"
+	"sort"
+	"time"
+
 	"backend/cache"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
-	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/copier"
 )
 
 type PriceActionService interface {
-	SaveOrderBlock(ctx *gin.Context)
-	DeleteOrderBlock(ctx *gin.Context)
-	CheckOBMitigation(ctx *gin.Context)
-	GetObBySymbol(ctx *gin.Context)
-	AutomateOrderBlock(ctx *gin.Context)
+	GetPABySymbol(ctx context.Context, symbol string) (model.StockRecord, error)
+	SaveOrderBlock(ctx context.Context, req model.ObRequest) error
+	UpdateOrderBlock(ctx context.Context, req model.ObRequest) error
+	DeleteOrderBlock(ctx context.Context, symbol string, date string) error
+	CheckOBMitigation(ctx context.Context) ([]model.ObResponse, error)
+	AutomateOrderBlock(ctx context.Context, attempt int) error
+
+	SaveFvg(ctx context.Context, req model.ObRequest) error
+	UpdateFvg(ctx context.Context, req model.ObRequest) error
+	DeleteFvg(ctx context.Context, symbol string, date string) error
+	CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error)
+	AutomateFvg(ctx context.Context, attempt int) error
+	FvgCleanUp(ctx context.Context) error
+
+	AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string)
+	AddOlderFvg(ctx context.Context, fileName string, file io.Reader, stopDate string)
 }
 
 type PriceActionServiceImpl struct {
 	chartInkService ChartInkService
 	nseService      NseService
 	priceActionRepo *repository.PriceActionRepo
+	marginSvc       MarginService
 }
 
-func NewPriceActionService(c ChartInkService, n NseService, repo *repository.PriceActionRepo) PriceActionService {
+func NewPriceActionService(c ChartInkService, n NseService,
+	repo *repository.PriceActionRepo, marginSvc MarginService) PriceActionService {
 	return &PriceActionServiceImpl{
 		chartInkService: c,
 		nseService:      n,
 		priceActionRepo: repo,
+		marginSvc:       marginSvc,
 	}
 }
 
-func (s *PriceActionServiceImpl) SaveOrderBlock(ctx *gin.Context) {
-	var request model.ObRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
+// --- Internal Engine ---
+
+func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategyName string, cacheKey string, isOB bool) ([]model.ObResponse, error) {
+	rawStrategy, found := cache.StrategyCache.Get(strategyName)
+	if !found {
+		return nil, errors.New("strategy not found in cache: " + strategyName)
 	}
-
-	err := s.priceActionRepo.SaveOrderBlock(ctx, request)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block created",
-	})
-}
-
-func (s *PriceActionServiceImpl) DeleteOrderBlock(ctx *gin.Context) {
-	var request model.ObRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	err := s.priceActionRepo.DeleteOrderBlockByDate(ctx, request.Symbol, request.Date)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block deleted",
-	})
-}
-
-func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
-	rawStrategy, ok := cache.StrategyCache.Get("BULLISH CLOSE 200")
-
-	strategy, ok := rawStrategy.(model.StrategyDto)
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "OB strategy error",
-		})
-		return
-	}
+	strategy := rawStrategy.(model.StrategyDto)
 
 	data, err := s.chartInkService.FetchWithMargin(strategy)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
+		return nil, err
 	}
 
-	idMap := make(map[string]model.StockMarginDto, len(data))
+	idMap := make(map[string]model.StockMarginDto)
+	ids := make([]string, 0, len(data))
 	for _, dto := range data {
 		idMap[dto.Symbol] = dto
+		ids = append(ids, dto.Symbol)
 	}
 
-	ids := make([]string, 0, len(data))
-	for _, stock := range data {
-		ids = append(ids, stock.Symbol)
-	}
-
-	obs, err := s.priceActionRepo.GetAllObIn(ctx, ids)
+	pas, err := s.priceActionRepo.GetAllPAIn(ctx, ids)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
+		return nil, err
 	}
 
-	response := make([]model.ObResponse, 0, len(obs))
-	for _, ob := range obs {
-		history, err := s.nseService.FetchStockData(ob.Symbol)
-		if err != nil {
+	var response []model.ObResponse
+	for _, pa := range pas {
+		history, err := s.nseService.FetchStockData(ctx, pa.Symbol)
+		if err != nil || len(history) == 0 {
 			continue
 		}
 		today := history[0]
-		for _, block := range ob.OrderBlocks {
-			formattedDate, err := util.ParseNseDate(history[1].Timestamp)
-			if err != nil {
+
+		blocks := pa.OrderBlocks
+		if !isOB {
+			blocks = pa.Fvg
+		}
+
+		for _, block := range blocks {
+			checkDate, _ := util.ParseNseDate(history[1].Timestamp)
+			if !isOB && block.Date == checkDate {
 				continue
 			}
-			if (today.Low < block.High || today.Low < block.Low) && today.Close > block.High && formattedDate != block.Date {
-				dto, _ := idMap[ob.Symbol]
+			if s.checkValidMitigation(today, block) {
 				var obResp model.ObResponse
-				copier.Copy(&obResp, &dto)
+				copier.Copy(&obResp, idMap[pa.Symbol])
 				obResp.Date = block.Date
 				response = append(response, obResp)
 				break
@@ -146,110 +107,260 @@ func (s *PriceActionServiceImpl) CheckOBMitigation(ctx *gin.Context) {
 	}
 
 	if len(response) > 0 {
-		cache.PriceActionCache.Set("ObCache", response, -1)
+		sort.Slice(response, func(i, j int) bool {
+			return response[i].Margin > response[j].Margin
+		})
+		cache.PriceActionCache.Set(cacheKey, response, -1)
 	}
-
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block fetch success",
-		Data:    response,
-	})
+	return response, nil
 }
 
-func (s *PriceActionServiceImpl) GetObBySymbol(ctx *gin.Context) {
-	symbol := ctx.Param("symbol")
+// --- Interface Methods ---
 
-	if symbol == "" {
-		ctx.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid request",
-		})
-		return
+func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt int) error {
+	if attempt >= 3 {
+		return nil
 	}
-
-	data, err := s.priceActionRepo.GetObByID(ctx, symbol)
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block found",
-		Data:    data,
-	})
-}
-
-func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx *gin.Context) {
-	var request model.ObRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	err := s.priceActionRepo.UpdateOrderBlock(ctx, request)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block updated",
-	})
-}
-
-func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx *gin.Context) {
-	rawStrategy, ok := cache.StrategyCache.Get("BULLISH OB 1D")
-
-	strategy, ok := rawStrategy.(model.StrategyDto)
+	raw, _ := cache.StrategyCache.Get("BULLISH OB 1D")
+	strategy, ok := raw.(model.StrategyDto)
 	if !ok {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "OB strategy error",
-		})
-		return
+		return errors.New("OB strategy not in cache")
 	}
 
-	data, err := s.chartInkService.FetchWithMargin(strategy)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
+	data, _ := s.chartInkService.FetchWithMargin(strategy)
+	count := 0
 	for _, dto := range data {
-		history, err := s.nseService.FetchStockData(dto.Symbol)
-		if err != nil {
-			continue
+		s.nseService.ClearStockDataCache(dto.Symbol)
+		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
+			if s.automationReschedule(history[0]) {
+				log.Printf("Rescheduling Ob automation for %d time", attempt+1)
+				time.AfterFunc(25*time.Minute, func() {
+					s.AutomateOrderBlock(context.Background(), attempt+1)
+				})
+				return nil
+			}
+			candle := history[2]
+			if date, err := util.ParseNseDate(candle.Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
+					Symbol: dto.Symbol, Date: date, High: candle.High, Low: candle.Low,
+				})
+				count++
+			}
 		}
-		candle := history[2]
-		formattedDate, err := util.ParseNseDate(candle.Timestamp)
-		if err != nil {
-			continue
-		}
-		request := model.ObRequest{
-			Symbol: dto.Symbol,
-			Date:   formattedDate,
-			High:   candle.High,
-			Low:    candle.Low,
-		}
-		s.priceActionRepo.SaveOrderBlock(ctx, request)
+	}
+	log.Printf("%d Order block's inserted", count)
+	return nil
+}
+
+func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) error {
+	if attempt >= 3 {
+		return nil
+	}
+	raw, _ := cache.StrategyCache.Get("FAIR VALUE GAP")
+	strategy, ok := raw.(model.StrategyDto)
+	if !ok {
+		return errors.New("FVG strategy not in cache")
 	}
 
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Order block automation completed",
-	})
+	data, _ := s.chartInkService.FetchWithMargin(strategy)
+	count := 0
+	for _, dto := range data {
+		s.nseService.ClearStockDataCache(dto.Symbol)
+		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
+			if s.automationReschedule(history[0]) {
+				log.Printf("Rescheduling Fvg automation for %d time", attempt+1)
+				time.AfterFunc(30*time.Minute, func() {
+					s.AutomateFvg(context.Background(), attempt+1)
+				})
+				return nil
+			}
+			if date, err := util.ParseNseDate(history[1].Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
+					Symbol: dto.Symbol, Date: date, High: history[0].Low, Low: history[2].High,
+				})
+				count++
+			}
+		}
+	}
+	log.Printf("%d Fvg's inserted", count)
+	return nil
+}
 
+func (s *PriceActionServiceImpl) GetPABySymbol(ctx context.Context, symbol string) (model.StockRecord, error) {
+	return s.priceActionRepo.GetPAByID(ctx, symbol)
+}
+
+func (s *PriceActionServiceImpl) CheckOBMitigation(ctx context.Context) ([]model.ObResponse, error) {
+	return s.processMitigation(ctx, "BULLISH CLOSE 200", "ObCache", true)
+}
+
+func (s *PriceActionServiceImpl) CheckFvgMitigation(ctx context.Context) ([]model.ObResponse, error) {
+	return s.processMitigation(ctx, "BULLISH CLOSE 200", "FvgCache", false)
+}
+
+// Pass-through CRUD methods
+func (s *PriceActionServiceImpl) SaveOrderBlock(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.SaveOrderBlock(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.UpdateOrderBlock(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) DeleteOrderBlock(ctx context.Context, sym string, d string) error {
+	return s.priceActionRepo.DeleteOrderBlockByDate(ctx, sym, d)
+}
+
+func (s *PriceActionServiceImpl) SaveFvg(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.SaveFvg(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) UpdateFvg(ctx context.Context, req model.ObRequest) error {
+	return s.priceActionRepo.UpdateFvg(ctx, req)
+}
+
+func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d string) error {
+	return s.priceActionRepo.DeleteFvgByDate(ctx, sym, d)
+}
+
+// Shared logic to find the index and data for a specific date
+func (s *PriceActionServiceImpl) processHistory(ctx context.Context, stock string, date string) (string, []model.NSEHistoricalData, int, bool) {
+	m, exists := s.marginSvc.GetMargin(stock)
+	if !exists {
+		return "", nil, 0, false
+	}
+
+	// Uses your time cache strategy internally
+	history, err := s.nseService.FetchStockData(ctx, m.Symbol)
+	if err != nil || len(history) < 3 {
+		return "", nil, 0, false
+	}
+
+	for i := 0; i <= len(history)-3; i++ {
+		candleDate, err := util.ParseNseDate(history[i].Timestamp)
+		if err == nil && candleDate == date {
+			return m.Symbol, history, i, true
+		}
+	}
+	return "", nil, 0, false
+}
+
+func (s *PriceActionServiceImpl) AddOlderOb(ctx context.Context, fileName string, file io.Reader, stopDate string) {
+	req, err := util.ReadCSVReversed(file, stopDate)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for _, stock := range req {
+		if symbol, history, i, found := s.processHistory(ctx, stock.Symbol, stock.Date); found {
+			target := history[i+2]
+			if actualDate, err := util.ParseNseDate(target.Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveOrderBlock(ctx, model.ObRequest{
+					Symbol: symbol,
+					Date:   actualDate,
+					High:   target.High,
+					Low:    target.Low,
+				})
+				count++
+			}
+		}
+	}
+	log.Printf("%d Order block's inserted", count)
+}
+
+func (s *PriceActionServiceImpl) AddOlderFvg(ctx context.Context, fileName string, file io.Reader, stopDate string) {
+	req, err := util.ReadCSVReversed(file, stopDate)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for _, stock := range req {
+		if symbol, history, i, found := s.processHistory(ctx, stock.Symbol, stock.Date); found {
+			if actualDate, err := util.ParseNseDate(history[i+1].Timestamp); err == nil {
+				_ = s.priceActionRepo.SaveFvg(ctx, model.ObRequest{
+					Symbol: symbol,
+					Date:   actualDate,
+					High:   history[i].Low,
+					Low:    history[i+2].High,
+				})
+				count++
+			}
+		}
+	}
+	log.Printf("%d Fvg's inserted", count)
+}
+
+func (s *PriceActionServiceImpl) FvgCleanUp(ctx context.Context) error {
+	cleanCount := 0
+	data, err := s.priceActionRepo.GetAllPriceAction(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, record := range data {
+		if len(record.Fvg) == 0 {
+			continue
+		}
+
+		history, err := s.nseService.FetchStockData(ctx, record.Symbol)
+		if err != nil {
+			continue
+		}
+
+		for _, info := range record.Fvg {
+			fvgDate := info.Date
+			count := 0
+			delete := false
+			for _, candle := range history {
+
+				candleDate, _ := util.ParseNseDate(candle.Timestamp)
+				if fvgDate >= candleDate {
+					break
+				}
+
+				if candle.Close < info.Low || candle.Low < info.Low {
+					delete = true
+					break
+				}
+
+				if candle.Close > candle.Open && candle.Low < info.High {
+					count++
+				}
+			}
+
+			if delete || count > 1 {
+				s.priceActionRepo.DeleteFvgByDate(ctx, record.Symbol, fvgDate)
+				cleanCount++
+			}
+		}
+	}
+
+	log.Printf("Total cleaned fvg %d", cleanCount)
+	return nil
+}
+
+func (s *PriceActionServiceImpl) checkValidMitigation(candle model.NSEHistoricalData, info model.Info) bool {
+	if candle.Close < info.Low || candle.Low < info.Low || candle.Low > info.High {
+		return false
+	}
+	return true
+}
+
+func (s *PriceActionServiceImpl) automationReschedule(candle model.NSEHistoricalData) bool {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		return true
+	}
+
+	now := time.Now().In(loc)
+	day := now.Weekday()
+	if day == 0 || day == 6 {
+		return false
+	}
+
+	today := now.Format("2006-01-02")
+	candleDate, _ := util.ParseNseDate(candle.Timestamp)
+	return candleDate < today
 }

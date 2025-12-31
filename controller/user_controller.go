@@ -1,13 +1,15 @@
 package controller
 
 import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
 	"backend/cache"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
-	"context"
-	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,18 +24,17 @@ func NewUserController(s service.UserService, isProduction bool) *UserController
 }
 
 func (ctrl *UserController) RegisterRoutes(router *gin.RouterGroup) {
-	authGroup := router.Group("/user")
-	protected := authGroup.Group("/")
-	protected.Use(middleware.AuthMiddleware(ctrl.isProduction))
+	userGroup := router.Group("/user")
+	userGroup.Use(middleware.AuthMiddleware(ctrl.isProduction))
 	{
-		protected.PATCH("/username", ctrl.UpdateUsername)
-		protected.PATCH("/theme", ctrl.UpdateTheme)
+		userGroup.PATCH("/username", ctrl.UpdateUsername)
+		userGroup.PATCH("/theme", ctrl.UpdateTheme)
 	}
 }
 
 // UpdateUsername godoc
 // @Summary      Update Username
-// @Description  Updates the username and returns the updated user object
+// @Description  Updates the username and invalidates the auth cache
 // @Tags         User
 // @Accept       json
 // @Produce      json
@@ -41,54 +42,50 @@ func (ctrl *UserController) RegisterRoutes(router *gin.RouterGroup) {
 // @Success      200     {object}  model.Response
 // @Failure      400     {object}  model.Response
 // @Failure      401     {object}  model.Response
-// @Failure      500     {object}  model.Response
 // @Router       /user/username [patch]
 func (ctrl *UserController) UpdateUsername(c *gin.Context) {
 	var req model.UserDto
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.Response{
 			Success: false,
-			Error:   "Invalid Request",
+			Error:   "Invalid request payload",
 		})
 		return
 	}
 
-	// 1. Call Service (Returns updated *model.User)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	_, err := ctrl.userSvc.UpdateUsername(ctx, req.Email, req.Username)
+
+	_, err := ctrl.userSvc.UpdateUsername(ctx, req.UserID, req.Username)
 	if err != nil {
-		c.JSON(http.StatusNotFound, model.Response{
+		c.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
-			Error:   "User not found or update failed",
+			Error:   "Failed to update username",
 		})
 		return
 	}
 
-	cache.UserAuthCache.Delete(req.Email)
-	// 2. Return the DTO (React will use this to update its state)
+	// Cache Invalidation: Force refresh on next GetMe call
+	cache.UserAuthCache.Delete(strconv.FormatInt(req.UserID, 10))
+
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,
-		Message: "Username Updated",
+		Message: "Username updated successfully",
 	})
 }
 
 // UpdateTheme godoc
 // @Summary      Update User Theme
-// @Description  Updates the theme preference (LIGHT/DARK) for the authenticated user
-// @Tags         user
+// @Description  Updates preference (LIGHT/DARK) for the authenticated user
+// @Tags         User
 // @Accept       json
 // @Produce      json
 // @Param        request body      model.UpdateThemeRequest  true  "Theme Preference"
 // @Success      200     {object}  model.Response
 // @Failure      400     {object}  model.Response
-// @Failure      401     {object}  model.Response
-// @Failure      500     {object}  model.Response
 // @Router       /user/theme [patch]
 func (ctrl *UserController) UpdateTheme(c *gin.Context) {
 	var req model.UpdateThemeRequest
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.Response{
 			Success: false,
@@ -100,47 +97,40 @@ func (ctrl *UserController) UpdateTheme(c *gin.Context) {
 	if req.Theme != model.ThemeLight && req.Theme != model.ThemeDark {
 		c.JSON(http.StatusBadRequest, model.Response{
 			Success: false,
-			Error:   "Theme must be either LIGHT or DARK",
+			Error:   "Invalid theme: must be LIGHT or DARK",
 		})
 		return
 	}
 
+	// Extract user from context (set by AuthMiddleware)
 	val, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, model.Response{
 			Success: false,
-			Error:   "Unauthorized: User",
+			Error:   "User session not found",
 		})
 		return
 	}
 
-	user, ok := val.(model.UserDto)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, model.Response{
-			Success: false,
-			Error:   "Unauthorized: User",
-		})
-		return
-	}
+	userDto := val.(model.UserDto)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	_, err := ctrl.userSvc.UpdateUserTheme(ctx, user.Email, req.Theme)
-
-	if err != nil {
+	if _, err := ctrl.userSvc.UpdateUserTheme(ctx, userDto.UserID, req.Theme); err != nil {
 		c.JSON(http.StatusInternalServerError, model.Response{
 			Success: false,
-			Error:   "Something went wrong",
+			Error:   "Internal server error",
 		})
 		return
 	}
 
-	cache.UserAuthCache.Delete(user.Email)
+	// Clear cache so that subsequent requests reflect the new theme
+	cache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
+
 	c.JSON(http.StatusOK, model.Response{
 		Success: true,
 		Message: "Theme synchronized",
 		Data:    req.Theme,
 	})
-
 }

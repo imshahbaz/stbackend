@@ -34,14 +34,14 @@ definitions:
           $ref: '#/definitions/model.Recipient'
         type: array
     type: object
-  model.Info:
+  model.ChartInkResponseDto:
     properties:
-      date:
-        type: string
-      high:
-        type: number
-      low:
-        type: number
+      data:
+        description: json:"data" tells the parser to map the JSON key "data" to this
+          field
+        items:
+          $ref: '#/definitions/model.StockData'
+        type: array
     type: object
   model.Margin:
     properties:
@@ -74,8 +74,10 @@ definitions:
         type: string
       debug:
         type: boolean
-      frontendUrl:
-        type: string
+      frontendUrls:
+        items:
+          type: string
+        type: array
       jwtSecret:
         type: string
       leverage:
@@ -106,19 +108,6 @@ definitions:
         type: number
       low:
         type: number
-      symbol:
-        type: string
-    type: object
-  model.ObResponse:
-    properties:
-      close:
-        type: number
-      date:
-        type: string
-      margin:
-        type: number
-      name:
-        type: string
       symbol:
         type: string
     type: object
@@ -182,19 +171,6 @@ definitions:
       symbol:
         type: string
     type: object
-  model.StockRecord:
-    properties:
-      fvg:
-        items:
-          $ref: '#/definitions/model.Info'
-        type: array
-      orderBlocks:
-        items:
-          $ref: '#/definitions/model.Info'
-        type: array
-      symbol:
-        type: string
-    type: object
   model.Strategy:
     properties:
       active:
@@ -216,6 +192,17 @@ definitions:
     - name
     - scanClause
     type: object
+  model.TruecallerDto:
+    properties:
+      accessToken:
+        type: string
+      endpoint:
+        type: string
+      requestId:
+        type: string
+      status:
+        type: string
+    type: object
   model.UpdateThemeRequest:
     properties:
       theme:
@@ -234,12 +221,18 @@ definitions:
         type: string
       email:
         type: string
+      mobile:
+        type: integer
+      name:
+        type: string
       password:
         type: string
       role:
         $ref: '#/definitions/model.UserRole'
       theme:
         $ref: '#/definitions/model.UserTheme'
+      userId:
+        type: integer
       username:
         type: string
     required:
@@ -286,9 +279,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticates user and returns user details without password
+      description: Authenticates user via HttpOnly cookie and JWT
       parameters:
-      - description: Login Credentials (only email/password required)
+      - description: Login Credentials
         in: body
         name: login
         required: true
@@ -298,7 +291,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Login successful (Passwords omitted)
+          description: OK
           schema:
             $ref: '#/definitions/model.UserDto'
         "401":
@@ -312,45 +305,45 @@ paths:
       - Auth
   /auth/logout:
     post:
-      description: Clears the authentication cookie to log out the user
+      description: Clears the authentication cookie
       produces:
       - application/json
       responses:
         "200":
-          description: 'message: Logged out successfully'
+          description: OK
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Logout user
+      summary: User Logout
       tags:
       - Auth
   /auth/me:
     get:
-      description: Retrieves user details (email and role) from the session cookie
+      description: Retrieves authenticated user details from session
       produces:
       - application/json
       responses:
         "200":
-          description: User details successfully retrieved
+          description: OK
           schema:
             $ref: '#/definitions/model.UserDto'
         "401":
-          description: 'Unauthorized: Session invalid or expired'
+          description: Unauthorized
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Get current authenticated user
+      summary: Get Current User
       tags:
       - Auth
   /auth/signup:
     post:
       consumes:
       - application/json
-      description: Stores user data in local memory for 5 minutes and sends an OTP.
+      description: Caches user data and sends OTP for verification
       parameters:
-      - description: User Registration Details
+      - description: Signup Details
         in: body
         name: user
         required: true
@@ -363,21 +356,123 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.MessageResponse'
-        "400":
-          description: Bad Request
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/model.MessageResponse'
-      summary: User Signup
+      summary: User Signup Initiation
       tags:
-      - auth
+      - Auth
+  /auth/truecaller:
+    post:
+      consumes:
+      - application/json
+      description: Receives the access token from Truecaller, fetches user profile,
+        and warms up the local cache for NSE data.
+      parameters:
+      - description: Truecaller Data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/model.TruecallerDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Callback Successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "400":
+          description: Invalid Request
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+      summary: Process Truecaller Login Callback
+      tags:
+      - Authentication
+  /auth/truecaller/status/{requestId}:
+    get:
+      description: Polls for the status of a login request. If successful, creates
+        the user, generates a JWT, and sets an auth cookie.
+      parameters:
+      - description: Unique Request ID
+        in: path
+        name: requestId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created and JWT issued
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.UserDto'
+                message:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "404":
+          description: Waiting for Truecaller callback
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                error:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+        "500":
+          description: Failed to create user or generate token
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                message:
+                  type: string
+                success:
+                  type: boolean
+              type: object
+      summary: Check Truecaller Auth Status
+      tags:
+      - Authentication
   /auth/verify-otp:
     post:
       consumes:
       - application/json
-      description: Validates the OTP from cache. If valid, creates the user in the
-        database and returns a JWT.
+      description: Validates OTP and persists user to database
       parameters:
-      - description: OTP Verification Details
+      - description: OTP Verification
         in: body
         name: request
         required: true
@@ -387,16 +482,16 @@ paths:
       - application/json
       responses:
         "201":
-          description: User created successfully
+          description: Created
           schema:
             $ref: '#/definitions/model.MessageResponse'
         "400":
-          description: Invalid OTP or session expired
+          description: Bad Request
           schema:
             $ref: '#/definitions/model.MessageResponse'
-      summary: Verify OTP and Create User
+      summary: Verify OTP and Complete Signup
       tags:
-      - auth
+      - Auth
   /chartink/fetch:
     get:
       description: Triggers a scan on ChartInk for the given strategy and returns
@@ -414,9 +509,13 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/model.StockData'
-            type: array
+            $ref: '#/definitions/model.ChartInkResponseDto'
+        "400":
+          description: Strategy name required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Strategy not found
           schema:
@@ -434,8 +533,8 @@ paths:
       - ChartInk
   /chartink/fetchWithMargin:
     get:
-      description: Triggers a scan and maps the results with the current margin and
-        leverage data
+      description: Triggers a scan and maps results with current margin and leverage
+        data
       parameters:
       - description: Name of the strategy to run
         example: Nifty_50_Breakout
@@ -452,6 +551,12 @@ paths:
             items:
               $ref: '#/definitions/model.StockMarginDto'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Not Found
           schema:
@@ -467,22 +572,17 @@ paths:
       summary: Fetch ChartInk data with Margin info
       tags:
       - ChartInk
-  /config:
+  /config/active:
     get:
-      description: Returns the current system settings (Leverage, API Keys, etc.)
-        from the real-time cache.
+      description: Returns current system settings (Leverage, API Keys, etc.) from
+        memory.
       produces:
       - application/json
       responses:
         "200":
-          description: Current active config
+          description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.MongoEnvConfig'
-              type: object
+            $ref: '#/definitions/model.MongoEnvConfig'
         "500":
           description: Internal Server Error
           schema:
@@ -490,11 +590,28 @@ paths:
       summary: Get Active Configuration
       tags:
       - Config
+  /config/reload:
+    post:
+      description: Triggers a fresh fetch from MongoDB to update the in-memory cache.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Reload System Configuration
+      tags:
+      - Config
+  /config/update:
     patch:
       consumes:
       - application/json
-      description: Updates the configuration document in MongoDB and hot-swaps the
-        active memory pointer.
+      description: Updates MongoDB and hot-swaps active memory config.
       parameters:
       - description: Update Config Fields
         in: body
@@ -506,11 +623,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: Successfully updated
+          description: OK
           schema:
             $ref: '#/definitions/model.Response'
         "400":
-          description: Invalid Request Body
+          description: Bad Request
           schema:
             $ref: '#/definitions/model.Response'
         "500":
@@ -518,23 +635,6 @@ paths:
           schema:
             $ref: '#/definitions/model.Response'
       summary: Update System Configuration
-      tags:
-      - Config
-    post:
-      description: Triggers a fresh fetch from MongoDB to update the in-memory cache
-        across all services.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Successfully reloaded
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Reload System Configuration
       tags:
       - Config
   /email/send:
@@ -553,9 +653,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Email sent successfully
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "400":
           description: Invalid request body
           schema:
@@ -573,32 +675,107 @@ paths:
       - Email
   /health:
     get:
-      description: Confirm that the server is up and running. Returns a 200 status
-        code with no body.
+      description: Confirm that the server is up and running. Used by Load Balancers
+        and Uptime Monitors.
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: OK
+          description: Status OK
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
       summary: System Health Check
       tags:
       - System
     head:
-      description: Confirm that the server is up and running. Returns a 200 status
-        code with no body.
+      description: Confirm that the server is up and running. Used by Load Balancers
+        and Uptime Monitors.
       produces:
-      - text/plain
+      - application/json
+      responses:
+        "200":
+          description: Status OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: System Health Check
+      tags:
+      - System
+  /margin/all:
+    get:
+      description: Returns a list of all stock margins from the local memory cache
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
           schema:
-            type: string
-      summary: System Health Check
+            items:
+              $ref: '#/definitions/model.Margin'
+            type: array
+      summary: Get all margins
       tags:
-      - System
-  /margin/{symbol}:
+      - Margin
+  /margin/load-from-csv:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a CSV file to bulk load or update margin data
+      parameters:
+      - description: Margin CSV file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Upload Margin CSV
+      tags:
+      - Margin
+  /margin/reload:
+    post:
+      description: Forces a reload of all margins from MongoDB into the memory cache
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reload margins
+      tags:
+      - Margin
+  /margin/symbol/{symbol}:
     get:
       description: Fetches the margin details for a specific stock symbol
       parameters:
@@ -624,77 +801,15 @@ paths:
       summary: Get margin by symbol
       tags:
       - Margin
-  /margin/all:
-    get:
-      description: Returns a list of all stock margins stored in the database
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.Margin'
-            type: array
-      summary: Get all margins
-      tags:
-      - Margin
-  /margin/load-from-csv:
-    post:
-      consumes:
-      - multipart/form-data
-      description: Uploads a CSV file to bulk load or update margin data
-      parameters:
-      - description: Margin CSV file
-        in: formData
-        name: file
-        required: true
-        type: file
-      responses:
-        "200":
-          description: OK
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Upload Margin CSV
-      tags:
-      - Margin
-  /margin/reload:
-    get:
-      description: Forces a reload of all margins from the persistent database into
-        the memory cache
-      responses:
-        "200":
-          description: OK
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Reload margins
-      tags:
-      - Margin
   /nse/allindices:
     get:
-      consumes:
-      - application/json
-      description: Fetches the latest all indices performance data. Uses a warmup
-        time-cache strategy to serve data efficiently and avoid NSE rate limits.
+      description: Fetches latest performance data for all indices using the warmup
+        strategy.
       produces:
       - application/json
       responses:
         "200":
-          description: Fetch Success
+          description: OK
           schema:
             allOf:
             - $ref: '#/definitions/model.Response'
@@ -708,20 +823,18 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/model.Response'
-      summary: Get NSE Sectoral Heatmap
+      summary: Get All NSE Indices
       tags:
       - Stocks
   /nse/heatmap:
     get:
-      consumes:
-      - application/json
-      description: Fetches the latest sectoral index performance data. Uses a warmup
-        time-cache strategy to serve data efficiently and avoid NSE rate limits.
+      description: Fetches latest sectoral data. Uses warmup time-cache strategy to
+        avoid NSE rate limits.
       produces:
       - application/json
       responses:
         "200":
-          description: Fetch Success
+          description: OK
           schema:
             allOf:
             - $ref: '#/definitions/model.Response'
@@ -742,10 +855,10 @@ paths:
     get:
       consumes:
       - application/json
-      description: Fetches stock history for a specific symbol (e.g., BEL). Data is
-        cached for 1 hour.
+      description: Fetches stock history for a specific symbol. Utilizes a 1-hour
+        time cache.
       parameters:
-      - description: Stock Symbol (e.g. BEL)
+      - description: Stock Symbol (e.g. RELIANCE)
         in: query
         name: symbol
         required: true
@@ -754,7 +867,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Fetch Success
+          description: OK
           schema:
             allOf:
             - $ref: '#/definitions/model.Response'
@@ -765,11 +878,7 @@ paths:
                   type: array
               type: object
         "400":
-          description: Invalid Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "401":
-          description: Unauthorized
+          description: Bad Request
           schema:
             $ref: '#/definitions/model.Response'
         "500":
@@ -779,220 +888,262 @@ paths:
       summary: Get Historical Stock Data
       tags:
       - Stocks
-  /price-action/ob:
-    delete:
-      consumes:
-      - application/json
-      description: Removes a specific order block entry from a stock's record based
-        on symbol and date.
-      parameters:
-      - description: Symbol and Date of block to delete
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Delete an Order Block
-      tags:
-      - PriceAction
-    patch:
-      consumes:
-      - application/json
-      description: Updates an existing one for a specific symbol and date.
-      parameters:
-      - description: Order Block Details
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Update an Order Block
-      tags:
-      - PriceAction
-    post:
-      consumes:
-      - application/json
-      description: Creates a new order block for a specific symbol and date.
-      parameters:
-      - description: Order Block Details
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/model.ObRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Response'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Save an Order Block
-      tags:
-      - PriceAction
-  /price-action/ob/{symbol}:
+  /price-action/{symbol}:
     get:
-      description: Retrieves the full list of order blocks for a specific stock symbol
-        from the MongoDB cache.
       parameters:
-      - description: Stock Symbol (e.g., RELIANCE)
+      - description: Symbol
         in: path
         name: symbol
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Get PA by Symbol
+      tags:
+      - PriceAction
+  /price-action/automate:
+    post:
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Trigger PA Automation
+      tags:
+      - PriceAction
+  /price-action/fvg:
+    delete:
+      parameters:
+      - description: Delete Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Delete FVG
+      tags:
+      - PriceAction (Admin)
+    patch:
+      parameters:
+      - description: Update Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update FVG
+      tags:
+      - PriceAction (Admin)
+    post:
+      parameters:
+      - description: FVG Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Save FVG
+      tags:
+      - PriceAction (Admin)
+  /price-action/fvg/check:
+    post:
+      description: Triggers a fresh scan of all stocks against saved Fair Value Gaps
+        (FVG) to identify active mitigations. This bypasses the cache and updates
+        it.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Force Refresh FVG Mitigations
+      tags:
+      - PriceAction
+  /price-action/fvg/cleanup:
+    post:
+      description: Triggers a maintenance task that fetches NSE history for all stored
+        symbols and deletes FVGs that have been breached or filled by subsequent price
+        action.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Clean up filled FVGs
+      tags:
+      - PriceAction
+  /price-action/fvg/mitigation:
+    get:
+      responses: {}
+      summary: Get Cached FVG Mitigations
+      tags:
+      - PriceAction
+  /price-action/fvg/old/{stopDate}:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a CSV to find and save FVGs from a specific stop date backwards.
+      parameters:
+      - description: CSV File
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Stop Date (YYYY-MM-DD)
+        in: path
+        name: stopDate
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Successfully retrieved order blocks
+          description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.StockRecord'
-              type: object
-        "400":
-          description: Invalid symbol provided
-          schema:
-            $ref: '#/definitions/model.Response'
-        "404":
-          description: Stock symbol not found in cache
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Get Order Blocks by Symbol
+            additionalProperties:
+              type: string
+            type: object
+      summary: Process Historical Fair Value Gaps (FVG)
       tags:
       - PriceAction
-  /price-action/ob/automate:
-    post:
-      consumes:
-      - application/json
-      description: Fetches stocks based on the "BULLISH CLOSE 200" strategy, retrieves
-        historical data from NSE (utilizing time cache), and persists Order Blocks.
-      produces:
-      - application/json
+  /price-action/ob:
+    delete:
+      parameters:
+      - description: Delete Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
       responses:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                message:
-                  type: string
-              type: object
-        "401":
-          description: Unauthorized
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                error:
-                  type: string
-              type: object
-      summary: Automate Order Block Discovery
+            $ref: '#/definitions/model.Response'
+      summary: Delete OB
       tags:
-      - Price Action
+      - PriceAction (Admin)
+    patch:
+      parameters:
+      - description: Update Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Update OB
+      tags:
+      - PriceAction (Admin)
+    post:
+      parameters:
+      - description: OB Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ObRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Response'
+      summary: Save OB
+      tags:
+      - PriceAction (Admin)
   /price-action/ob/check:
     post:
-      description: Fetches strategy symbols, checks them against NSE live data, identifies
-        non-mitigated blocks, and updates the cache.
+      description: Triggers a fresh scan of all stocks against saved Order Blocks
+        to find active mitigations.
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/model.ObResponse'
-                  type: array
-              type: object
+            $ref: '#/definitions/model.Response'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/model.Response'
-      summary: Check and Refresh Order Block Mitigations
+      summary: Force Refresh OB Mitigations
       tags:
       - PriceAction
   /price-action/ob/mitigation:
     get:
-      description: Fetches strategy symbols, checks them against NSE live data, identifies
-        non-mitigated blocks, and updates the cache.
+      responses: {}
+      summary: Get Cached OB Mitigations
+      tags:
+      - PriceAction
+  /price-action/ob/old/{stopDate}:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a CSV to find and save Order Blocks from a specific stop
+        date backwards.
+      parameters:
+      - description: CSV File
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Stop Date (YYYY-MM-DD)
+        in: path
+        name: stopDate
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/model.Response'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/model.ObResponse'
-                  type: array
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
-      summary: Check and Refresh Order Block Mitigations
+            additionalProperties:
+              type: string
+            type: object
+      summary: Process Historical Order Blocks
       tags:
       - PriceAction
   /strategy:
     delete:
-      description: Removes a strategy from the system using its ID (Name)
+      description: Removes a strategy from the system using its ID/Name
       parameters:
       - description: Strategy ID (Name)
         in: query
@@ -1002,23 +1153,11 @@ paths:
       responses:
         "204":
           description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
       summary: Delete a strategy
       tags:
       - Strategy
     get:
-      description: Returns a list of all configured trading strategies
+      description: Returns a list of all configured active trading strategies
       produces:
       - application/json
       responses:
@@ -1034,7 +1173,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Saves a new trading strategy configuration to the database
+      description: Saves a new trading strategy configuration to MongoDB
       parameters:
       - description: Strategy Details
         in: body
@@ -1061,9 +1200,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Updates the configuration of an existing strategy by name
+      description: Updates an existing strategy configuration by name/ID
       parameters:
-      - description: Updated Strategy Details
+      - description: Updated Details
         in: body
         name: request
         required: true
@@ -1076,18 +1215,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/model.Strategy'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
       summary: Update a strategy
       tags:
       - Strategy
   /strategy/admin:
     get:
-      description: Returns a list of all configured trading strategies
+      description: Returns all trading strategies with full administrative details
       produces:
       - application/json
       responses:
@@ -1097,15 +1230,21 @@ paths:
             items:
               $ref: '#/definitions/model.StrategyDto'
             type: array
-      summary: Get all strategies
+      summary: Get all strategies (Admin)
       tags:
       - Strategy
   /strategy/reload:
     post:
-      description: Syncs the in-memory strategy cache with the MongoDB database
+      description: Syncs the in-memory strategy cache with MongoDB
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Reload strategies
       tags:
       - Strategy
@@ -1113,8 +1252,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Updates the theme preference (LIGHT/DARK) for the authenticated
-        user
+      description: Updates preference (LIGHT/DARK) for the authenticated user
       parameters:
       - description: Theme Preference
         in: body
@@ -1133,22 +1271,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.Response'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.Response'
       summary: Update User Theme
       tags:
-      - user
+      - User
   /user/username:
     patch:
       consumes:
       - application/json
-      description: Updates the username and returns the updated user object
+      description: Updates the username and invalidates the auth cache
       parameters:
       - description: Target Email and New Username
         in: body
@@ -1169,10 +1299,6 @@ paths:
             $ref: '#/definitions/model.Response'
         "401":
           description: Unauthorized
-          schema:
-            $ref: '#/definitions/model.Response'
-        "500":
-          description: Internal Server Error
           schema:
             $ref: '#/definitions/model.Response'
       summary: Update Username

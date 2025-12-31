@@ -12,22 +12,29 @@ func NewHealthController() *HealthController {
 	return &HealthController{}
 }
 
-// RegisterRoutes sets up the health check endpoint under the /api group
-// FIX: Changed *gin.Engine to *gin.RouterGroup
+// RegisterRoutes sets up the health check endpoint.
+// In our main router, this is typically attached to the root or /api group.
 func (ctrl *HealthController) RegisterRoutes(router *gin.RouterGroup) {
-	// These will now resolve to /api/health
+	// These resolve to [base_path]/health
 	router.GET("/health", ctrl.healthCheck)
 	router.HEAD("/health", ctrl.healthCheck)
 }
 
-// healthCheck returns the current status of the server
+// healthCheck returns the current status of the server.
 // @Summary      System Health Check
-// @Description  Confirm that the server is up and running. Returns a 200 status code with no body.
+// @Description  Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.
 // @Tags         System
-// @Produce      plain
-// @Success      200  {string}  string "OK"
+// @Produce      json
+// @Success      200  {object}  map[string]string "Status OK"
 // @Router       /health [get]
 // @Router       /health [head]
 func (ctrl *HealthController) healthCheck(c *gin.Context) {
+	// For GET requests, returning a small JSON body is better for debugging.
+	// For HEAD requests, Gin will automatically handle the headers only.
+	if c.Request.Method == http.MethodGet {
+		c.JSON(http.StatusOK, gin.H{"status": "UP"})
+		return
+	}
+
 	c.Status(http.StatusOK)
 }

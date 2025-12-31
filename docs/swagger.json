@@ -10,7 +10,7 @@
     "paths": {
         "/auth/login": {
             "post": {
-                "description": "Authenticates user and returns user details without password",
+                "description": "Authenticates user via HttpOnly cookie and JWT",
                 "consumes": [
                     "application/json"
                 ],
@@ -23,7 +23,7 @@
                 "summary": "User Login",
                 "parameters": [
                     {
-                        "description": "Login Credentials (only email/password required)",
+                        "description": "Login Credentials",
                         "name": "login",
                         "in": "body",
                         "required": true,
@@ -34,7 +34,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Login successful (Passwords omitted)",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.UserDto"
                         }
@@ -53,17 +53,17 @@
         },
         "/auth/logout": {
             "post": {
-                "description": "Clears the authentication cookie to log out the user",
+                "description": "Clears the authentication cookie",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Logout user",
+                "summary": "User Logout",
                 "responses": {
                     "200": {
-                        "description": "message: Logged out successfully",
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -76,23 +76,23 @@
         },
         "/auth/me": {
             "get": {
-                "description": "Retrieves user details (email and role) from the session cookie",
+                "description": "Retrieves authenticated user details from session",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Get current authenticated user",
+                "summary": "Get Current User",
                 "responses": {
                     "200": {
-                        "description": "User details successfully retrieved",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.UserDto"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized: Session invalid or expired",
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -105,7 +105,7 @@
         },
         "/auth/signup": {
             "post": {
-                "description": "Stores user data in local memory for 5 minutes and sends an OTP.",
+                "description": "Caches user data and sends OTP for verification",
                 "consumes": [
                     "application/json"
                 ],
@@ -113,12 +113,12 @@
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "Auth"
                 ],
-                "summary": "User Signup",
+                "summary": "User Signup Initiation",
                 "parameters": [
                     {
-                        "description": "User Registration Details",
+                        "description": "Signup Details",
                         "name": "user",
                         "in": "body",
                         "required": true,
@@ -134,8 +134,8 @@
                             "$ref": "#/definitions/model.MessageResponse"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
@@ -143,9 +143,9 @@
                 }
             }
         },
-        "/auth/verify-otp": {
+        "/auth/truecaller": {
             "post": {
-                "description": "Validates the OTP from cache. If valid, creates the user in the database and returns a JWT.",
+                "description": "Receives the access token from Truecaller, fetches user profile, and warms up the local cache for NSE data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -153,12 +153,192 @@
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "Authentication"
                 ],
-                "summary": "Verify OTP and Create User",
+                "summary": "Process Truecaller Login Callback",
                 "parameters": [
                     {
-                        "description": "OTP Verification Details",
+                        "description": "Truecaller Data",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.TruecallerDto"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Callback Successful",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Request",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/truecaller/status/{requestId}": {
+            "get": {
+                "description": "Polls for the status of a login request. If successful, creates the user, generates a JWT, and sets an auth cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Check Truecaller Auth Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Unique Request ID",
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User created and JWT issued",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.UserDto"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Waiting for Truecaller callback",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create user or generate token",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "success": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/verify-otp": {
+            "post": {
+                "description": "Validates OTP and persists user to database",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Verify OTP and Complete Signup",
+                "parameters": [
+                    {
+                        "description": "OTP Verification",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -169,13 +349,13 @@
                 ],
                 "responses": {
                     "201": {
-                        "description": "User created successfully",
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid OTP or session expired",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.MessageResponse"
                         }
@@ -207,9 +387,15 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.StockData"
+                            "$ref": "#/definitions/model.ChartInkResponseDto"
+                        }
+                    },
+                    "400": {
+                        "description": "Strategy name required",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -236,7 +422,7 @@
         },
         "/chartink/fetchWithMargin": {
             "get": {
-                "description": "Triggers a scan and maps the results with the current margin and leverage data",
+                "description": "Triggers a scan and maps results with current margin and leverage data",
                 "produces": [
                     "application/json"
                 ],
@@ -264,6 +450,15 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -285,9 +480,9 @@
                 }
             }
         },
-        "/config": {
+        "/config/active": {
             "get": {
-                "description": "Returns the current system settings (Leverage, API Keys, etc.) from the real-time cache.",
+                "description": "Returns current system settings (Leverage, API Keys, etc.) from memory.",
                 "produces": [
                     "application/json"
                 ],
@@ -297,21 +492,9 @@
                 "summary": "Get Active Configuration",
                 "responses": {
                     "200": {
-                        "description": "Current active config",
+                        "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.MongoEnvConfig"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/model.MongoEnvConfig"
                         }
                     },
                     "500": {
@@ -321,9 +504,11 @@
                         }
                     }
                 }
-            },
+            }
+        },
+        "/config/reload": {
             "post": {
-                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache across all services.",
+                "description": "Triggers a fresh fetch from MongoDB to update the in-memory cache.",
                 "produces": [
                     "application/json"
                 ],
@@ -333,7 +518,7 @@
                 "summary": "Reload System Configuration",
                 "responses": {
                     "200": {
-                        "description": "Successfully reloaded",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -345,9 +530,11 @@
                         }
                     }
                 }
-            },
+            }
+        },
+        "/config/update": {
             "patch": {
-                "description": "Updates the configuration document in MongoDB and hot-swaps the active memory pointer.",
+                "description": "Updates MongoDB and hot-swaps active memory config.",
                 "consumes": [
                     "application/json"
                 ],
@@ -371,13 +558,13 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully updated",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
                     },
                     "400": {
-                        "description": "Invalid Request Body",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -417,9 +604,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Email sent successfully",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -445,9 +635,9 @@
         },
         "/health": {
             "get": {
-                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "description": "Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.",
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
                     "System"
@@ -455,17 +645,20 @@
                 "summary": "System Health Check",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Status OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "head": {
-                "description": "Confirm that the server is up and running. Returns a 200 status code with no body.",
+                "description": "Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.",
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
                     "System"
@@ -473,9 +666,12 @@
                 "summary": "System Health Check",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Status OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -483,7 +679,7 @@
         },
         "/margin/all": {
             "get": {
-                "description": "Returns a list of all stock margins stored in the database",
+                "description": "Returns a list of all stock margins from the local memory cache",
                 "produces": [
                     "application/json"
                 ],
@@ -510,6 +706,9 @@
                 "consumes": [
                     "multipart/form-data"
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Margin"
                 ],
@@ -525,7 +724,13 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -549,15 +754,24 @@
             }
         },
         "/margin/reload": {
-            "get": {
-                "description": "Forces a reload of all margins from the persistent database into the memory cache",
+            "post": {
+                "description": "Forces a reload of all margins from MongoDB into the memory cache",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Margin"
                 ],
                 "summary": "Reload margins",
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "500": {
                         "description": "Internal Server Error",
@@ -571,7 +785,7 @@
                 }
             }
         },
-        "/margin/{symbol}": {
+        "/margin/symbol/{symbol}": {
             "get": {
                 "description": "Fetches the margin details for a specific stock symbol",
                 "produces": [
@@ -612,20 +826,17 @@
         },
         "/nse/allindices": {
             "get": {
-                "description": "Fetches the latest all indices performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Fetches latest performance data for all indices using the warmup strategy.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Stocks"
                 ],
-                "summary": "Get NSE Sectoral Heatmap",
+                "summary": "Get All NSE Indices",
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -656,10 +867,7 @@
         },
         "/nse/heatmap": {
             "get": {
-                "description": "Fetches the latest sectoral index performance data. Uses a warmup time-cache strategy to serve data efficiently and avoid NSE rate limits.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Fetches latest sectoral data. Uses warmup time-cache strategy to avoid NSE rate limits.",
                 "produces": [
                     "application/json"
                 ],
@@ -669,7 +877,7 @@
                 "summary": "Get NSE Sectoral Heatmap",
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -700,7 +908,7 @@
         },
         "/nse/history": {
             "get": {
-                "description": "Fetches stock history for a specific symbol (e.g., BEL). Data is cached for 1 hour.",
+                "description": "Fetches stock history for a specific symbol. Utilizes a 1-hour time cache.",
                 "consumes": [
                     "application/json"
                 ],
@@ -714,7 +922,7 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Stock Symbol (e.g. BEL)",
+                        "description": "Stock Symbol (e.g. RELIANCE)",
                         "name": "symbol",
                         "in": "query",
                         "required": true
@@ -722,7 +930,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Fetch Success",
+                        "description": "OK",
                         "schema": {
                             "allOf": [
                                 {
@@ -743,13 +951,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -763,22 +965,31 @@
                 }
             }
         },
-        "/price-action/ob": {
+        "/price-action/automate": {
             "post": {
-                "description": "Creates a new order block for a specific symbol and date.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Save an Order Block",
+                "summary": "Trigger PA Automation",
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/fvg": {
+            "post": {
+                "tags": [
+                    "PriceAction (Admin)"
+                ],
+                "summary": "Save FVG",
                 "parameters": [
                     {
-                        "description": "Order Block Details",
+                        "description": "FVG Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -790,18 +1001,6 @@
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -809,20 +1008,13 @@
                 }
             },
             "delete": {
-                "description": "Removes a specific order block entry from a stock's record based on symbol and date.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
-                    "PriceAction"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Delete an Order Block",
+                "summary": "Delete FVG",
                 "parameters": [
                     {
-                        "description": "Symbol and Date of block to delete",
+                        "description": "Delete Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -834,18 +1026,6 @@
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -853,20 +1033,13 @@
                 }
             },
             "patch": {
-                "description": "Updates an existing one for a specific symbol and date.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
-                    "PriceAction"
+                    "PriceAction (Admin)"
                 ],
-                "summary": "Update an Order Block",
+                "summary": "Update FVG",
                 "parameters": [
                     {
-                        "description": "Order Block Details",
+                        "description": "Update Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -881,9 +1054,23 @@
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
+                    }
+                }
+            }
+        },
+        "/price-action/fvg/check": {
+            "post": {
+                "description": "Triggers a fresh scan of all stocks against saved Fair Value Gaps (FVG) to identify active mitigations. This bypasses the cache and updates it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Force Refresh FVG Mitigations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -897,72 +1084,161 @@
                 }
             }
         },
-        "/price-action/ob/automate": {
+        "/price-action/fvg/cleanup": {
             "post": {
-                "description": "Fetches stocks based on the \"BULLISH CLOSE 200\" strategy, retrieves historical data from NSE (utilizing time cache), and persists Order Blocks.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Triggers a maintenance task that fetches NSE history for all stored symbols and deletes FVGs that have been breached or filled by subsequent price action.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Price Action"
+                    "PriceAction"
                 ],
-                "summary": "Automate Order Block Discovery",
+                "summary": "Clean up filled FVGs",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/fvg/mitigation": {
+            "get": {
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Get Cached FVG Mitigations",
+                "responses": {}
+            }
+        },
+        "/price-action/fvg/old/{stopDate}": {
+            "post": {
+                "description": "Upload a CSV to find and save FVGs from a specific stop date backwards.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Process Historical Fair Value Gaps (FVG)",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV File",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stop Date (YYYY-MM-DD)",
+                        "name": "stopDate",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/price-action/ob": {
+            "post": {
+                "tags": [
+                    "PriceAction (Admin)"
+                ],
+                "summary": "Save OB",
+                "parameters": [
+                    {
+                        "description": "OB Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "PriceAction (Admin)"
+                ],
+                "summary": "Delete OB",
+                "parameters": [
+                    {
+                        "description": "Delete Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "PriceAction (Admin)"
+                ],
+                "summary": "Update OB",
+                "parameters": [
+                    {
+                        "description": "Update Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ObRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     }
                 }
@@ -970,34 +1246,19 @@
         },
         "/price-action/ob/check": {
             "post": {
-                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
+                "description": "Triggers a fresh scan of all stocks against saved Order Blocks to find active mitigations.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Check and Refresh Order Block Mitigations",
+                "summary": "Force Refresh OB Mitigations",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/model.ObResponse"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/model.Response"
                         }
                     },
                     "500": {
@@ -1011,59 +1272,65 @@
         },
         "/price-action/ob/mitigation": {
             "get": {
-                "description": "Fetches strategy symbols, checks them against NSE live data, identifies non-mitigated blocks, and updates the cache.",
+                "tags": [
+                    "PriceAction"
+                ],
+                "summary": "Get Cached OB Mitigations",
+                "responses": {}
+            }
+        },
+        "/price-action/ob/old/{stopDate}": {
+            "post": {
+                "description": "Upload a CSV to find and save Order Blocks from a specific stop date backwards.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Check and Refresh Order Block Mitigations",
+                "summary": "Process Historical Order Blocks",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV File",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stop Date (YYYY-MM-DD)",
+                        "name": "stopDate",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/model.ObResponse"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/price-action/ob/{symbol}": {
+        "/price-action/{symbol}": {
             "get": {
-                "description": "Retrieves the full list of order blocks for a specific stock symbol from the MongoDB cache.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "PriceAction"
                 ],
-                "summary": "Get Order Blocks by Symbol",
+                "summary": "Get PA by Symbol",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Stock Symbol (e.g., RELIANCE)",
+                        "description": "Symbol",
                         "name": "symbol",
                         "in": "path",
                         "required": true
@@ -1071,31 +1338,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully retrieved order blocks",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.StockRecord"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid symbol provided",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "404": {
-                        "description": "Stock symbol not found in cache",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1105,7 +1348,7 @@
         },
         "/strategy": {
             "get": {
-                "description": "Returns a list of all configured trading strategies",
+                "description": "Returns a list of all configured active trading strategies",
                 "produces": [
                     "application/json"
                 ],
@@ -1126,7 +1369,7 @@
                 }
             },
             "put": {
-                "description": "Updates the configuration of an existing strategy by name",
+                "description": "Updates an existing strategy configuration by name/ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -1139,7 +1382,7 @@
                 "summary": "Update a strategy",
                 "parameters": [
                     {
-                        "description": "Updated Strategy Details",
+                        "description": "Updated Details",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1154,20 +1397,11 @@
                         "schema": {
                             "$ref": "#/definitions/model.Strategy"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
                     }
                 }
             },
             "post": {
-                "description": "Saves a new trading strategy configuration to the database",
+                "description": "Saves a new trading strategy configuration to MongoDB",
                 "consumes": [
                     "application/json"
                 ],
@@ -1208,7 +1442,7 @@
                 }
             },
             "delete": {
-                "description": "Removes a strategy from the system using its ID (Name)",
+                "description": "Removes a strategy from the system using its ID/Name",
                 "tags": [
                     "Strategy"
                 ],
@@ -1225,38 +1459,20 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
                     }
                 }
             }
         },
         "/strategy/admin": {
             "get": {
-                "description": "Returns a list of all configured trading strategies",
+                "description": "Returns all trading strategies with full administrative details",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Strategy"
                 ],
-                "summary": "Get all strategies",
+                "summary": "Get all strategies (Admin)",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1272,21 +1488,30 @@
         },
         "/strategy/reload": {
             "post": {
-                "description": "Syncs the in-memory strategy cache with the MongoDB database",
+                "description": "Syncs the in-memory strategy cache with MongoDB",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Strategy"
                 ],
                 "summary": "Reload strategies",
                 "responses": {
                     "200": {
-                        "description": "OK"
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         },
         "/user/theme": {
             "patch": {
-                "description": "Updates the theme preference (LIGHT/DARK) for the authenticated user",
+                "description": "Updates preference (LIGHT/DARK) for the authenticated user",
                 "consumes": [
                     "application/json"
                 ],
@@ -1294,7 +1519,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "user"
+                    "User"
                 ],
                 "summary": "Update User Theme",
                 "parameters": [
@@ -1320,25 +1545,13 @@
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
                     }
                 }
             }
         },
         "/user/username": {
             "patch": {
-                "description": "Updates the username and returns the updated user object",
+                "description": "Updates the username and invalidates the auth cache",
                 "consumes": [
                     "application/json"
                 ],
@@ -1375,12 +1588,6 @@
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -1442,17 +1649,15 @@
                 }
             }
         },
-        "model.Info": {
+        "model.ChartInkResponseDto": {
             "type": "object",
             "properties": {
-                "date": {
-                    "type": "string"
-                },
-                "high": {
-                    "type": "number"
-                },
-                "low": {
-                    "type": "number"
+                "data": {
+                    "description": "json:\"data\" tells the parser to map the JSON key \"data\" to this field",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.StockData"
+                    }
                 }
             }
         },
@@ -1501,8 +1706,11 @@
                 "debug": {
                     "type": "boolean"
                 },
-                "frontendUrl": {
-                    "type": "string"
+                "frontendUrls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "jwtSecret": {
                     "type": "string"
@@ -1549,26 +1757,6 @@
                 },
                 "low": {
                     "type": "number"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.ObResponse": {
-            "type": "object",
-            "properties": {
-                "close": {
-                    "type": "number"
-                },
-                "date": {
-                    "type": "string"
-                },
-                "margin": {
-                    "type": "number"
-                },
-                "name": {
-                    "type": "string"
                 },
                 "symbol": {
                     "type": "string"
@@ -1666,26 +1854,6 @@
                 }
             }
         },
-        "model.StockRecord": {
-            "type": "object",
-            "properties": {
-                "fvg": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Info"
-                    }
-                },
-                "orderBlocks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Info"
-                    }
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
         "model.Strategy": {
             "type": "object",
             "properties": {
@@ -1714,6 +1882,23 @@
                     "type": "string"
                 },
                 "scanClause": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.TruecallerDto": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -1751,6 +1936,12 @@
                 "email": {
                     "type": "string"
                 },
+                "mobile": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
                 "password": {
                     "type": "string"
                 },
@@ -1759,6 +1950,9 @@
                 },
                 "theme": {
                     "$ref": "#/definitions/model.UserTheme"
+                },
+                "userId": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"

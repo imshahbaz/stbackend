@@ -1,9 +1,10 @@
 package repository
 
 import (
-	"backend/model"
 	"context"
-	"errors"
+
+	"backend/database"
+	"backend/model"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -11,94 +12,56 @@ import (
 )
 
 type UserRepository struct {
-	collection *mongo.Collection
+	collection        *mongo.Collection
+	counterCollection *mongo.Collection
 }
 
 func NewUserRepository(db *mongo.Database) *UserRepository {
 	return &UserRepository{
-		collection: db.Collection("users"),
+		collection:        db.Collection("users"),
+		counterCollection: db.Collection("counters"),
 	}
 }
 
-// FindByEmail replaces Optional<User> findByEmail(String email)
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
-	var user model.User
-	err := r.collection.FindOne(ctx, bson.M{"_id": email}).Decode(&user)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, nil // Return nil, nil to represent an empty Optional
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-// FindByUsername replaces Optional<User> findByUsername(String username)
-func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
-	var user model.User
-	// Using "_id" because in your User entity, Username is tagged as bson:"_id"
-	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-// Save (Insert or Update)
+// Save performs an Upsert based on the User's Email (_id)
 func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
-	filter := bson.M{"_id": user.Email}
-	update := bson.M{"$set": user}
 	opts := options.Update().SetUpsert(true)
-
-	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": user.UserID},
+		bson.M{"$set": user},
+		opts,
+	)
 	return err
 }
 
-// FindAll
-func (r *UserRepository) FindAll(ctx context.Context) ([]model.User, error) {
-	var users []model.User
-	cursor, err := r.collection.Find(ctx, bson.D{})
+func (r *UserRepository) FindOne(ctx context.Context, filter bson.M) (*model.User, error) {
+	var user model.User
+	err := r.collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
-	if err = cursor.All(ctx, &users); err != nil {
-		return nil, err
-	}
-	return users, nil
+	return &user, nil
 }
 
-// DeleteByUsername
-func (r *UserRepository) DeleteByUsername(ctx context.Context, username string) error {
-	_, err := r.collection.DeleteOne(ctx, bson.M{"_id": username})
-	return err
-}
+func (s *UserRepository) GetNextSequence(ctx context.Context, sequenceName string) (int, error) {
+	filter := bson.M{"_id": sequenceName}
+	update := bson.M{"$inc": bson.M{"seq": 1}}
 
-// ExistsByEmail
-func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	count, err := r.collection.CountDocuments(ctx, bson.M{"email": email})
-	return count > 0, err
-}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(true)
 
-func (r *UserRepository) UpdateTheme(ctx context.Context, email string, theme model.UserTheme) (bool, error) {
-	filter := bson.M{"_id": email}
-	update := bson.M{
-		"$set": bson.M{
-			"theme": theme,
-		},
+	var result struct {
+		Seq int `bson:"seq"`
 	}
 
-	// Enable Upsert
-	opts := options.Update().SetUpsert(true)
-
-	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
+	err := s.counterCollection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&result)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 
-	return true, nil
+	return result.Seq, nil
+}
+
+func (s *UserRepository) UpdateUser(ctx context.Context, filter bson.M, data interface{}) (*model.User, error) {
+	return database.UpdateGeneric[model.User](ctx, s.collection, filter, data)
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 )
 
 // Read handles the CSV parsing logic
@@ -65,4 +66,52 @@ func Read(r io.Reader, minLeverage float32) ([]model.Margin, error) {
 	}
 
 	return margins, nil
+}
+
+// ReadCSVReversed reads from a reader, iterates from the last line,
+// and returns date (YYYY-MM-DD) and symbol.
+func ReadCSVReversed(r io.Reader, stopDate string) ([]model.ObRequest, error) {
+	reader := csv.NewReader(r)
+	reader.TrimLeadingSpace = true
+
+	// Read all records to allow backward iteration
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV: %w", err)
+	}
+
+	var results []model.ObRequest
+
+	// Start reading from the last record to the first
+	for i := len(records) - 1; i >= 1; i-- {
+		record := records[i]
+
+		// Basic validation: ensure we have at least date and symbol
+		if len(record) < 2 {
+			continue
+		}
+
+		rawDate := record[0] // e.g., "24-12-2025"
+		symbol := record[1]  // e.g., "CHOLAFIN"
+
+		// Reformat Date: DD-MM-YYYY -> YYYY-MM-DD
+		parts := strings.Split(rawDate, "-")
+		formattedDate := rawDate
+
+		if formattedDate == stopDate {
+			break
+		}
+
+		if len(parts) == 3 {
+			// Rearrange to YYYY-MM-DD
+			formattedDate = fmt.Sprintf("%s-%s-%s", parts[2], parts[1], parts[0])
+		}
+
+		results = append(results, model.ObRequest{
+			Date:   formattedDate,
+			Symbol: symbol,
+		})
+	}
+
+	return results, nil
 }

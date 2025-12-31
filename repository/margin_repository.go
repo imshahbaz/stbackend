@@ -1,8 +1,9 @@
 package repository
 
 import (
-	"backend/model" // Adjust to your actual module path
+	"backend/model"
 	"context"
+	"errors"
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -14,73 +15,66 @@ type MarginRepository struct {
 	collection *mongo.Collection
 }
 
-// NewMarginRepository acts like the @Repository bean initialization
+// NewMarginRepository initializes the repository for the margin collection.
 func NewMarginRepository(db *mongo.Database) *MarginRepository {
 	return &MarginRepository{
 		collection: db.Collection("margin"),
 	}
 }
 
-// DeleteByIdNotIn mirrors your @Query delete logic
-func (r *MarginRepository) DeleteByIdNotIn(ctx context.Context, ids []string) (int64, error) {
-	// Java: { '_id' : { '$nin' : ?0 } }
-	// Go: bson.M is a map, "$nin" is the operator
-	filter := bson.M{
-		"_id": bson.M{
-			"$nin": ids,
-		},
-	}
+// --- Query Methods ---
 
-	result, err := r.collection.DeleteMany(ctx, filter)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.DeletedCount, nil
-}
-
-// Standard Save method (Replacement for repo.save())
-func (r *MarginRepository) Save(ctx context.Context, margin model.Margin) error {
-	_, err := r.collection.InsertOne(ctx, margin)
-	return err
-}
-
+// FindAll retrieves all stock margins from the collection.
 func (r *MarginRepository) FindAll(ctx context.Context) ([]model.Margin, error) {
-	// Passing an empty filter bson.M{} fetches everything
+	var margins []model.Margin
 	cursor, err := r.collection.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute find: %w", err)
 	}
 	defer cursor.Close(ctx)
 
-	var margins []model.Margin
-	// All() automatically iterates the cursor and decodes results into the slice
 	if err := cursor.All(ctx, &margins); err != nil {
 		return nil, fmt.Errorf("failed to decode margins: %w", err)
 	}
 
+	// Ensure we return an empty slice rather than nil for easier iteration in service
+	if margins == nil {
+		return []model.Margin{}, nil
+	}
 	return margins, nil
 }
 
-// SaveAll mirrors repo.saveAll() using a bulk InsertMany operation
+// FindBySymbol retrieves a single margin by its ID.
+func (r *MarginRepository) FindBySymbol(ctx context.Context, symbol string) (*model.Margin, error) {
+	var margin model.Margin
+	err := r.collection.FindOne(ctx, bson.M{"_id": symbol}).Decode(&margin)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &margin, nil
+}
+
+// --- Bulk & Persistence Operations ---
+
+// SaveAll performs a high-performance bulk upsert of margin records.
 func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) error {
 	if len(margins) == 0 {
 		return nil
 	}
 
-	var models []mongo.WriteModel
-	for _, m := range margins {
-		filter := bson.M{"_id": m.Symbol}
-		update := bson.M{"$set": m}
-
-		upsertModel := mongo.NewUpdateOneModel().
-			SetFilter(filter).
-			SetUpdate(update).
+	// Pre-allocate slice capacity for better performance
+	models := make([]mongo.WriteModel, len(margins))
+	for i, m := range margins {
+		models[i] = mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"_id": m.Symbol}).
+			SetUpdate(bson.M{"$set": m}).
 			SetUpsert(true)
-
-		models = append(models, upsertModel)
 	}
 
+	// Ordered(false) allows MongoDB to execute operations in parallel for speed
 	opts := options.BulkWrite().SetOrdered(false)
 	_, err := r.collection.BulkWrite(ctx, models, opts)
 	if err != nil {
@@ -88,4 +82,30 @@ func (r *MarginRepository) SaveAll(ctx context.Context, margins []model.Margin) 
 	}
 
 	return nil
+}
+
+// Save handles a single record upsert.
+func (r *MarginRepository) Save(ctx context.Context, margin model.Margin) error {
+	opts := options.Update().SetUpsert(true)
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": margin.Symbol},
+		bson.M{"$set": margin},
+		opts,
+	)
+	return err
+}
+
+// --- Deletion Logic ---
+
+// DeleteByIdNotIn removes all records whose symbols are not present in the provided slice.
+func (r *MarginRepository) DeleteByIdNotIn(ctx context.Context, ids []string) (int64, error) {
+	filter := bson.M{"_id": bson.M{"$nin": ids}}
+
+	result, err := r.collection.DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.DeletedCount, nil
 }
