@@ -47,6 +47,15 @@ func (ctrl *MarginController) RegisterRoutes(api huma.API) {
 		Description: "Forces a reload of all margins from MongoDB into the memory cache",
 		Tags:        []string{"Margin"},
 	}, ctrl.reloadAllMargins)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "load-margin-from-csv",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/load-from-csv",
+		Summary:     "Load margins from CSV",
+		Tags:        []string{"Margin"},
+	}, ctrl.loadFromCsv)
+
 }
 
 func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
@@ -70,4 +79,13 @@ func (ctrl *MarginController) reloadAllMargins(ctx context.Context, input *struc
 		return NewErrorResponse("Failed to reload margins: " + err.Error()), nil
 	}
 	return NewResponse(nil, "Margins reloaded successfully"), nil
+}
+
+func (ctrl *MarginController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.DefaultResponse, error) {
+	formData := input.RawBody.Data()
+	err := ctrl.marginService.LoadFromCsv(ctx, formData.File.Filename, formData.File.File)
+	if err != nil {
+		return nil, huma.Error500InternalServerError(err.Error())
+	}
+	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
 }
