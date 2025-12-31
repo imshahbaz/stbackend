@@ -15,11 +15,11 @@ func HumaAuthMiddleware(api huma.API, isProduction bool) func(huma.Context, func
 		cookieHeader := ctx.Header("Cookie")
 		token := ""
 
-		parts := strings.Split(cookieHeader, ";")
-		for _, part := range parts {
+		parts := strings.SplitSeq(cookieHeader, ";")
+		for part := range parts {
 			part = strings.TrimSpace(part)
-			if strings.HasPrefix(part, "auth_token=") {
-				token = strings.TrimPrefix(part, "auth_token=")
+			if after, ok := strings.CutPrefix(part, "auth_token="); ok {
+				token = after
 				break
 			}
 		}
@@ -37,7 +37,6 @@ func HumaAuthMiddleware(api huma.API, isProduction bool) func(huma.Context, func
 
 		if time.Until(claims.ExpiresAt.Time) < 15*time.Minute {
 			newToken, _ := auth.GenerateToken(claims.User)
-			// Simplified cookie setting
 			cookie := http.Cookie{
 				Name:     "auth_token",
 				Value:    newToken,

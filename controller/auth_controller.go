@@ -71,8 +71,7 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 
 	// Protected routes
 	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
-	// Logout needs to access cookie, but we just overwrite it. Middleware is good for ensuring key safety?
-	// Usually logout doesn't need to be authenticated to succeed (idempotent), but let's keep it protected as per original.
+
 	huma.Register(api, huma.Operation{
 		OperationID: "logout",
 		Method:      http.MethodPost,
@@ -227,19 +226,29 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 
 func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.TrueCallerInput) (*model.ResponseWrapper, error) {
 	data := input.Body
-	if data.Status == "flow_invoked" {
-		log.Printf("Handshake received for Nonce: %s", data.RequestId)
-		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
+	if data.Status != nil {
+		if *data.Status == "flow_invoked" {
+			log.Printf("Handshake received for Nonce: %s", data.RequestId)
+			return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
+		}
+
+		if *data.Status == "user_rejected" {
+			return nil, huma.Error400BadRequest("User rejected the Truecaller authentication")
+		}
+	}
+
+	if data.AccessToken == nil || data.Endpoint == nil || *data.AccessToken == "" || *data.Endpoint == "" {
+		return nil, huma.Error400BadRequest("Invalid Request")
 	}
 
 	detachedCtx := context.WithoutCancel(ctx)
 
 	var profile model.TruecallerProfile
 	resp, err := ctrl.restyClient.R().
-		SetHeader("Authorization", "Bearer "+data.AccessToken).
+		SetHeader("Authorization", "Bearer "+*data.AccessToken).
 		SetHeader("Cache-Control", "no-cache").
 		SetResult(&profile).
-		Get(data.Endpoint)
+		Get(*data.Endpoint)
 
 	if err == nil && resp.IsSuccess() {
 		user, err := ctrl.userSvc.FindUser(detachedCtx, profile.PhoneNumbers[0], profile.OnlineIdentities.Email, 0)
