@@ -70,7 +70,6 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Auth"},
 	}, ctrl.VerifyOtp)
 
-	// Protected routes
 	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
 
 	huma.Register(api, huma.Operation{
@@ -93,7 +92,6 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Auth"},
 	}, ctrl.GetMe)
 
-	// TrueCaller
 	huma.Register(api, huma.Operation{
 		OperationID: "truecaller-callback",
 		Method:      http.MethodPost,

@@ -52,7 +52,6 @@ func NewPriceActionService(c ChartInkService, n NseService,
 	}
 }
 
-// --- Internal Engine ---
 
 func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategyName string, cacheKey string, isOB bool) ([]model.ObResponse, error) {
 	rawStrategy, found := cache.StrategyCache.Get(strategyName)
@@ -115,7 +114,6 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 	return response, nil
 }
 
-// --- Interface Methods ---
 
 func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt int) error {
 	if attempt >= 3 {
@@ -198,7 +196,6 @@ func (s *PriceActionServiceImpl) CheckFvgMitigation(ctx context.Context) ([]mode
 	return s.processMitigation(ctx, "BULLISH CLOSE 200", "FvgCache", false)
 }
 
-// Pass-through CRUD methods
 func (s *PriceActionServiceImpl) SaveOrderBlock(ctx context.Context, req model.ObRequest) error {
 	return s.priceActionRepo.SaveOrderBlock(ctx, req)
 }
@@ -223,14 +220,12 @@ func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d st
 	return s.priceActionRepo.DeleteFvgByDate(ctx, sym, d)
 }
 
-// Shared logic to find the index and data for a specific date
 func (s *PriceActionServiceImpl) processHistory(ctx context.Context, stock string, date string) (string, []model.NSEHistoricalData, int, bool) {
 	m, exists := s.marginSvc.GetMargin(stock)
 	if !exists {
 		return "", nil, 0, false
 	}
 
-	// Uses your time cache strategy internally
 	history, err := s.nseService.FetchStockData(ctx, m.Symbol)
 	if err != nil || len(history) < 3 {
 		return "", nil, 0, false

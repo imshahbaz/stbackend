@@ -4,8 +4,6 @@ import (
 	"fmt"
 )
 
-// --- BREVO EMAIL ---
-// BrevoEmailRequest is the payload for sending transactional emails
 type Recipient struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -31,7 +29,6 @@ func (r *BrevoEmailRequest) Signup(otp string, validity int) {
 	r.HTMLContent = fmt.Sprintf(SignupTemplate, otp, 5)
 }
 
-// --- Huma Structs ---
 type SendEmailRequest struct {
 	Body BrevoEmailRequest
 }

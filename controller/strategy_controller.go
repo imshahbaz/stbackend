@@ -24,7 +24,6 @@ func NewStrategyController(ss service.StrategyService, isProduction bool) *Strat
 }
 
 func (ctrl *StrategyController) RegisterRoutes(api huma.API) {
-	// Public route
 	huma.Register(api, huma.Operation{
 		OperationID: "get-strategies",
 		Method:      http.MethodGet,
@@ -34,7 +33,6 @@ func (ctrl *StrategyController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Strategy"},
 	}, ctrl.getAllStrategies)
 
-	// Protected routes
 	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
 	adminMw := middleware.HumaAdminOnly(api)
 

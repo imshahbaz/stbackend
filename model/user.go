@@ -8,8 +8,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// --- USER ---
-// User is the main account entity
 type User struct {
 	UserID   int64     `bson:"_id" json:"userId"`
 	Email    string    `bson:"email" json:"email"`
@@ -21,7 +19,6 @@ type User struct {
 	Name     string    `bson:"name" json:"name"`
 }
 
-// ToDto maps the Entity to the API Response object
 func (u *User) ToDto() UserDto {
 	return UserDto{
 		UserID:   u.UserID,
@@ -34,7 +31,6 @@ func (u *User) ToDto() UserDto {
 	}
 }
 
-// UserDto handles authentication requests
 type UserDto struct {
 	UserID          int64     `json:"userId"`
 	Email           string    `json:"email" validate:"required,email"`
@@ -76,7 +72,6 @@ type UpdateThemeRequest struct {
 	Theme UserTheme `json:"theme"`
 }
 
-// --- Huma Structs ---
 type UpdateUsernameInput struct {
 	UserID   int64  `json:"userId"`
 	Username string `json:"username"`

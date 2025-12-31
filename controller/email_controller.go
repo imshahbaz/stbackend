@@ -20,7 +20,6 @@ func NewEmailController(es service.EmailService) *EmailController {
 	}
 }
 
-// RegisterRoutes sets up the route group for email operations.
 func (ctrl *EmailController) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "send-email",

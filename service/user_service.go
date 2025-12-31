@@ -14,7 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// --- 2. Interface Definition ---
 type UserService interface {
 	CreateUser(ctx context.Context, request model.UserDto) (*model.User, error)
 	UpdateUserTheme(ctx context.Context, userId int64, theme model.UserTheme) (*model.User, error)
@@ -23,19 +22,15 @@ type UserService interface {
 	FindUser(ctx context.Context, mobile int64, email string, userId int64) (*model.User, error)
 }
 
-// --- 3. Implementation Struct ---
 type UserServiceImpl struct {
 	repo *repository.UserRepository
 }
 
-// NewUserService initializes the implementation (Constructor Injection)
 func NewUserService(repo *repository.UserRepository) UserService {
 	return &UserServiceImpl{repo: repo}
 }
 
-// --- 4. Core Service Methods ---
 
-// CreateUser handles registration logic: Check Existence -> Map to Entity -> Save
 func (s *UserServiceImpl) CreateUser(ctx context.Context, request model.UserDto) (*model.User, error) {
 	existing, err := s.FindUser(ctx, request.Mobile, request.Email, 0)
 
@@ -74,7 +69,6 @@ func (s *UserServiceImpl) CreateUser(ctx context.Context, request model.UserDto)
 	return user, nil
 }
 
-// UpdateUserTheme updates only the UI theme preference
 func (s *UserServiceImpl) UpdateUserTheme(ctx context.Context, userId int64, theme model.UserTheme) (*model.User, error) {
 	filter := bson.M{"_id": userId}
 	updateData := bson.M{"theme": theme}
@@ -82,7 +76,6 @@ func (s *UserServiceImpl) UpdateUserTheme(ctx context.Context, userId int64, the
 	return s.repo.UpdateUser(ctx, filter, updateData)
 }
 
-// UpdateUsername updates the user's display name
 func (s *UserServiceImpl) UpdateUsername(ctx context.Context, userId int64, username string) (*model.User, error) {
 	filter := bson.M{"_id": userId}
 	updateData := bson.M{"username": username}

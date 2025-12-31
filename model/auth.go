@@ -1,12 +1,7 @@
 package model
 
-// --- ENUMS ---
-// UserRole represents the account access level
-// @Description ADMIN or USER access level
 type UserRole string
 
-// UserTheme represents the UI preference
-// @Description LIGHT or DARK theme mode
 type UserTheme string
 
 const (
@@ -16,13 +11,9 @@ const (
 	ThemeDark  UserTheme = "DARK"
 )
 
-// MessageResponse represents a standard JSON response for auth operations
-// @Description Standard response containing status and a descriptive message
 type MessageResponse struct {
-	// OtpSent indicates if the OTP was successfully triggered
 	OtpSent bool `json:"otpSent" example:"true"`
 
-	// Message provides details about the operation result
 	Message string `json:"message" example:"Otp sent successfully to user@example.com"`
 }
 
@@ -31,7 +22,6 @@ type VerifyOtpRequest struct {
 	Otp   string `json:"otp" binding:"required,len=6" example:"123456"`
 }
 
-// --- Huma Request/Response Structs ---
 
 type LoginDto struct {
 	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
@@ -56,7 +46,6 @@ type SignupRequest struct {
 	Body SignupDto
 }
 
-// MessageResponseWrapper wraps a standard response for Huma
 type MessageResponseWrapper struct {
 	Body Response
 }

@@ -21,7 +21,6 @@ func NewPriceActionRepo(db *mongo.Database) *PriceActionRepo {
 	}
 }
 
-// --- High Level Public API ---
 
 func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest) error {
 	return r.saveNestedInfo(ctx, ob, "order_blocks")
@@ -47,7 +46,6 @@ func (r *PriceActionRepo) DeleteFvgByDate(ctx context.Context, symbol, date stri
 	return r.deleteNestedInfo(ctx, symbol, date, "fvg")
 }
 
-// --- Standard Query API ---
 
 func (r *PriceActionRepo) GetAllPriceAction(ctx context.Context) ([]model.StockRecord, error) {
 	return r.findMany(ctx, bson.M{})
@@ -69,19 +67,15 @@ func (r *PriceActionRepo) GetPAByID(ctx context.Context, symbol string) (model.S
 	return stock, nil
 }
 
-// --- Generic Helpers (The Refactor Magic) ---
 
-// saveNestedInfo handles the BulkWrite logic (Pull then Push) to ensure no duplicate dates and sorted results.
 func (r *PriceActionRepo) saveNestedInfo(ctx context.Context, req model.ObRequest, fieldName string) error {
 	var newInfo model.Info
 	copier.Copy(&newInfo, &req)
 
-	// Operation 1: Remove existing record for that date
 	pull := mongo.NewUpdateOneModel().
 		SetFilter(bson.M{"_id": req.Symbol}).
 		SetUpdate(bson.M{"$pull": bson.M{fieldName: bson.M{"date": req.Date}}})
 
-	// Operation 2: Add new record and sort the array by date descending
 	push := mongo.NewUpdateOneModel().
 		SetFilter(bson.M{"_id": req.Symbol}).
 		SetUpdate(bson.M{
@@ -97,7 +91,6 @@ func (r *PriceActionRepo) saveNestedInfo(ctx context.Context, req model.ObReques
 	return err
 }
 
-// updateNestedInfo uses arrayFilters ($[elem]) to perform surgical updates on a specific date.
 func (r *PriceActionRepo) updateNestedInfo(ctx context.Context, req model.ObRequest, fieldName string) error {
 	filter := bson.M{"_id": req.Symbol, fieldName + ".date": req.Date}
 	update := bson.M{
@@ -120,7 +113,6 @@ func (r *PriceActionRepo) updateNestedInfo(ctx context.Context, req model.ObRequ
 	return nil
 }
 
-// deleteNestedInfo removes a specific object from the nested array by date.
 func (r *PriceActionRepo) deleteNestedInfo(ctx context.Context, symbol, date, fieldName string) error {
 	filter := bson.M{"_id": symbol}
 	update := bson.M{"$pull": bson.M{fieldName: bson.M{"date": date}}}
@@ -135,7 +127,6 @@ func (r *PriceActionRepo) deleteNestedInfo(ctx context.Context, symbol, date, fi
 	return nil
 }
 
-// findMany centralizes the boilerplate for cursor management.
 func (r *PriceActionRepo) findMany(ctx context.Context, filter bson.M) ([]model.StockRecord, error) {
 	var results []model.StockRecord
 	cursor, err := r.collection.Find(ctx, filter)

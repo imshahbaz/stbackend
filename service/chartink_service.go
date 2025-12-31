@@ -37,18 +37,15 @@ func NewChartInkService(c *client.ChartinkClient, ms MarginService) ChartInkServ
 	}
 }
 
-// FetchData handles CSRF token management and scanner data retrieval.
 func (s *ChartInkServiceImpl) FetchData(strategy model.StrategyDto) (*model.ChartInkResponseDto, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	// 1. Execute request with current token
 	resp, err := s.executeWithRetry(ctx, strategy.ScanClause)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Unmarshal and Cache
 	var dto model.ChartInkResponseDto
 	if err := json.Unmarshal(resp.Body(), &dto); err != nil {
 		return nil, fmt.Errorf("failed to parse chartink json: %w", err)
@@ -58,9 +55,7 @@ func (s *ChartInkServiceImpl) FetchData(strategy model.StrategyDto) (*model.Char
 	return &dto, nil
 }
 
-// FetchWithMargin merges scanner results with local stock margin data.
 func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error) {
-	// 1. Cache-first strategy for scanner response
 	var response *model.ChartInkResponseDto
 	if val, ok := localCache.ChartInkResponseCache.Get(strategy.Name); ok {
 		response = val.(*model.ChartInkResponseDto)
@@ -72,7 +67,6 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		}
 	}
 
-	// 2. Join with Margin Cache
 	result := make([]model.StockMarginDto, 0)
 	for _, stock := range response.Data {
 		if m, exists := s.marginService.GetMargin(stock.NSECode); exists {
@@ -85,7 +79,6 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		}
 	}
 
-	// 3. Sort by Margin (Descending)
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Margin > result[j].Margin
 	})
@@ -93,12 +86,10 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 	return result, nil
 }
 
-// --- Internal Helpers ---
 
 func (s *ChartInkServiceImpl) executeWithRetry(ctx context.Context, scanClause string) (*resty.Response, error) {
 	payload := map[string]string{"scan_clause": scanClause}
 
-	// Try first with existing token
 	token := s.getStoredToken()
 	if token == "" {
 		if err := s.refreshTokens(ctx); err != nil {
@@ -109,7 +100,6 @@ func (s *ChartInkServiceImpl) executeWithRetry(ctx context.Context, scanClause s
 
 	resp, err := s.client.FetchData(ctx, token, s.userAgent, payload)
 
-	// Retry once on 419 (CSRF Mismatch) or error
 	if err != nil || (resp != nil && resp.StatusCode() == 419) {
 		if err := s.refreshTokens(ctx); err != nil {
 			return nil, err

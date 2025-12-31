@@ -57,7 +57,6 @@ func NewNseService(yahooClient *client.YahooClient) NseService {
 	return &NseServiceImpl{client: client, yahooClient: yahooClient}
 }
 
-// WarmUp ensures we have a valid session cookie from NSE.
 func (s *NseServiceImpl) WarmUp() error {
 	s.warmupLock.RLock()
 	isFresh := time.Since(s.lastWarmup) < 2*time.Minute
@@ -169,7 +168,6 @@ func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
 	return data, nil
 }
 
-// --- Private Helpers ---
 
 func (s *NseServiceImpl) executeNseRequest(referer, path string, params map[string]string, target any) error {
 	if err := s.WarmUp(); err != nil {
