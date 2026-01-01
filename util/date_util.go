@@ -37,3 +37,23 @@ func NseCacheExpiryTime() time.Duration {
 
 	return cache.DefaultExpiration
 }
+
+func ChartInkCacheExpiryTime() time.Duration {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		return 10 * time.Minute
+	}
+
+	now := time.Now().In(loc)
+
+	target := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, loc)
+	to := time.Date(now.Year(), now.Month(), now.Day(), 16, 0, 0, 0, loc)
+
+	if now.After(to) {
+		return target.AddDate(0, 0, 1).Sub(now)
+	} else if now.Before(target) {
+		return target.Sub(now)
+	}
+
+	return 10 * time.Minute
+}

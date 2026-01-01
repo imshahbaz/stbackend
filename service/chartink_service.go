@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/patrickmn/go-cache"
 )
 
 type ChartInkService interface {
@@ -51,23 +50,20 @@ func (s *ChartInkServiceImpl) FetchData(strategy model.StrategyDto) (*model.Char
 		return nil, fmt.Errorf("failed to parse chartink json: %w", err)
 	}
 
-	localCache.ChartInkResponseCache.Set(strategy.Name, &dto, cache.DefaultExpiration)
 	return &dto, nil
 }
 
 func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error) {
-	var response *model.ChartInkResponseDto
-	if val, ok := localCache.ChartInkResponseCache.Get(strategy.Name); ok {
-		response = val.(*model.ChartInkResponseDto)
-	} else {
-		var err error
-		response, err = s.FetchData(strategy)
-		if err != nil {
-			return nil, err
-		}
+	result := make([]model.StockMarginDto, 0)
+	if ok, err := localCache.GetChartInkResponseCache(strategy.Name, &result); ok && err == nil {
+		return result, nil
 	}
 
-	result := make([]model.StockMarginDto, 0)
+	response, err := s.FetchData(strategy)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, stock := range response.Data {
 		if m, exists := s.marginService.GetMargin(stock.NSECode); exists {
 			result = append(result, model.StockMarginDto{
@@ -83,9 +79,9 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		return result[i].Margin > result[j].Margin
 	})
 
+	localCache.SetChartInkResponseCache(strategy.Name, result)
 	return result, nil
 }
-
 
 func (s *ChartInkServiceImpl) executeWithRetry(ctx context.Context, scanClause string) (*resty.Response, error) {
 	payload := map[string]string{"scan_clause": scanClause}

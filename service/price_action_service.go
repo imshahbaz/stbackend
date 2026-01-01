@@ -52,7 +52,6 @@ func NewPriceActionService(c ChartInkService, n NseService,
 	}
 }
 
-
 func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategyName string, cacheKey string, isOB bool) ([]model.ObResponse, error) {
 	rawStrategy, found := cache.StrategyCache.Get(strategyName)
 	if !found {
@@ -109,11 +108,10 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 		sort.Slice(response, func(i, j int) bool {
 			return response[i].Margin > response[j].Margin
 		})
-		cache.PriceActionCache.Set(cacheKey, response, -1)
+		cache.SetPriceActionResponseCache(cacheKey, response)
 	}
 	return response, nil
 }
-
 
 func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt int) error {
 	if attempt >= 3 {
@@ -145,6 +143,9 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 				count++
 			}
 		}
+	}
+	if count > 0 {
+		cache.DeletePriceActionResponseCache("ObCache")
 	}
 	log.Printf("%d Order block's inserted", count)
 	return nil
@@ -180,6 +181,9 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 			}
 		}
 	}
+	if count > 0 {
+		cache.DeletePriceActionResponseCache("FvgCache")
+	}
 	log.Printf("%d Fvg's inserted", count)
 	return nil
 }
@@ -197,26 +201,44 @@ func (s *PriceActionServiceImpl) CheckFvgMitigation(ctx context.Context) ([]mode
 }
 
 func (s *PriceActionServiceImpl) SaveOrderBlock(ctx context.Context, req model.ObRequest) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("ObCache")
+	})
 	return s.priceActionRepo.SaveOrderBlock(ctx, req)
 }
 
 func (s *PriceActionServiceImpl) UpdateOrderBlock(ctx context.Context, req model.ObRequest) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("ObCache")
+	})
 	return s.priceActionRepo.UpdateOrderBlock(ctx, req)
 }
 
 func (s *PriceActionServiceImpl) DeleteOrderBlock(ctx context.Context, sym string, d string) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("ObCache")
+	})
 	return s.priceActionRepo.DeleteOrderBlockByDate(ctx, sym, d)
 }
 
 func (s *PriceActionServiceImpl) SaveFvg(ctx context.Context, req model.ObRequest) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("FvgCache")
+	})
 	return s.priceActionRepo.SaveFvg(ctx, req)
 }
 
 func (s *PriceActionServiceImpl) UpdateFvg(ctx context.Context, req model.ObRequest) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("FvgCache")
+	})
 	return s.priceActionRepo.UpdateFvg(ctx, req)
 }
 
 func (s *PriceActionServiceImpl) DeleteFvg(ctx context.Context, sym string, d string) error {
+	time.AfterFunc(3*time.Second, func() {
+		cache.DeletePriceActionResponseCache("FvgCache")
+	})
 	return s.priceActionRepo.DeleteFvgByDate(ctx, sym, d)
 }
 
@@ -261,6 +283,9 @@ func (s *PriceActionServiceImpl) AddOlderOb(ctx context.Context, fileName string
 			}
 		}
 	}
+	if count > 0 {
+		cache.DeletePriceActionResponseCache("ObCache")
+	}
 	log.Printf("%d Order block's inserted", count)
 }
 
@@ -283,6 +308,9 @@ func (s *PriceActionServiceImpl) AddOlderFvg(ctx context.Context, fileName strin
 				count++
 			}
 		}
+	}
+	if count > 0 {
+		cache.DeletePriceActionResponseCache("FvgCache")
 	}
 	log.Printf("%d Fvg's inserted", count)
 }
@@ -332,6 +360,9 @@ func (s *PriceActionServiceImpl) FvgCleanUp(ctx context.Context) error {
 		}
 	}
 
+	if cleanCount > 0 {
+		cache.DeletePriceActionResponseCache("FvgCache")
+	}
 	log.Printf("Total cleaned fvg %d", cleanCount)
 	return nil
 }
