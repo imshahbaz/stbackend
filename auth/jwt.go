@@ -2,6 +2,8 @@ package auth
 
 import (
 	"backend/model"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -22,7 +24,9 @@ func GenerateToken(user model.UserDto) (string, error) {
 		User: user,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
-			IssuedAt:  jwt.NewNumericDate(now), // Critical for sliding expiry math
+			IssuedAt:  jwt.NewNumericDate(now),
+			Subject:   strconv.FormatInt(user.UserID, 10),
+			Issuer:    "shahbaz-trades",
 		},
 	}
 
@@ -33,12 +37,24 @@ func GenerateToken(user model.UserDto) (string, error) {
 func ValidateToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return SecretKey, nil
 	})
 
 	if err != nil || !token.Valid {
 		return nil, err
+	}
+
+	if claims.Issuer != "shahbaz-trades" {
+		return nil, fmt.Errorf("invalid issuer")
+	}
+
+	expectedSub := strconv.FormatInt(claims.User.UserID, 10)
+	if claims.Subject != expectedSub {
+		return nil, fmt.Errorf("subject mismatch: identity integrity compromised")
 	}
 
 	return claims, nil
