@@ -171,7 +171,7 @@ func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupReque
 func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
 	req := input.Body
 	var pendingDto model.UserDto
-	ok, err := localCache.GetUserCache(req.Email, pendingDto, model.Signup)
+	ok, err := localCache.GetUserCache(req.Email, &pendingDto, model.Signup)
 	if err != nil || !ok {
 		return nil, huma.Error400BadRequest("Signup session expired")
 	}
@@ -288,7 +288,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.DetailedResponseWrapper, error) {
 	reqID := input.RequestId
 	var userDto model.UserDto
-	if ok, err := localCache.GetUserCache(reqID, userDto, model.Truecaller); ok && err != nil {
+	if ok, err := localCache.GetUserCache(reqID, &userDto, model.Truecaller); ok && err == nil {
 		tokenStr, err := auth.GenerateToken(userDto)
 		if err != nil {
 			log.Printf("Error while generating token %v", err.Error())
