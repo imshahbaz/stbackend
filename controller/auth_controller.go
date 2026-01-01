@@ -221,7 +221,6 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 
 	dto := user.ToDto()
 	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
-	database.RedisHelper.Set(truecaller+cacheKey, dto, 2*time.Minute)
 	return &model.LoginResponse{Body: model.Response{
 		Success: true,
 		Message: "User details fetched",
@@ -280,6 +279,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 		}
 
 		localCache.PendingUserCache.Set(body.RequestId, user.ToDto(), cache.DefaultExpiration)
+		database.RedisHelper.Set(truecaller+body.RequestId, user.ToDto(), 2*time.Minute)
 
 		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Callback Successfull"}}, nil
 	}
