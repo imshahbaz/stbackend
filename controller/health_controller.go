@@ -23,6 +23,15 @@ func (ctrl *HealthController) RegisterRoutes(api huma.API) {
 		Description: "Confirm that the server is up and running. Used by Load Balancers and Uptime Monitors.",
 		Tags:        []string{"System"},
 	}, ctrl.healthCheck)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "head-health",
+		Method:      http.MethodHead,
+		Path:        "/api/health",
+		Summary:     "Quick Health Ping",
+		Description: "Liveness probe for Load Balancers. Returns 200 OK without a body if the server is reachable.",
+		Tags:        []string{"System"},
+	}, ctrl.healthCheck)
 }
 
 func (ctrl *HealthController) healthCheck(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
