@@ -13,7 +13,6 @@ import (
 	localCache "backend/cache"
 	"backend/config"
 	"backend/customerrors"
-	"backend/database"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -148,7 +147,7 @@ func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupReque
 	user := input.Body
 	var userDto model.UserDto
 	copier.Copy(&userDto, &user)
-	localCache.PendingUserCache.Set(user.Email, userDto, 5*time.Minute)
+	localCache.SetUserCache(user.Email, userDto, model.Signup)
 
 	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -171,8 +170,9 @@ func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupReque
 
 func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
 	req := input.Body
-	val, found := localCache.PendingUserCache.Get(req.Email)
-	if !found {
+	var pendingDto model.UserDto
+	ok, err := localCache.GetUserCache(req.Email, pendingDto, model.Signup)
+	if err != nil || !ok {
 		return nil, huma.Error400BadRequest("Signup session expired")
 	}
 
@@ -181,12 +181,11 @@ func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOt
 		return nil, huma.Error400BadRequest("Invalid OTP")
 	}
 
-	pendingDto := val.(model.UserDto)
 	if _, err := ctrl.userSvc.CreateUser(ctx, pendingDto); err != nil {
 		return nil, huma.Error500InternalServerError("Failed to create user")
 	}
 
-	localCache.PendingUserCache.Delete(req.Email)
+	localCache.DeleteUserCache(req.Email, model.Signup)
 	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Signup successful"}}, nil
 }
 
@@ -278,8 +277,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 			user = newUser
 		}
 
-		localCache.PendingUserCache.Set(body.RequestId, user.ToDto(), cache.DefaultExpiration)
-		database.RedisHelper.Set(truecaller+body.RequestId, user.ToDto(), 2*time.Minute)
+		localCache.SetUserCache(body.RequestId, user.ToDto(), model.Truecaller)
 
 		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Callback Successfull"}}, nil
 	}
@@ -289,9 +287,8 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 
 func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.DetailedResponseWrapper, error) {
 	reqID := input.RequestId
-	if token, ok := localCache.PendingUserCache.Get(reqID); ok {
-		userDto := token.(model.UserDto)
-		localCache.PendingUserCache.Delete(reqID)
+	var userDto model.UserDto
+	if ok, err := localCache.GetUserCache(reqID, userDto, model.Truecaller); ok && err != nil {
 		tokenStr, err := auth.GenerateToken(userDto)
 		if err != nil {
 			log.Printf("Error while generating token %v", err.Error())

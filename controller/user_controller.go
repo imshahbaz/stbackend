@@ -157,7 +157,7 @@ func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.Requ
 		return nil, huma.Error500InternalServerError("Something went wrong")
 	}
 	req.Password = string(hashed)
-	cache.PendingUserCache.Set(strconv.FormatInt(req.UserID, 10)+"_update", req, 5*time.Minute)
+	cache.SetUserCache(strconv.FormatInt(req.UserID, 10), req, model.CredUpdate)
 	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -186,18 +186,19 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 		return nil, huma.Error400BadRequest("Invalid OTP")
 	}
 
-	val, found := cache.PendingUserCache.Get(strconv.FormatInt(authUser.UserID, 10) + "_update")
-	if !found {
+	var cacheUser model.UserDto
+	ok, err := cache.GetUserCache(strconv.FormatInt(authUser.UserID, 10), cacheUser, model.CredUpdate)
+	if err != nil || !ok {
 		return nil, huma.Error400BadRequest("Invalid or expired request")
 	}
 
-	_, err = ctrl.userSvc.AddCredentials(ctx, val.(model.UserDto))
+	_, err = ctrl.userSvc.AddCredentials(ctx, cacheUser)
 	if err != nil {
 		log.Printf("Error adding credentials: %v", err)
 		return nil, huma.Error500InternalServerError("Something went wrong")
 	}
 
-	cache.PendingUserCache.Delete(req.Email)
+	cache.DeleteUserCache(req.Email, model.CredUpdate)
 	cache.UserAuthCache.Delete(strconv.FormatInt(authUser.UserID, 10))
 	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Credential added successfully"}}, nil
 }
