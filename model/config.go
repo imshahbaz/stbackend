@@ -10,6 +10,7 @@ type MongoEnvConfig struct {
 	DebugMode    bool     `json:"debugMode" bson:"debugMode"`
 	RateLimiter  bool     `json:"rateLimiter" bson:"rateLimiter"`
 	JwtSecret    string   `json:"jwtSecret" bson:"jwtSecret"`
+	RedisUrl     string   `json:"redisUrl" bson:"redisUrl"`
 }
 
 type EnvConfig struct {
@@ -18,7 +19,6 @@ type EnvConfig struct {
 	MongoPassword string `json:"mongoPassword"`
 	Environment   string `json:"environment"`
 }
-
 
 type UpdateConfigInput struct {
 	Body MongoEnvConfig
