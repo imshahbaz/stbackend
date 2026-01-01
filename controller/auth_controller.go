@@ -13,6 +13,7 @@ import (
 	localCache "backend/cache"
 	"backend/config"
 	"backend/customerrors"
+	"backend/database"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -23,6 +24,10 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	truecaller = "truecaller_"
 )
 
 type AuthController struct {
@@ -216,6 +221,7 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 
 	dto := user.ToDto()
 	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
+	database.RedisHelper.Set(truecaller+cacheKey, dto, 2*time.Minute)
 	return &model.LoginResponse{Body: model.Response{
 		Success: true,
 		Message: "User details fetched",
