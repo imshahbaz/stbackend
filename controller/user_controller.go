@@ -187,7 +187,7 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 	}
 
 	var cacheUser model.UserDto
-	ok, err := cache.GetUserCache(strconv.FormatInt(authUser.UserID, 10), cacheUser, model.CredUpdate)
+	ok, err := cache.GetUserCache(strconv.FormatInt(authUser.UserID, 10), &cacheUser, model.CredUpdate)
 	if err != nil || !ok {
 		return nil, huma.Error400BadRequest("Invalid or expired request")
 	}

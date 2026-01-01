@@ -44,14 +44,15 @@ func SetUserCache(reqId string, userDto model.UserDto, cacheType model.UserCache
 	}
 }
 
-func GetUserCache(reqId string, userDto model.UserDto, cacheType model.UserCacheType) (bool, error) {
+func GetUserCache(reqId string, userDto *model.UserDto, cacheType model.UserCacheType) (bool, error) {
 	key, _ := getKeyAndExpiry(reqId, cacheType)
 	if EnableRedisCache {
 		return database.RedisHelper.GetAsStruct(key, userDto)
 	}
 
 	if value, ok := pendingUserCache.Get(key); ok {
-		userDto = value.(model.UserDto)
+		dto := value.(model.UserDto)
+		*userDto = dto
 		return ok, nil
 	}
 	return false, fmt.Errorf("Data not found")
