@@ -3,25 +3,26 @@ package database
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/bytedance/sonic"
+	"github.com/valkey-io/valkey-go"
 )
 
 var (
-	RedisHelper *redisUtil
+	RedisHelper *valkeyUtil
 )
 
-type redisUtil struct {
-	client *redis.Client
-	ctx    context.Context
+type valkeyUtil struct {
+	client valkey.Client
 }
 
-func InitRedis(url string) {
-	opts, err := redis.ParseURL(url)
+func InitRedis(uri string) {
+	opts, err := valkey.ParseURL(uri)
 	if err != nil {
-		log.Fatalf("Invalid Redis URL: %v", err)
+		log.Fatalf("Invalid Valkey URI: %v", err)
 	}
 
 	if opts.TLSConfig == nil {
@@ -30,51 +31,73 @@ func InitRedis(url string) {
 		}
 	}
 
-	redisClient := redis.NewClient(opts)
-	ctx := context.Background()
-
-	_, err = redisClient.Ping(ctx).Result()
+	client, err := valkey.NewClient(opts)
 	if err != nil {
-		log.Fatalf("Could not connect to Redis/Valkey: %v", err)
+		log.Fatalf("Could not connect to Valkey: %v", err)
+	}
+
+	err = client.Do(context.Background(), client.B().Ping().Build()).Error()
+	if err != nil {
+		log.Fatalf("Valkey Ping Failed: %v", err)
 	}
 
 	log.Println("✅ Connected to Aiven Valkey successfully")
 
-	RedisHelper = &redisUtil{
-		client: redisClient,
-		ctx:    ctx,
+	RedisHelper = &valkeyUtil{
+		client: client,
 	}
 }
 
-func (r *redisUtil) Set(key string, value interface{}, expiration time.Duration) error {
-	err := r.client.Set(r.ctx, key, value, expiration).Err()
+func (v *valkeyUtil) Set(key string, value any, expiration time.Duration) error {
+	var data string
+
+	switch val := value.(type) {
+	case string:
+		data = val
+	case []byte:
+		data = string(val)
+	default:
+		marshaled, err := sonic.ConfigDefault.MarshalToString(value)
+		if err != nil {
+			return fmt.Errorf("sonic marshal error: %w", err)
+		}
+		data = marshaled
+	}
+
+	cmd := v.client.B().Set().Key(key).Value(data).Ex(expiration).Build()
+	return v.client.Do(context.Background(), cmd).Error()
+}
+
+func (v *valkeyUtil) GetAsStruct(key string, target any) (bool, error) {
+	cmd := v.client.B().Get().Key(key).Build()
+	val, err := v.client.Do(context.Background(), cmd).ToString()
+
+	if valkey.IsValkeyNil(err) {
+		return false, nil
+	}
 	if err != nil {
-		log.Printf("Redis SET Error [%s]: %v", key, err)
+		return false, err
 	}
-	return err
-}
 
-func (r *redisUtil) Get(key string) (string, error) {
-	val, err := r.client.Get(r.ctx, key).Result()
-	if err == redis.Nil {
-		return "", nil
+	if strPtr, ok := target.(*string); ok {
+		*strPtr = val
+		return true, nil
 	}
+
+	err = sonic.ConfigDefault.UnmarshalFromString(val, target)
 	if err != nil {
-		log.Printf("Redis GET Error [%s]: %v", key, err)
-		return "", err
+		return true, fmt.Errorf("sonic unmarshal error: %w", err)
 	}
-	return val, nil
+	return true, nil
 }
 
-func (r *redisUtil) Delete(key string) error {
-	err := r.client.Del(r.ctx, key).Err()
-	if err != nil {
-		log.Printf("Redis DEL Error [%s]: %v", key, err)
-	}
-	return err
+func (v *valkeyUtil) Delete(key string) error {
+	cmd := v.client.B().Del().Key(key).Build()
+	return v.client.Do(context.Background(), cmd).Error()
 }
 
-func (r *redisUtil) Exists(key string) bool {
-	count, err := r.client.Exists(r.ctx, key).Result()
+func (v *valkeyUtil) Exists(key string) bool {
+	cmd := v.client.B().Exists().Key(key).Build()
+	count, err := v.client.Do(context.Background(), cmd).AsInt64()
 	return err == nil && count > 0
 }
