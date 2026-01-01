@@ -54,7 +54,6 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	priceActionRepo := repository.NewPriceActionRepo(db)
 	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 
-
 	humaConfig := huma.DefaultConfig("Shahbaz Trades Management API", "1.0.0")
 	if isProduction {
 		humaConfig.DocsPath = ""
@@ -82,7 +81,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewUserController(userSvc, isProduction).RegisterRoutes(humaApi)
+		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 
 		controller.NewNseController(nseSvc).RegisterRoutes(humaApi)
 

@@ -148,7 +148,7 @@ func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupReque
 	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := ctrl.otpSvc.SendSignUpOtp(ctxt, user); err != nil {
+	if err := ctrl.otpSvc.SendOtp(ctxt, user.Email, model.OTPRegister); err != nil {
 		if errors.Is(err, service.ErrDuplicateOtp) {
 			return nil, huma.Error409Conflict(err.Error())
 		}
@@ -171,7 +171,7 @@ func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOt
 		return nil, huma.Error400BadRequest("Signup session expired")
 	}
 
-	match, err := ctrl.otpSvc.VerifyOtp(req.Email, req.Otp)
+	match, err := ctrl.otpSvc.VerifyOtp(req.Email, req.Otp, model.OTPRegister)
 	if err != nil || !match {
 		return nil, huma.Error400BadRequest("Invalid OTP")
 	}

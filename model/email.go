@@ -29,6 +29,11 @@ func (r *BrevoEmailRequest) Signup(otp string, validity int) {
 	r.HTMLContent = fmt.Sprintf(SignupTemplate, otp, 5)
 }
 
+func (r *BrevoEmailRequest) EmailVerification(otp string, validity int) {
+	r.Subject = "Email Verification Code"
+	r.HTMLContent = fmt.Sprintf(SignupTemplate, otp, 5)
+}
+
 type SendEmailRequest struct {
 	Body BrevoEmailRequest
 }

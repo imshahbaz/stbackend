@@ -20,6 +20,7 @@ type UserService interface {
 	UpdateUsername(ctx context.Context, userId int64, username string) (*model.User, error)
 	GetNextSequence(ctx context.Context, sequenceName string) (int, error)
 	FindUser(ctx context.Context, mobile int64, email string, userId int64) (*model.User, error)
+	AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error)
 }
 
 type UserServiceImpl struct {
@@ -29,7 +30,6 @@ type UserServiceImpl struct {
 func NewUserService(repo *repository.UserRepository) UserService {
 	return &UserServiceImpl{repo: repo}
 }
-
 
 func (s *UserServiceImpl) CreateUser(ctx context.Context, request model.UserDto) (*model.User, error) {
 	existing, err := s.FindUser(ctx, request.Mobile, request.Email, 0)
@@ -117,4 +117,10 @@ func (s *UserServiceImpl) FindUser(ctx context.Context, mobile int64, email stri
 	}
 
 	return user, nil
+}
+
+func (s *UserServiceImpl) AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error) {
+	filter := bson.M{"_id": userDto.UserID}
+	updateData := bson.M{"email": userDto.Email, "password": userDto.Password}
+	return s.repo.UpdateUser(ctx, filter, updateData)
 }
