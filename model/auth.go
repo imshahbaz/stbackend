@@ -22,7 +22,6 @@ type VerifyOtpRequest struct {
 	Otp   string `json:"otp" binding:"required,len=6" example:"123456"`
 }
 
-
 type LoginDto struct {
 	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
 	Password string `json:"password" validate:"required" example:"secret"`

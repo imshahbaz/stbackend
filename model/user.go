@@ -31,6 +31,11 @@ func (u *User) ToDto() UserDto {
 	}
 }
 
+type PasswordMatcher interface {
+	GetPassword() string
+	GetConfirm() string
+}
+
 type UserDto struct {
 	UserID          int64     `json:"userId"`
 	Email           string    `json:"email" validate:"required,email"`
@@ -67,6 +72,9 @@ func (d *UserDto) ToEntity() (*User, error) {
 		Name:     d.Name,
 	}, nil
 }
+
+func (u *UserDto) GetPassword() string { return u.Password }
+func (u *UserDto) GetConfirm() string  { return u.ConfirmPassword }
 
 type UpdateThemeRequest struct {
 	Theme UserTheme `json:"theme"`
