@@ -168,9 +168,11 @@ func (ctrl *PriceActionController) CheckOBMitigation(ctx context.Context, input 
 }
 
 func (ctrl *PriceActionController) GetOBMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	if val, exists := cache.PriceActionCache.Get("ObCache"); exists {
-		return NewResponse(val, "Cached OB mitigation data fetched"), nil
+	result := make([]model.ObResponse, 0)
+	if ok, err := cache.GetPriceActionResponseCache("ObCache", &result); ok && err == nil {
+		return NewResponse(result, "Cached OB mitigation data fetched"), nil
 	}
+
 	data, err := ctrl.paService.CheckOBMitigation(ctx)
 	if err != nil {
 		return NewErrorResponse(err.Error()), nil
@@ -203,7 +205,6 @@ func (ctrl *PriceActionController) DeleteOrderBlock(ctx context.Context, input *
 	return NewResponse(nil, "Order Block deleted successfully"), nil
 }
 
-
 func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	data, err := ctrl.paService.CheckFvgMitigation(ctx)
 	if err != nil {
@@ -213,9 +214,11 @@ func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input
 }
 
 func (ctrl *PriceActionController) GetFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	if val, exists := cache.PriceActionCache.Get("FvgCache"); exists {
-		return NewResponse(val, "Cached FVG mitigation data fetched"), nil
+	result := make([]model.ObResponse, 0)
+	if ok, err := cache.GetPriceActionResponseCache("FvgCache", &result); ok && err == nil {
+		return NewResponse(result, "Cached FVG mitigation data fetched"), nil
 	}
+
 	data, err := ctrl.paService.CheckFvgMitigation(ctx)
 	if err != nil {
 		return NewErrorResponse(err.Error()), nil
