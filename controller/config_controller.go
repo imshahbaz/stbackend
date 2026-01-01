@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"backend/cache"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -76,6 +77,6 @@ func (ctrl *ConfigController) updateMongoEnvConfig(ctx context.Context, input *m
 	if err := ctrl.cfgSvc.UpdateMongoEnvConfig(ctx, req); err != nil {
 		return NewErrorResponse("Error Updating Mongo Configs: " + err.Error()), nil
 	}
-
+	cache.EnableRedisCache = req.RedisCache
 	return NewResponse(nil, "Mongo Configs Updated Successfully"), nil
 }
