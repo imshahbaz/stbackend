@@ -48,12 +48,8 @@ var (
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	isProduction := cfg.Config.Environment == "production"
-	mongoId := "mongoConfigDev"
-	if isProduction {
-		mongoId = "mongoConfig"
-	}
 
-	configService := service.NewConfigService(db, mongoId)
+	configService := service.NewConfigService(db, isProduction)
 
 	r := initApp(configService, db)
 

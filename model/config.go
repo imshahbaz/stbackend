@@ -34,3 +34,12 @@ type GoogleAuthCredentials struct {
 	ClientID     string `json:"clientId" bson:"clientId"`
 	ClientSecret string `json:"secret" bson:"secret"`
 }
+
+type ClientConfigs struct {
+	ID   string `json:"-" bson:"_id,omitempty"`
+	Auth struct {
+		Google     bool `json:"google" bson:"google"`
+		Email      bool `json:"email" bson:"email"`
+		TrueCaller bool `json:"truecaller" bson:"truecaller"`
+	} `json:"auth" bson:"auth"`
+}
