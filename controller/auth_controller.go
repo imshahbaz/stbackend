@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -23,10 +25,12 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 )
 
 var (
-	truecaller = "truecaller_"
+	truecaller    = "truecaller_"
+	googleProfile = "https://www.googleapis.com/oauth2/v2/userinfo"
 )
 
 type AuthController struct {
@@ -35,16 +39,18 @@ type AuthController struct {
 	otpSvc       service.OtpService
 	isProduction bool
 	restyClient  *resty.Client
+	googleConfig *oauth2.Config
 }
 
 func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
-	otpSvc service.OtpService, isProduction bool) *AuthController {
+	otpSvc service.OtpService, isProduction bool, googleConfig *oauth2.Config) *AuthController {
 	return &AuthController{
 		userSvc:      s,
 		cfgManager:   cfgManager,
 		otpSvc:       otpSvc,
 		isProduction: isProduction,
 		restyClient:  resty.New().SetTimeout(10 * time.Second),
+		googleConfig: googleConfig,
 	}
 }
 
@@ -111,6 +117,14 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Summary:     "Check Truecaller Auth Status",
 		Tags:        []string{"Authentication"},
 	}, ctrl.TrueCallerStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "google-callback",
+		Method:      http.MethodGet,
+		Path:        "/api/auth/google/callback",
+		Summary:     "Process Google OAuth Callback",
+		Tags:        []string{"Authentication"},
+	}, ctrl.googleAuthCallback)
 }
 
 func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest) (*model.LoginResponse, error) {
@@ -277,6 +291,17 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 			user = newUser
 		}
 
+		if profile.PhoneNumbers[0] > 0 && (user.Mobile == 0 || user.Mobile != profile.PhoneNumbers[0]) {
+			if err := ctrl.userSvc.PatchUserData(detachedCtx, model.User{
+				UserID: user.UserID,
+				Mobile: profile.PhoneNumbers[0],
+			}); err != nil {
+				log.Printf("Unable to update mobile number userId : %v", user.UserID)
+			} else {
+				user.Mobile = profile.PhoneNumbers[0]
+			}
+		}
+
 		localCache.SetUserCache(body.RequestId, user.ToDto(), model.Truecaller)
 
 		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Callback Successfull"}}, nil
@@ -324,4 +349,78 @@ func (ctrl *AuthController) createAuthCookie(token string, maxAge int) string {
 		cookie.SameSite = http.SameSiteNoneMode
 	}
 	return cookie.String()
+}
+
+func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.DetailedResponseWrapper, error) {
+	detachedCtx := context.WithoutCancel(ctx)
+	token, err := ctrl.googleConfig.Exchange(detachedCtx, input.Code)
+	if err != nil {
+		return nil, huma.Error401Unauthorized("Exchange failed", err)
+	}
+
+	client := ctrl.googleConfig.Client(detachedCtx, token)
+	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+	if err != nil {
+		return nil, huma.Error401Unauthorized("Exchange failed", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var gUser model.GoogleUser
+	if err := json.Unmarshal(bodyBytes, &gUser); err != nil {
+		return nil, huma.Error500InternalServerError("JSON decode failed", err)
+	}
+
+	user, err := ctrl.userSvc.FindUser(detachedCtx, 0, gUser.Email, 0)
+	if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
+		return nil, huma.Error400BadRequest("Invalid Request")
+	}
+
+	if user == nil {
+		dto := model.UserDto{
+			Email:    gUser.Email,
+			Username: gUser.GivenName + "_" + gUser.FamilyName,
+			Role:     model.RoleUser,
+			Theme:    model.ThemeDark,
+			Name:     gUser.Name,
+			Profile:  gUser.Picture,
+		}
+
+		newUser, err := ctrl.userSvc.CreateUser(detachedCtx, dto)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Invalid Request")
+		}
+
+		user = newUser
+	}
+
+	if gUser.Picture != "" && (user.Profile == "" || gUser.Picture != user.Profile) {
+		if err := ctrl.userSvc.PatchUserData(detachedCtx, model.User{
+			UserID:  user.UserID,
+			Profile: gUser.Picture,
+		}); err != nil {
+			log.Printf("Unable to update profile picture userId : %v", user.UserID)
+		} else {
+			user.Profile = gUser.Picture
+		}
+	}
+
+	userDto := user.ToDto()
+	tokenStr, err := auth.GenerateToken(userDto)
+	if err != nil {
+		log.Printf("Error while generating token %v", err.Error())
+		return nil, huma.Error500InternalServerError("Internal server error")
+	}
+
+	cookie := ctrl.createAuthCookie(tokenStr, 1800)
+	localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
+
+	return &model.DetailedResponseWrapper{
+		SetCookie: cookie,
+		Body: model.Response{
+			Success: true,
+			Message: "User created",
+			Data:    userDto,
+		},
+	}, nil
 }
