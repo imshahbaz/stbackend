@@ -34,12 +34,14 @@ func LoadConfigs() (*SystemConfigs, error) {
 }
 
 type ConfigManager struct {
-	value atomic.Value
+	value  atomic.Value
+	client atomic.Value
 }
 
-func NewConfigManager(initial *model.MongoEnvConfig) *ConfigManager {
+func NewConfigManager(initial *model.MongoEnvConfig, clientConfig *model.ClientConfigs) *ConfigManager {
 	cm := &ConfigManager{}
 	cm.value.Store(initial)
+	cm.client.Store(clientConfig)
 	return cm
 }
 
@@ -49,4 +51,12 @@ func (cm *ConfigManager) GetConfig() *model.MongoEnvConfig {
 
 func (cm *ConfigManager) UpdateConfig(newCfg *model.MongoEnvConfig) {
 	cm.value.Store(newCfg)
+}
+
+func (cm *ConfigManager) GetClientConfig() *model.ClientConfigs {
+	return cm.client.Load().(*model.ClientConfigs)
+}
+
+func (cm *ConfigManager) UpdateClientConfig(newCfg *model.ClientConfigs) {
+	cm.client.Store(newCfg)
 }
