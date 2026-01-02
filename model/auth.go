@@ -76,7 +76,6 @@ type LogoutResponse struct {
 }
 
 type AuthInput struct {
-	Code        string `query:"code" doc:"The authorization code from Google"`
-	State       string `query:"state" doc:"Anti-forgery state token"`
-	CookieState string `cookie:"oauth_state"`
+	Code  string `query:"code" doc:"The authorization code from Google"`
+	State string `query:"state" doc:"Anti-forgery state token"`
 }
