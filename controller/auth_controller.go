@@ -351,7 +351,7 @@ func (ctrl *AuthController) createAuthCookie(token string, maxAge int) string {
 	return cookie.String()
 }
 
-func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.DetailedResponseWrapper, error) {
+func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
 	conf := *ctrl.googleConfig
 
 	var targetURL string
@@ -445,15 +445,15 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 	localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
 
 	if isIPhoneRedirect {
-		if humaCtx, ok := ctx.(huma.Context); ok {
-			humaCtx.SetHeader("Set-Cookie", cookie)
-			humaCtx.SetHeader("Location", targetURL)
-			humaCtx.SetStatus(http.StatusFound)
-			return nil, nil
-		}
+		return &model.GoogleAuthResponse{
+			Status:    http.StatusFound,
+			SetCookie: cookie,
+			Location:  targetURL,
+		}, nil
 	}
 
-	return &model.DetailedResponseWrapper{
+	return &model.GoogleAuthResponse{
+		Status:    http.StatusOK,
 		SetCookie: cookie,
 		Body: model.Response{
 			Success: true,

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"backend/database"
 	"backend/model"
 	"context"
 	"fmt"
@@ -12,15 +13,16 @@ import (
 )
 
 type PriceActionRepo struct {
-	collection *mongo.Collection
+	database.GenericRepo[model.StockRecord]
 }
 
 func NewPriceActionRepo(db *mongo.Database) *PriceActionRepo {
 	return &PriceActionRepo{
-		collection: db.Collection(model.PACollectionName),
+		GenericRepo: database.GenericRepo[model.StockRecord]{
+			Collection: db.Collection(model.PACollectionName),
+		},
 	}
 }
-
 
 func (r *PriceActionRepo) SaveOrderBlock(ctx context.Context, ob model.ObRequest) error {
 	return r.saveNestedInfo(ctx, ob, "order_blocks")
@@ -46,27 +48,24 @@ func (r *PriceActionRepo) DeleteFvgByDate(ctx context.Context, symbol, date stri
 	return r.deleteNestedInfo(ctx, symbol, date, "fvg")
 }
 
-
 func (r *PriceActionRepo) GetAllPriceAction(ctx context.Context) ([]model.StockRecord, error) {
-	return r.findMany(ctx, bson.M{})
+	return r.FindAll(ctx)
 }
 
 func (r *PriceActionRepo) GetAllPAIn(ctx context.Context, ids []string) ([]model.StockRecord, error) {
-	return r.findMany(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	return r.FindAllByIDs(ctx, ids)
 }
 
 func (r *PriceActionRepo) GetPAByID(ctx context.Context, symbol string) (model.StockRecord, error) {
-	var stock model.StockRecord
-	err := r.collection.FindOne(ctx, bson.M{"_id": symbol}).Decode(&stock)
+	res, err := r.FindByID(ctx, symbol)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return model.StockRecord{}, fmt.Errorf("stock %s not found", symbol)
-		}
 		return model.StockRecord{}, err
 	}
-	return stock, nil
+	if res == nil {
+		return model.StockRecord{}, fmt.Errorf("stock %s not found", symbol)
+	}
+	return *res, nil
 }
-
 
 func (r *PriceActionRepo) saveNestedInfo(ctx context.Context, req model.ObRequest, fieldName string) error {
 	var newInfo model.Info
@@ -87,7 +86,7 @@ func (r *PriceActionRepo) saveNestedInfo(ctx context.Context, req model.ObReques
 			},
 		}).SetUpsert(true)
 
-	_, err := r.collection.BulkWrite(ctx, []mongo.WriteModel{pull, push}, options.BulkWrite().SetOrdered(true))
+	_, err := r.Collection.BulkWrite(ctx, []mongo.WriteModel{pull, push}, options.BulkWrite().SetOrdered(true))
 	return err
 }
 
@@ -103,11 +102,11 @@ func (r *PriceActionRepo) updateNestedInfo(ctx context.Context, req model.ObRequ
 		Filters: []any{bson.M{"elem.date": req.Date}},
 	})
 
-	res, err := r.collection.UpdateOne(ctx, filter, update, opts)
+	res, err := r.Collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
 		return err
 	}
-	if res.ModifiedCount == 0 {
+	if res.MatchedCount == 0 {
 		return fmt.Errorf("no %s record found for date %s", fieldName, req.Date)
 	}
 	return nil
@@ -117,7 +116,7 @@ func (r *PriceActionRepo) deleteNestedInfo(ctx context.Context, symbol, date, fi
 	filter := bson.M{"_id": symbol}
 	update := bson.M{"$pull": bson.M{fieldName: bson.M{"date": date}}}
 
-	res, err := r.collection.UpdateOne(ctx, filter, update)
+	res, err := r.Collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
@@ -125,20 +124,4 @@ func (r *PriceActionRepo) deleteNestedInfo(ctx context.Context, symbol, date, fi
 		return fmt.Errorf("no %s record found to delete for date %s", fieldName, date)
 	}
 	return nil
-}
-
-func (r *PriceActionRepo) findMany(ctx context.Context, filter bson.M) ([]model.StockRecord, error) {
-	var results []model.StockRecord
-	cursor, err := r.collection.Find(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-	if err = cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-	if results == nil {
-		return []model.StockRecord{}, nil
-	}
-	return results, nil
 }
