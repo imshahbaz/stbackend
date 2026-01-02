@@ -17,6 +17,7 @@ type User struct {
 	Theme    UserTheme `bson:"theme" json:"theme"`
 	Mobile   int64     `bson:"mobile" json:"mobile"`
 	Name     string    `bson:"name" json:"name"`
+	Profile  string    `bson:"profile" json:"profile"`
 }
 
 func (u *User) ToDto() UserDto {
@@ -28,6 +29,7 @@ func (u *User) ToDto() UserDto {
 		Theme:    u.Theme,
 		Mobile:   u.Mobile,
 		Name:     u.Name,
+		Profile:  u.Profile,
 	}
 }
 
@@ -46,6 +48,7 @@ type UserDto struct {
 	Theme           UserTheme `json:"theme"`
 	Mobile          int64     `json:"mobile"`
 	Name            string    `json:"name"`
+	Profile         string    `json:"profile"`
 }
 
 func (d *UserDto) ToEntity() (*User, error) {
@@ -70,6 +73,7 @@ func (d *UserDto) ToEntity() (*User, error) {
 		Theme:    ThemeDark,
 		Mobile:   d.Mobile,
 		Name:     d.Name,
+		Profile:  d.Profile,
 	}, nil
 }
 
@@ -91,4 +95,14 @@ type UpdateUsernameRequest struct {
 
 type UpdateThemeInput struct {
 	Body UpdateThemeRequest
+}
+
+type GoogleUser struct {
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	VerifiedEmail bool   `json:"verified_email"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
 }

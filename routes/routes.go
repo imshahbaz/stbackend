@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/oauth2"
 )
 
 var configmanager *config.ConfigManager
@@ -23,6 +24,7 @@ var (
 	brevoClient    *client.BrevoClient
 	chartInkClient *client.ChartinkClient
 	yahooClient    *client.YahooClient
+	googleAuth     *oauth2.Config
 )
 
 var (
@@ -82,7 +84,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction).RegisterRoutes(humaApi)
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, googleAuth).RegisterRoutes(humaApi)
 
 		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 
@@ -127,6 +129,7 @@ func initClients() {
 	brevoClient = client.NewBrevoClient()
 	chartInkClient = client.NewChartinkClient()
 	yahooClient = client.NewYahooClient()
+	googleAuth = auth.GetGoogleOAuthConfig(configmanager.GetConfig().GoogleAuth)
 }
 
 func initRepos(db *mongo.Database) {

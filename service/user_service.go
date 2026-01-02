@@ -21,6 +21,7 @@ type UserService interface {
 	GetNextSequence(ctx context.Context, sequenceName string) (int, error)
 	FindUser(ctx context.Context, mobile int64, email string, userId int64) (*model.User, error)
 	AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error)
+	PatchUserData(ctx context.Context, user model.User) error
 }
 
 type UserServiceImpl struct {
@@ -123,4 +124,13 @@ func (s *UserServiceImpl) AddCredentials(ctx context.Context, userDto model.User
 	filter := bson.M{"_id": userDto.UserID}
 	updateData := bson.M{"email": userDto.Email, "password": userDto.Password}
 	return s.repo.UpdateUser(ctx, filter, updateData)
+}
+
+func (s *UserServiceImpl) PatchUserData(ctx context.Context, user model.User) error {
+	if user.UserID == 0 {
+		return fmt.Errorf("User id is required for update")
+	}
+	filter := bson.M{"_id": user.UserID}
+	user.UserID = 0
+	return s.repo.PatchUser(ctx, filter, user)
 }

@@ -64,3 +64,8 @@ func (s *UserRepository) GetNextSequence(ctx context.Context, sequenceName strin
 func (s *UserRepository) UpdateUser(ctx context.Context, filter bson.M, data any) (*model.User, error) {
 	return database.UpdateGeneric[model.User](ctx, s.collection, filter, data)
 }
+
+func (s *UserRepository) PatchUser(ctx context.Context, filter bson.M, data any) error {
+	_, err := database.UpdateSpecificFields(s.collection, filter, data)
+	return err
+}
