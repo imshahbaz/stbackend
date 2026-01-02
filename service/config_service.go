@@ -36,32 +36,13 @@ type ConfigServiceImpl struct {
 
 func NewConfigService(db *mongo.Database, isProduction bool) ConfigService {
 	collection := db.Collection("configs")
-	mongoId := "mongoConfigDev"
-	if isProduction {
-		mongoId = "mongoConfig"
-	}
-	var mongoConfig model.MongoEnvConfig
-	err := collection.FindOne(context.Background(), bson.M{"_id": mongoId}).Decode(&mongoConfig)
-	if err != nil {
-		log.Panicf("Critical error: Could not load initial config from MongoDB: %v", err)
-	}
-
-	clientConfigId := "clientConfigIdDev"
-	if isProduction {
-		clientConfigId = "clientConfigId"
-	}
-
-	var clientConfig model.ClientConfigs
-	err = collection.FindOne(context.Background(), bson.M{"_id": clientConfigId}).Decode(&clientConfig)
-	if err != nil {
-		log.Panicf("Critical error: Could not load initial client config from MongoDB: %v", err)
-	}
+	m, c, m1, c1 := initMongoConfigs(isProduction, collection)
 
 	return &ConfigServiceImpl{
 		collection:     collection,
-		configManager:  config.NewConfigManager(&mongoConfig, &clientConfig),
-		mongoId:        mongoId,
-		clientConfigId: clientConfigId,
+		configManager:  config.NewConfigManager(m1, c1),
+		mongoId:        m,
+		clientConfigId: c,
 	}
 }
 
@@ -143,4 +124,55 @@ func (s *ConfigServiceImpl) UpdateMongoClientConfig(ctx context.Context, cfg mod
 	}
 
 	return s.LoadClientConfig(ctx)
+}
+
+func initMongoConfigs(isProduction bool, collection *mongo.Collection) (string, string, *model.MongoEnvConfig, *model.ClientConfigs) {
+	mongoId := "mongoConfigDev"
+	if isProduction {
+		mongoId = "mongoConfig"
+	}
+
+	clientConfigId := "clientConfigIdDev"
+	if isProduction {
+		clientConfigId = "clientConfigId"
+	}
+
+	idsToFetch := []string{mongoId, clientConfigId}
+
+	// 2. Use $in operator to fetch multiple documents in one call
+	cursor, err := collection.Find(context.Background(), bson.M{"_id": bson.M{"$in": idsToFetch}})
+	if err != nil {
+		log.Panicf("Critical error: Could not query MongoDB: %v", err)
+	}
+
+	// 3. Decode results into a slice of maps
+	var results []bson.M
+	if err = cursor.All(context.Background(), &results); err != nil {
+		log.Panicf("Critical error: Could not decode results: %v", err)
+	}
+
+	// 4. Map the generic results back to your specific structs
+	var mongoConfig model.MongoEnvConfig
+	var clientConfig model.ClientConfigs
+
+	for _, doc := range results {
+		id := doc["_id"].(string)
+
+		// Convert the map back to BSON bytes then into the specific struct
+		bsonBytes, _ := bson.Marshal(doc)
+
+		switch id {
+		case mongoId:
+			bson.Unmarshal(bsonBytes, &mongoConfig)
+		case clientConfigId:
+			bson.Unmarshal(bsonBytes, &clientConfig)
+		}
+	}
+
+	// 5. Safety check to ensure both were found
+	if mongoConfig.ID == "" || clientConfig.ID == "" {
+		log.Panic("Critical error: One or more config documents missing from MongoDB")
+	}
+
+	return mongoId, clientConfigId, &mongoConfig, &clientConfig
 }
