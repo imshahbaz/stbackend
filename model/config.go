@@ -11,7 +11,6 @@ type MongoEnvConfig struct {
 	RateLimiter  bool                  `json:"rateLimiter" bson:"rateLimiter"`
 	JwtSecret    string                `json:"jwtSecret" bson:"jwtSecret"`
 	RedisUrl     string                `json:"redisUrl" bson:"redisUrl"`
-	RedisCache   bool                  `json:"redisCache" bson:"redisCache"`
 	GoogleAuth   GoogleAuthCredentials `json:"googleAuth" bson:"googleAuth"`
 }
 

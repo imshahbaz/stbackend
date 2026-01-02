@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
-	localCache "backend/cache"
 	"backend/config"
+	"backend/database"
 	"backend/model"
 	"backend/util"
-
-	"github.com/patrickmn/go-cache"
 )
 
 var (
@@ -42,7 +41,8 @@ func (s *OtpServiceImpl) SendOtp(ctx context.Context, email string, otpType mode
 		return fmt.Errorf("failed to generate otp: %w", err)
 	}
 
-	if _, found := localCache.OtpCache.Get(cacheKey); found {
+	var oldOtp string
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &oldOtp); ok {
 		return ErrDuplicateOtp
 	}
 
@@ -60,7 +60,7 @@ func (s *OtpServiceImpl) SendOtp(ctx context.Context, email string, otpType mode
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	localCache.OtpCache.Set(cacheKey, otp, cache.DefaultExpiration)
+	database.RedisHelper.Set(cacheKey, otp, 5*time.Minute)
 
 	return nil
 }
@@ -70,13 +70,14 @@ func (s *OtpServiceImpl) VerifyOtp(email, otp string, otpType model.OTPType) (bo
 	if err != nil {
 		return false, ErrInvalidOtp
 	}
-	cachedOtp, found := localCache.OtpCache.Get(cacheKey)
-	if !found {
+
+	var cachedOtp string
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &cachedOtp); !ok {
 		return false, ErrInvalidOtp
 	}
 
-	if storedStr, ok := cachedOtp.(string); ok && storedStr == otp {
-		localCache.OtpCache.Delete(cacheKey)
+	if cachedOtp == otp {
+		database.RedisHelper.Delete(cacheKey)
 		return true, nil
 	}
 

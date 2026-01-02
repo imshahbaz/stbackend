@@ -2,7 +2,6 @@ package routes
 
 import (
 	"backend/auth"
-	"backend/cache"
 	"backend/client"
 	"backend/config"
 	"backend/controller"
@@ -96,7 +95,6 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 func initApp(configService service.ConfigService, db *mongo.Database) *gin.Engine {
 	configmanager = configService.GetConfigManager()
-	cache.EnableRedisCache = configmanager.GetConfig().RedisCache
 	r := initGinEngine()
 	initDB()
 	initClients()

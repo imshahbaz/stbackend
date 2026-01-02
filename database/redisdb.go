@@ -70,13 +70,19 @@ func (v *valkeyUtil) Set(key string, value any, expiration time.Duration) error 
 
 func (v *valkeyUtil) GetAsStruct(key string, target any) (bool, error) {
 	cmd := v.client.B().Get().Key(key).Build()
-	val, err := v.client.Do(context.Background(), cmd).ToString()
+	resp := v.client.Do(context.Background(), cmd)
 
-	if valkey.IsValkeyNil(err) {
+	if valkey.IsValkeyNil(resp.Error()) {
 		return false, nil
 	}
+
+	if resp.Error() != nil {
+		return false, fmt.Errorf("valkey execution error: %w", resp.Error())
+	}
+
+	val, err := resp.ToString()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("valkey get error: %w", err)
 	}
 
 	if strPtr, ok := target.(*string); ok {
@@ -86,8 +92,9 @@ func (v *valkeyUtil) GetAsStruct(key string, target any) (bool, error) {
 
 	err = sonic.ConfigDefault.UnmarshalFromString(val, target)
 	if err != nil {
-		return true, fmt.Errorf("sonic unmarshal error: %w", err)
+		return false, fmt.Errorf("sonic unmarshal error: %w", err)
 	}
+
 	return true, nil
 }
 
