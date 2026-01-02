@@ -10,14 +10,13 @@ import (
 	"sync"
 	"time"
 
-	localCache "backend/cache"
 	"backend/client"
+	"backend/database"
 	"backend/middleware"
 	"backend/model"
 	"backend/util"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/patrickmn/go-cache"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -95,18 +94,18 @@ func (s *NseServiceImpl) WarmUp() error {
 
 func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error) {
 
-	yahooResp, ok := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
-	if ok == nil {
+	yahooResp, err := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
+	if err == nil {
 		return yahooResp, nil
 	}
 
-	cacheKey := "history_" + symbol
-	if val, found := localCache.NseHistoryCache.Get(cacheKey); found {
-		return val.([]model.NSEHistoricalData), nil
+	var data []model.NSEHistoricalData
+	cacheKey := "nse_history_" + symbol
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+		return data, nil
 	}
 
-	var data []model.NSEHistoricalData
-	err := s.executeNseRequest(
+	err = s.executeNseRequest(
 		fmt.Sprintf("%s/get-quote/equity/%s", nseUrl, symbol),
 		historicalPath,
 		map[string]string{
@@ -120,18 +119,20 @@ func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]m
 	)
 
 	if err == nil {
-		localCache.NseHistoryCache.Set(cacheKey, data, util.NseCacheExpiryTime())
+		database.RedisHelper.Set(cacheKey, data, util.NseCacheExpiryTime())
 	}
+
 	return data, err
 }
 
 func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
 	cacheKey := "heatmap_sectoral"
-	if val, found := localCache.HeatMapCache.Get(cacheKey); found {
-		return val.([]model.SectorData), nil
+	var data []model.SectorData
+
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+		return data, nil
 	}
 
-	var data []model.SectorData
 	err := s.executeNseRequest(
 		nseUrl+"/market-data/live-market-indices/heatmap",
 		heatMapPath,
@@ -140,15 +141,18 @@ func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
 	)
 
 	if err == nil {
-		localCache.HeatMapCache.Set(cacheKey, data, cache.DefaultExpiration)
+		database.RedisHelper.Set(cacheKey, data, time.Hour)
 	}
+
 	return data, err
 }
 
 func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
 	cacheKey := "heatmap_all_indices"
-	if val, found := localCache.HeatMapCache.Get(cacheKey); found {
-		return val.([]model.AllIndicesResponse), nil
+	var data []model.AllIndicesResponse
+
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+		return data, nil
 	}
 
 	var result model.NseResponseWrapper[model.NseIndexData]
@@ -163,11 +167,10 @@ func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
 		return nil, err
 	}
 
-	data := s.convertIndices(result.Data)
-	localCache.HeatMapCache.Set(cacheKey, data, cache.DefaultExpiration)
+	data = s.convertIndices(result.Data)
+	database.RedisHelper.Set(cacheKey, data, time.Hour)
 	return data, nil
 }
-
 
 func (s *NseServiceImpl) executeNseRequest(referer, path string, params map[string]string, target any) error {
 	if err := s.WarmUp(); err != nil {
@@ -219,6 +222,6 @@ func (s *NseServiceImpl) formatToTwo(n float64) float64 {
 }
 
 func (s *NseServiceImpl) ClearStockDataCache(symbol string) {
-	cacheKey := "history_" + symbol
-	localCache.NseHistoryCache.Delete(cacheKey)
+	cacheKey := "nse_history_" + symbol
+	database.RedisHelper.Delete(cacheKey)
 }

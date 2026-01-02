@@ -15,6 +15,7 @@ import (
 	localCache "backend/cache"
 	"backend/config"
 	"backend/customerrors"
+	"backend/database"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -23,7 +24,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/jinzhu/copier"
 	"github.com/mitchellh/mapstructure"
-	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
@@ -145,7 +145,7 @@ func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest
 	}
 
 	cookie := ctrl.createAuthCookie(token, 1800)
-	localCache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
+	database.RedisHelper.Delete("auth_" + strconv.FormatInt(userDto.UserID, 10))
 
 	return &model.LoginResponse{
 		SetCookie: cookie,
@@ -218,12 +218,13 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 	}
 	tokenUser := val.(model.UserDto)
 
-	cacheKey := strconv.FormatInt(tokenUser.UserID, 10)
-	if cached, found := localCache.UserAuthCache.Get(cacheKey); found {
+	cacheKey := "auth_" + strconv.FormatInt(tokenUser.UserID, 10)
+	var dto model.UserDto
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &dto); ok {
 		return &model.LoginResponse{Body: model.Response{
 			Success: true,
 			Message: "User details fetched",
-			Data:    cached.(model.UserDto),
+			Data:    dto,
 		}}, nil
 	}
 
@@ -232,8 +233,8 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 		return nil, huma.Error401Unauthorized("User not found")
 	}
 
-	dto := user.ToDto()
-	localCache.UserAuthCache.Set(cacheKey, dto, cache.DefaultExpiration)
+	dto = user.ToDto()
+	database.RedisHelper.Set(cacheKey, dto, time.Hour)
 	return &model.LoginResponse{Body: model.Response{
 		Success: true,
 		Message: "User details fetched",
@@ -313,7 +314,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.DetailedResponseWrapper, error) {
 	reqID := input.RequestId
 	var userDto model.UserDto
-	if ok, err := localCache.GetUserCache(reqID, &userDto, model.Truecaller); ok && err == nil {
+	if ok, _ := localCache.GetUserCache(reqID, &userDto, model.Truecaller); ok {
 		tokenStr, err := auth.GenerateToken(userDto)
 		if err != nil {
 			log.Printf("Error while generating token %v", err.Error())
@@ -321,7 +322,7 @@ func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.T
 		}
 
 		cookie := ctrl.createAuthCookie(tokenStr, 1800)
-		localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
+		database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
 		return &model.DetailedResponseWrapper{
 			SetCookie: cookie,
@@ -442,7 +443,7 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 	}
 
 	cookie := ctrl.createAuthCookie(tokenStr, 1800)
-	localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
+	database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
 	if isIPhoneRedirect {
 		return &model.GoogleAuthResponse{

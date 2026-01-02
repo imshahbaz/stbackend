@@ -1,7 +1,7 @@
 package client
 
 import (
-	localCache "backend/cache"
+	"backend/database"
 	"backend/model"
 	"backend/util"
 	"context"
@@ -34,9 +34,11 @@ func NewYahooClient() *YahooClient {
 }
 
 func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, timeRange model.YahooTimeRange) ([]model.NSEHistoricalData, error) {
-	cacheKey := "history_" + symbol + "_" + string(timeRange)
-	if val, found := localCache.YahooHistoryCache.Get(cacheKey); found {
-		return val.([]model.NSEHistoricalData), nil
+	cacheKey := "yahoo_history_" + symbol + "_" + string(timeRange)
+	var data []model.NSEHistoricalData
+
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+		return data, nil
 	}
 
 	var chartResponse model.YahooChartResponse
@@ -77,7 +79,7 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 
 	if len(list) > 0 {
 		slices.Reverse(list)
-		localCache.YahooHistoryCache.Set(cacheKey, list, util.NseCacheExpiryTime())
+		database.RedisHelper.Set(cacheKey, list, util.NseCacheExpiryTime())
 	}
 
 	return list, nil
