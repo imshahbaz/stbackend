@@ -12,48 +12,44 @@ import (
 )
 
 type UserRepository struct {
-	collection        *mongo.Collection
+	database.GenericRepo[model.User]
 	counterCollection *mongo.Collection
 }
 
 func NewUserRepository(db *mongo.Database) *UserRepository {
 	return &UserRepository{
-		collection:        db.Collection("users"),
+		GenericRepo: database.GenericRepo[model.User]{
+			Collection: db.Collection("users"),
+		},
 		counterCollection: db.Collection("counters"),
 	}
 }
 
 func (r *UserRepository) Save(ctx context.Context, user *model.User) error {
-	opts := options.Update().SetUpsert(true)
-	_, err := r.collection.UpdateOne(
-		ctx,
-		bson.M{"_id": user.UserID},
-		bson.M{"$set": user},
-		opts,
-	)
+	filter := bson.M{"_id": user.UserID}
+	_, err := r.UpdateSpecificFields(ctx, filter, user)
 	return err
 }
 
 func (r *UserRepository) FindOne(ctx context.Context, filter bson.M) (*model.User, error) {
 	var user model.User
-	err := r.collection.FindOne(ctx, filter).Decode(&user)
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
 
-func (s *UserRepository) GetNextSequence(ctx context.Context, sequenceName string) (int, error) {
+func (r *UserRepository) GetNextSequence(ctx context.Context, sequenceName string) (int, error) {
 	filter := bson.M{"_id": sequenceName}
 	update := bson.M{"$inc": bson.M{"seq": 1}}
-
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(true)
 
 	var result struct {
 		Seq int `bson:"seq"`
 	}
 
-	err := s.counterCollection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&result)
+	err := r.counterCollection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&result)
 	if err != nil {
 		return 0, err
 	}
@@ -61,11 +57,11 @@ func (s *UserRepository) GetNextSequence(ctx context.Context, sequenceName strin
 	return result.Seq, nil
 }
 
-func (s *UserRepository) UpdateUser(ctx context.Context, filter bson.M, data any) (*model.User, error) {
-	return database.UpdateGeneric[model.User](ctx, s.collection, filter, data)
+func (r *UserRepository) UpdateUser(ctx context.Context, filter bson.M, data any) (*model.User, error) {
+	return r.UpdateGeneric(ctx, filter, data)
 }
 
-func (s *UserRepository) PatchUser(ctx context.Context, filter bson.M, data any) error {
-	_, err := database.UpdateSpecificFields(s.collection, filter, data)
+func (r *UserRepository) PatchUser(ctx context.Context, filter bson.M, data any) error {
+	_, err := r.UpdateSpecificFields(ctx, filter, data)
 	return err
 }

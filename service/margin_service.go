@@ -84,7 +84,7 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 		return fmt.Errorf("csv parsing failed: %w", err)
 	}
 
-	if err := s.repo.SaveAll(ctx, margins); err != nil {
+	if err := s.repo.SaveAllMargins(ctx, margins); err != nil {
 		return fmt.Errorf("failed to save margins: %w", err)
 	}
 
@@ -103,7 +103,6 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 	log.Printf("CSV Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", len(margins), deletedCount)
 	return nil
 }
-
 
 func (s *MarginServiceImpl) updateLocalCache(margins []model.Margin) {
 	cache.MarginCache.Flush()
