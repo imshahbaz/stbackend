@@ -352,13 +352,42 @@ func (ctrl *AuthController) createAuthCookie(token string, maxAge int) string {
 }
 
 func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.DetailedResponseWrapper, error) {
+	conf := *ctrl.googleConfig
+
+	var targetURL string
+	isIPhoneRedirect := false
+
+	if strings.HasPrefix(input.State, "redirect|") {
+		parts := strings.Split(input.State, "|")
+		if len(parts) == 2 {
+			potentialTarget := parts[1]
+			for _, allowed := range ctrl.cfgManager.GetConfig().FrontendUrls {
+				if strings.HasPrefix(potentialTarget, allowed) {
+					isIPhoneRedirect = true
+					targetURL = potentialTarget
+					break
+				}
+			}
+
+			if !isIPhoneRedirect {
+				return nil, huma.Error400BadRequest("Unauthorized redirect origin")
+			}
+		}
+	}
+
+	if isIPhoneRedirect {
+		conf.RedirectURL = ctrl.cfgManager.GetConfig().GoogleAuth.CallbackUrl
+	} else {
+		conf.RedirectURL = "postmessage"
+	}
+
 	detachedCtx := context.WithoutCancel(ctx)
-	token, err := ctrl.googleConfig.Exchange(detachedCtx, input.Code)
+	token, err := conf.Exchange(detachedCtx, input.Code)
 	if err != nil {
 		return nil, huma.Error401Unauthorized("Exchange failed", err)
 	}
 
-	client := ctrl.googleConfig.Client(detachedCtx, token)
+	client := conf.Client(detachedCtx, token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
 		return nil, huma.Error401Unauthorized("Exchange failed", err)
@@ -414,6 +443,15 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 
 	cookie := ctrl.createAuthCookie(tokenStr, 1800)
 	localCache.UserAuthCache.Set(strconv.FormatInt(userDto.UserID, 10), userDto, cache.DefaultExpiration)
+
+	if isIPhoneRedirect {
+		if humaCtx, ok := ctx.(huma.Context); ok {
+			humaCtx.SetHeader("Set-Cookie", cookie)
+			humaCtx.SetHeader("Location", targetURL)
+			humaCtx.SetStatus(http.StatusFound)
+			return nil, nil
+		}
+	}
 
 	return &model.DetailedResponseWrapper{
 		SetCookie: cookie,

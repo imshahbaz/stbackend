@@ -33,6 +33,7 @@ type ConfigResponse struct {
 type GoogleAuthCredentials struct {
 	ClientID     string `json:"clientId" bson:"clientId"`
 	ClientSecret string `json:"secret" bson:"secret"`
+	CallbackUrl  string `json:"callbackUrl" bson:"callbackUrl"`
 }
 
 type ClientConfigs struct {
