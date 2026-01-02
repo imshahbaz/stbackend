@@ -79,3 +79,10 @@ type AuthInput struct {
 	Code  string `query:"code" doc:"The authorization code from Google"`
 	State string `query:"state" doc:"Anti-forgery state token"`
 }
+
+type GoogleAuthResponse struct {
+	Location  string `header:"Location"`
+	SetCookie string `header:"Set-Cookie"`
+	Status    int    `status:"302"`
+	Body      Response
+}
