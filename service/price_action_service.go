@@ -78,33 +78,55 @@ func (s *PriceActionServiceImpl) processMitigation(ctx context.Context, strategy
 		return nil, err
 	}
 
-	var response []model.ObResponse
+	var (
+		response []model.ObResponse
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		sem      = make(chan struct{}, 5)
+	)
+
 	for _, pa := range pas {
-		history, err := s.nseService.FetchStockData(ctx, pa.Symbol)
-		if err != nil || len(history) == 0 {
-			continue
-		}
-		today := history[0]
+		wg.Add(1)
+		go func(pa model.StockRecord) {
+			defer wg.Done()
 
-		blocks := pa.OrderBlocks
-		if !isOB {
-			blocks = pa.Fvg
-		}
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		for _, block := range blocks {
-			checkDate, _ := util.ParseNseDate(history[1].Timestamp)
-			if !isOB && block.Date == checkDate {
-				continue
+			fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			history, err := s.nseService.FetchStockData(fetchCtx, pa.Symbol)
+			if err != nil || len(history) < 2 {
+				return
 			}
-			if s.checkValidMitigation(today, block) {
-				var obResp model.ObResponse
-				copier.Copy(&obResp, idMap[pa.Symbol])
-				obResp.Date = block.Date
-				response = append(response, obResp)
-				break
+
+			today := history[0]
+
+			blocks := pa.OrderBlocks
+			if !isOB {
+				blocks = pa.Fvg
 			}
-		}
+
+			for _, block := range blocks {
+				checkDate, _ := util.ParseNseDate(history[1].Timestamp)
+				if !isOB && block.Date == checkDate {
+					continue
+				}
+				if s.checkValidMitigation(today, block) {
+					var obResp model.ObResponse
+					copier.Copy(&obResp, idMap[pa.Symbol])
+					obResp.Date = block.Date
+					mu.Lock()
+					response = append(response, obResp)
+					mu.Unlock()
+					break
+				}
+			}
+		}(pa)
 	}
+
+	wg.Wait()
 
 	if len(response) > 0 {
 		sort.Slice(response, func(i, j int) bool {
@@ -354,7 +376,7 @@ func (s *PriceActionServiceImpl) PACleanUp(ctx context.Context) error {
 		fvgCleaned atomic.Int32
 		obCleaned  atomic.Int32
 		wg         sync.WaitGroup
-		sem        = make(chan struct{}, 1)
+		sem        = make(chan struct{}, 3)
 	)
 
 	for _, record := range data {
@@ -362,30 +384,36 @@ func (s *PriceActionServiceImpl) PACleanUp(ctx context.Context) error {
 			continue
 		}
 
-		wg.Add(2)
+		wg.Add(1)
 		go func(record model.StockRecord) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			history, err := s.nseService.FetchStockData(ctx, record.Symbol)
+			apiCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			history, err := s.nseService.FetchStockData(apiCtx, record.Symbol)
 			if err != nil {
+				log.Printf("Failed to fetch %s: %v", record.Symbol, err)
 				return
 			}
 
 			// Process FVGs
 			for _, info := range record.Fvg {
 				if shouldDeleteZone(info.Date, info.Low, info.High, history, false) {
-					s.priceActionRepo.DeleteFvgByDate(ctx, record.Symbol, info.Date)
-					fvgCleaned.Add(1)
+					if err := s.priceActionRepo.DeleteFvgByDate(context.Background(), record.Symbol, info.Date); err == nil {
+						fvgCleaned.Add(1)
+					}
 				}
 			}
 
 			// Process Order Blocks
 			for _, info := range record.OrderBlocks {
 				if shouldDeleteZone(info.Date, info.Low, info.High, history, true) {
-					s.priceActionRepo.DeleteOrderBlockByDate(ctx, record.Symbol, info.Date)
-					obCleaned.Add(1)
+					if err := s.priceActionRepo.DeleteOrderBlockByDate(ctx, record.Symbol, info.Date); err == nil {
+						obCleaned.Add(1)
+					}
 				}
 			}
 		}(record)
