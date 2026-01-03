@@ -4,9 +4,9 @@ import (
 	"backend/config"
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -25,12 +25,12 @@ func InitMongoClient(sysConfigs *config.SystemConfigs) (*mongo.Client, *mongo.Da
 
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		log.Fatal("Failed to connect to MongoDB: ", err)
+		log.Fatal().Msgf("Failed to connect to MongoDB: %v", err)
 	}
 
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		log.Fatal("Could not ping MongoDB: ", err)
+		log.Fatal().Msgf("Could not ping MongoDB: %v", err)
 	}
 
 	fmt.Println("Successfully connected to MongoDB (ShahbazTrades)")

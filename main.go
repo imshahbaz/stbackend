@@ -16,7 +16,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
-		log.Fatal().AnErr("Error loading configuration: ", err)
+		log.Fatal().Msgf("Error loading configuration: %v", err)
 	}
 
 	if sysConfigs.Config.Environment == "production" {
@@ -32,9 +32,9 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	log.Info().Msgf("Server starting on port %s", port)
 	if err := router.Run("0.0.0.0:" + port); err != nil {
-		log.Fatal().AnErr("Server failed to start: ", err)
+		log.Fatal().Msgf("Server failed to start: %v", err)
 	}
 }
 

@@ -68,8 +68,13 @@ func RecoveryMiddleware(c *gin.Context) {
 
 func ZerologMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
 		path := c.Request.URL.Path
+		if path == "/api/health" || path == "/openapi.yaml" || path == "/service-worker.js" {
+			c.Next()
+			return
+		}
+
+		start := time.Now()
 		query := c.Request.URL.RawQuery
 
 		c.Next()
@@ -80,6 +85,7 @@ func ZerologMiddleware() gin.HandlerFunc {
 			Str("path", path).
 			Str("query", query).
 			Int("status", c.Writer.Status()).
-			Dur("latency", latency)
+			Dur("latency", latency).
+			Msg("HTTP Request")
 	}
 }

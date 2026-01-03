@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"log"
 
 	"backend/config"
 	"backend/model"
 
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -53,12 +53,12 @@ func (s *ConfigServiceImpl) GetConfigManager() *config.ConfigManager {
 func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx context.Context) error {
 	val, err := s.FindMongoEnvConfig(ctx)
 	if err != nil {
-		log.Printf("Error Loading Mongo Configs: %v", err)
+		log.Info().Msgf("Error Loading Mongo Configs: %v", err)
 		return err
 	}
 
 	s.configManager.UpdateConfig(val)
-	log.Printf("Mongo Configs Loaded Successfully")
+	log.Info().Msg("Mongo Configs Loaded Successfully")
 	return nil
 }
 
@@ -68,7 +68,7 @@ func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx context.Context, cfg model.
 
 	_, err := s.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		log.Printf("Error Updating Mongo Configs: %v", err)
+		log.Info().Msgf("Error Updating Mongo Configs: %v", err)
 		return err
 	}
 
@@ -91,12 +91,12 @@ func (s *ConfigServiceImpl) GetActiveMongoEnvConfig() model.MongoEnvConfig {
 func (s *ConfigServiceImpl) LoadClientConfig(ctx context.Context) error {
 	val, err := s.FindMongoClientConfig(ctx)
 	if err != nil {
-		log.Printf("Error Loading Mongo Client Configs: %v", err)
+		log.Info().Msgf("Error Loading Mongo Client Configs: %v", err)
 		return err
 	}
 
 	s.configManager.UpdateClientConfig(val)
-	log.Printf("Mongo Client Configs Loaded Successfully")
+	log.Info().Msg("Mongo Client Configs Loaded Successfully")
 	return nil
 }
 
@@ -119,7 +119,7 @@ func (s *ConfigServiceImpl) UpdateMongoClientConfig(ctx context.Context, cfg mod
 
 	_, err := s.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		log.Printf("Error Updating Mongo Client Configs: %v", err)
+		log.Info().Msgf("Error Updating Mongo Client Configs: %v", err)
 		return err
 	}
 
@@ -142,13 +142,13 @@ func initMongoConfigs(isProduction bool, collection *mongo.Collection) (string, 
 	// 2. Use $in operator to fetch multiple documents in one call
 	cursor, err := collection.Find(context.Background(), bson.M{"_id": bson.M{"$in": idsToFetch}})
 	if err != nil {
-		log.Panicf("Critical error: Could not query MongoDB: %v", err)
+		log.Fatal().Msgf("Critical error: Could not query MongoDB: %v", err)
 	}
 
 	// 3. Decode results into a slice of maps
 	var results []bson.M
 	if err = cursor.All(context.Background(), &results); err != nil {
-		log.Panicf("Critical error: Could not decode results: %v", err)
+		log.Fatal().Msgf("Critical error: Could not decode results: %v", err)
 	}
 
 	// 4. Map the generic results back to your specific structs
@@ -171,7 +171,7 @@ func initMongoConfigs(isProduction bool, collection *mongo.Collection) (string, 
 
 	// 5. Safety check to ensure both were found
 	if mongoConfig.ID == "" || clientConfig.ID == "" {
-		log.Panic("Critical error: One or more config documents missing from MongoDB")
+		log.Fatal().Msg("Critical error: One or more config documents missing from MongoDB")
 	}
 
 	return mongoId, clientConfigId, &mongoConfig, &clientConfig

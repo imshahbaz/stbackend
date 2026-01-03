@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http/cookiejar"
 	"strconv"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"backend/util"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -68,7 +68,7 @@ func (s *NseServiceImpl) WarmUp() error {
 	}
 
 	_, err, _ := s.sfGroup.Do("nse-session-refresh", func() (any, error) {
-		log.Println("Refreshing NSE session...")
+		log.Info().Msg("Refreshing NSE session...")
 
 		newJar, _ := cookiejar.New(nil)
 		s.client.SetCookieJar(newJar)
