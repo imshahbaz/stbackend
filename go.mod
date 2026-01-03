@@ -8,6 +8,7 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
+	github.com/rs/zerolog v1.34.0
 	golang.org/x/time v0.14.0
 )
 
@@ -23,6 +24,7 @@ require (
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

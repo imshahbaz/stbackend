@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/rs/zerolog/log"
 	"github.com/valkey-io/valkey-go"
 )
 
@@ -22,7 +22,7 @@ type valkeyUtil struct {
 func InitRedis(uri string) {
 	opts, err := valkey.ParseURL(uri)
 	if err != nil {
-		log.Fatalf("Invalid Valkey URI: %v", err)
+		log.Fatal().Msgf("Invalid Valkey URI: %v", err)
 	}
 
 	if opts.TLSConfig == nil {
@@ -33,15 +33,15 @@ func InitRedis(uri string) {
 
 	client, err := valkey.NewClient(opts)
 	if err != nil {
-		log.Fatalf("Could not connect to Valkey: %v", err)
+		log.Fatal().Msgf("Could not connect to Valkey: %v", err)
 	}
 
 	err = client.Do(context.Background(), client.B().Ping().Build()).Error()
 	if err != nil {
-		log.Fatalf("Valkey Ping Failed: %v", err)
+		log.Fatal().Msgf("Valkey Ping Failed: %v", err)
 	}
 
-	log.Println("✅ Connected to Aiven Valkey successfully")
+	log.Info().Msg("✅ Connected to Aiven Valkey successfully")
 
 	RedisHelper = &valkeyUtil{
 		client: client,

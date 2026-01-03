@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/Oudwins/zog"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mitchellh/mapstructure"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -140,7 +140,7 @@ func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.Requ
 		TestFunc(validator.PasswordMatchTest)
 
 	if err := bodyValidation.Validate(&req); err != nil {
-		log.Printf("Validation error %v", err)
+		log.Info().Msgf("Validation error %v", err)
 		return nil, huma.Error400BadRequest("Invalid Request")
 	}
 
@@ -195,7 +195,7 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 
 	_, err = ctrl.userSvc.AddCredentials(ctx, cacheUser)
 	if err != nil {
-		log.Printf("Error adding credentials: %v", err)
+		log.Info().Msgf("Error adding credentials: %v", err)
 		return nil, huma.Error500InternalServerError("Something went wrong")
 	}
 

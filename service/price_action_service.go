@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -16,6 +15,7 @@ import (
 	"backend/util"
 
 	"github.com/jinzhu/copier"
+	"github.com/rs/zerolog/log"
 )
 
 type PriceActionService interface {
@@ -155,7 +155,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
-				log.Printf("Rescheduling Ob automation for %d time", attempt+1)
+				log.Info().Msgf("Rescheduling Ob automation for %d time", attempt+1)
 				time.AfterFunc(25*time.Minute, func() {
 					s.AutomateOrderBlock(context.Background(), attempt+1)
 				})
@@ -181,7 +181,7 @@ func (s *PriceActionServiceImpl) AutomateOrderBlock(ctx context.Context, attempt
 	if count > 0 {
 		cache.DeletePriceActionResponseCache("ObCache")
 	}
-	log.Printf("%d Order block's inserted", count)
+	log.Info().Msgf("%d Order block's inserted", count)
 	return nil
 }
 
@@ -201,7 +201,7 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 		s.nseService.ClearStockDataCache(dto.Symbol)
 		if history, err := s.nseService.FetchStockData(ctx, dto.Symbol); err == nil && len(history) >= 3 {
 			if s.automationReschedule(history[0]) {
-				log.Printf("Rescheduling Fvg automation for %d time", attempt+1)
+				log.Info().Msgf("Rescheduling Fvg automation for %d time", attempt+1)
 				time.AfterFunc(30*time.Minute, func() {
 					s.AutomateFvg(context.Background(), attempt+1)
 				})
@@ -218,7 +218,7 @@ func (s *PriceActionServiceImpl) AutomateFvg(ctx context.Context, attempt int) e
 	if count > 0 {
 		cache.DeletePriceActionResponseCache("FvgCache")
 	}
-	log.Printf("%d Fvg's inserted", count)
+	log.Info().Msgf("%d Fvg's inserted", count)
 	return nil
 }
 
@@ -343,8 +343,8 @@ func (s *PriceActionServiceImpl) AddOlderFvgAndOb(ctx context.Context, fileName 
 		cache.DeletePriceActionResponseCache("ObCache")
 	}
 
-	log.Printf("%d Fvg's inserted", count)
-	log.Printf("%d Order block's inserted", obCount)
+	log.Info().Msgf("%d Fvg's inserted", count)
+	log.Info().Msgf("%d Order block's inserted", obCount)
 }
 
 func (s *PriceActionServiceImpl) checkValidMitigation(candle model.NSEHistoricalData, info model.Info) bool {
@@ -395,7 +395,7 @@ func (s *PriceActionServiceImpl) PACleanUp(ctx context.Context) error {
 
 			history, err := s.nseService.FetchStockData(apiCtx, record.Symbol)
 			if err != nil {
-				log.Printf("Failed to fetch %s: %v", record.Symbol, err)
+				log.Info().Msgf("Failed to fetch %s: %v", record.Symbol, err)
 				return
 			}
 
@@ -429,7 +429,7 @@ func (s *PriceActionServiceImpl) PACleanUp(ctx context.Context) error {
 		cache.DeletePriceActionResponseCache("ObCache")
 	}
 
-	log.Printf("Cleanup complete. FVG: %d, OB: %d", fvgCleaned.Load(), obCleaned.Load())
+	log.Info().Msgf("Cleanup complete. FVG: %d, OB: %d", fvgCleaned.Load(), obCleaned.Load())
 	return nil
 }
 

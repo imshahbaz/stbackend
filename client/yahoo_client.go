@@ -6,12 +6,12 @@ import (
 	"backend/util"
 	"context"
 	"fmt"
-	"log"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/rs/zerolog/log"
 )
 
 type YahooClient struct {
@@ -50,7 +50,7 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 		Get("/" + symbol + ".NS")
 
 	if err != nil || !resp.IsSuccess() || chartResponse.Chart.Error != nil {
-		log.Println("Error calling yahoo api")
+		log.Info().Msgf("Error calling yahoo api %v", err)
 		return nil, fmt.Errorf("Yahoo request failed: %v", err)
 	}
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/jinzhu/copier"
 	"github.com/mitchellh/mapstructure"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
@@ -255,7 +255,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 	}
 
 	if body.Status == "flow_invoked" {
-		log.Printf("Handshake received for Nonce: %s", body.RequestId)
+		log.Info().Msgf("Handshake received for Nonce: %s", body.RequestId)
 		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
 	}
 
@@ -297,7 +297,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 				UserID: user.UserID,
 				Mobile: profile.PhoneNumbers[0],
 			}); err != nil {
-				log.Printf("Unable to update mobile number userId : %v", user.UserID)
+				log.Info().Msgf("Unable to update mobile number userId : %v", user.UserID)
 			} else {
 				user.Mobile = profile.PhoneNumbers[0]
 			}
@@ -317,7 +317,7 @@ func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.T
 	if ok, _ := localCache.GetUserCache(reqID, &userDto, model.Truecaller); ok {
 		tokenStr, err := auth.GenerateToken(userDto)
 		if err != nil {
-			log.Printf("Error while generating token %v", err.Error())
+			log.Info().Msgf("Error while generating token %v", err.Error())
 			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
@@ -429,7 +429,7 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 			UserID:  user.UserID,
 			Profile: gUser.Picture,
 		}); err != nil {
-			log.Printf("Unable to update profile picture userId : %v", user.UserID)
+			log.Info().Msgf("Unable to update profile picture userId : %v", user.UserID)
 		} else {
 			user.Profile = gUser.Picture
 		}
@@ -438,7 +438,7 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 	userDto := user.ToDto()
 	tokenStr, err := auth.GenerateToken(userDto)
 	if err != nil {
-		log.Printf("Error while generating token %v", err.Error())
+		log.Info().Msgf("Error while generating token %v", err.Error())
 		return nil, huma.Error500InternalServerError("Internal server error")
 	}
 

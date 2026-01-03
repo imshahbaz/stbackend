@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 
 	"backend/cache"
@@ -12,6 +11,8 @@ import (
 	"backend/model"
 	"backend/repository"
 	"backend/util"
+
+	"github.com/rs/zerolog/log"
 )
 
 type MarginService interface {
@@ -33,7 +34,7 @@ func NewMarginService(repo *repository.MarginRepository, cfg *config.ConfigManag
 	}
 
 	if err := s.ReloadAllMargins(context.Background()); err != nil {
-		log.Printf("Warning: Failed initial margin load: %v", err)
+		log.Info().Msgf("Warning: Failed initial margin load: %v", err)
 	}
 
 	return s
@@ -95,12 +96,12 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 
 	deletedCount, err := s.repo.DeleteByIdNotIn(ctx, ids)
 	if err != nil {
-		log.Printf("Error deleting old margins: %v", err)
+		log.Info().Msgf("Error deleting old margins: %v", err)
 	}
 
 	s.updateLocalCache(margins)
 
-	log.Printf("CSV Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", len(margins), deletedCount)
+	log.Info().Msgf("CSV Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", len(margins), deletedCount)
 	return nil
 }
 
