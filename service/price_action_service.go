@@ -316,6 +316,11 @@ func (s *PriceActionServiceImpl) AddOlderFvgAndOb(ctx context.Context, fileName 
 	if count > 0 {
 		cache.DeletePriceActionResponseCache("FvgCache")
 	}
+
+	if obCount > 0 {
+		cache.DeletePriceActionResponseCache("ObCache")
+	}
+
 	log.Printf("%d Fvg's inserted", count)
 	log.Printf("%d Order block's inserted", obCount)
 }
