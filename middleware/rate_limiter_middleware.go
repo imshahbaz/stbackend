@@ -13,6 +13,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
+var (
+	skipPaths = map[string]bool{
+		"/api/health":        true,
+		"/openapi.yaml":      true,
+		"/service-worker.js": true,
+		"/favicon.ico":       true,
+	}
+)
+
 func RateLimiter(cfg *config.ConfigManager) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if !cfg.GetConfig().RateLimiter {
@@ -69,7 +78,7 @@ func RecoveryMiddleware(c *gin.Context) {
 func ZerologMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if path == "/api/health" || path == "/openapi.yaml" || path == "/service-worker.js" {
+		if skipPaths[path] {
 			c.Next()
 			return
 		}

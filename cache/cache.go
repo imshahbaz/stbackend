@@ -44,7 +44,7 @@ func DeleteUserCache(reqId string, cacheType model.UserCacheType) {
 
 func SetChartInkResponseCache(key string, value []model.StockMarginDto) {
 	key = "chartink_result_" + key
-	database.RedisHelper.Set(key, value, util.ChartInkCacheExpiryTime())
+	database.RedisHelper.Set(key, value, util.NseCacheExpiryTime())
 }
 
 func GetChartInkResponseCache(key string, value *[]model.StockMarginDto) (bool, error) {
@@ -56,7 +56,7 @@ func GetChartInkResponseCache(key string, value *[]model.StockMarginDto) (bool, 
 
 func SetPriceActionResponseCache(key string, value []model.ObResponse) {
 	key = "price_action_result_" + key
-	database.RedisHelper.Set(key, value, util.ChartInkCacheExpiryTime())
+	database.RedisHelper.Set(key, value, util.NseCacheExpiryTime())
 }
 
 func GetPriceActionResponseCache(key string, value *[]model.ObResponse) (bool, error) {

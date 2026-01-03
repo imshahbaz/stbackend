@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -25,13 +24,16 @@ func InitRedis(uri string) {
 		log.Fatal().Msgf("Invalid Valkey URI: %v", err)
 	}
 
-	if opts.TLSConfig == nil {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		}
-	}
+	client, err := valkey.NewClient(valkey.ClientOption{
+		InitAddress:       opts.InitAddress,
+		TLSConfig:         opts.TLSConfig,
+		BlockingPoolSize:  100,
+		SelectDB:          opts.SelectDB,
+		PipelineMultiplex: 2,
+		Username:          opts.Username,
+		Password:          opts.Password,
+	})
 
-	client, err := valkey.NewClient(opts)
 	if err != nil {
 		log.Fatal().Msgf("Could not connect to Valkey: %v", err)
 	}
@@ -49,22 +51,19 @@ func InitRedis(uri string) {
 }
 
 func (v *valkeyUtil) Set(key string, value any, expiration time.Duration) error {
-	var data string
+	var data []byte
+	var err error
 
-	switch val := value.(type) {
-	case string:
-		data = val
-	case []byte:
-		data = string(val)
-	default:
-		marshaled, err := sonic.ConfigDefault.MarshalToString(value)
+	if b, ok := value.([]byte); ok {
+		data = b
+	} else {
+		data, err = sonic.ConfigDefault.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("sonic marshal error: %w", err)
 		}
-		data = marshaled
 	}
 
-	cmd := v.client.B().Set().Key(key).Value(data).Ex(expiration).Build()
+	cmd := v.client.B().Set().Key(key).Value(valkey.BinaryString(data)).Ex(expiration).Build()
 	return v.client.Do(context.Background(), cmd).Error()
 }
 
@@ -72,27 +71,30 @@ func (v *valkeyUtil) GetAsStruct(key string, target any) (bool, error) {
 	cmd := v.client.B().Get().Key(key).Build()
 	resp := v.client.Do(context.Background(), cmd)
 
-	if valkey.IsValkeyNil(resp.Error()) {
-		return false, nil
-	}
-
-	if resp.Error() != nil {
-		return false, fmt.Errorf("valkey execution error: %w", resp.Error())
-	}
-
-	val, err := resp.ToString()
-	if err != nil {
-		return false, fmt.Errorf("valkey get error: %w", err)
+	if err := resp.Error(); err != nil {
+		if valkey.IsValkeyNil(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("valkey execution error: %w", err)
 	}
 
 	if strPtr, ok := target.(*string); ok {
+		val, err := resp.ToString()
+		if err != nil {
+			return false, fmt.Errorf("valkey string conversion error: %w", err)
+		}
 		*strPtr = val
 		return true, nil
 	}
 
-	err = sonic.ConfigDefault.UnmarshalFromString(val, target)
+	reader, err := resp.AsReader()
 	if err != nil {
-		return false, fmt.Errorf("sonic unmarshal error: %w", err)
+		return false, fmt.Errorf("valkey reader error: %w", err)
+	}
+
+	err = sonic.ConfigDefault.NewDecoder(reader).Decode(target)
+	if err != nil {
+		return false, fmt.Errorf("sonic decode error: %w", err)
 	}
 
 	return true, nil

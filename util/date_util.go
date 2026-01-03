@@ -3,8 +3,6 @@ package util
 import (
 	"strings"
 	"time"
-
-	"github.com/patrickmn/go-cache"
 )
 
 var (
@@ -43,20 +41,9 @@ func NseCacheExpiryTime() time.Duration {
 		return 10 * time.Minute
 	}
 
-	return cache.DefaultExpiration
-}
-
-func ChartInkCacheExpiryTime() time.Duration {
-	now := time.Now().In(IstLocation)
-
-	target := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, IstLocation)
-	to := time.Date(now.Year(), now.Month(), now.Day(), 16, 0, 0, 0, IstLocation)
-
-	if now.After(to) {
-		return target.AddDate(0, 0, 1).Sub(now)
-	} else if now.Before(target) {
-		return target.Sub(now)
+	if now.Before(start) {
+		return time.Until(start)
 	}
 
-	return 10 * time.Minute
+	return time.Until(start.AddDate(0, 0, 1))
 }
