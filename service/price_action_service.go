@@ -357,7 +357,7 @@ func (s *PriceActionServiceImpl) PACleanUp(ctx context.Context) error {
 			continue
 		}
 
-		wg.Add(1)
+		wg.Add(2)
 		go func(record model.StockRecord) {
 			defer wg.Done()
 			sem <- struct{}{}
