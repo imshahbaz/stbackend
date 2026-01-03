@@ -2,12 +2,14 @@ package middleware
 
 import (
 	"net/http"
+	"time"
 
 	localCache "backend/cache"
 	"backend/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/patrickmn/go-cache"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
 )
 
@@ -40,5 +42,44 @@ func RateLimiter(cfg *config.ConfigManager) gin.HandlerFunc {
 		}
 
 		ctx.Next()
+	}
+}
+
+func RecoveryMiddleware(c *gin.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+
+			log.Error().
+				Interface("panic", err).
+				Str("path", c.Request.URL.Path).
+				Str("method", c.Request.Method).
+				Str("path", c.Request.URL.Path).
+				Msg("PANIC_RECOVERED")
+
+			c.AbortWithStatusJSON(500, gin.H{
+				"success": false,
+				"message": "Internal server error",
+				"error":   "unexpected_panic",
+			})
+		}
+	}()
+	c.Next()
+}
+
+func ZerologMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
+
+		c.Next()
+		latency := time.Since(start)
+
+		log.Info().
+			Str("method", c.Request.Method).
+			Str("path", path).
+			Str("query", query).
+			Int("status", c.Writer.Status()).
+			Dur("latency", latency)
 	}
 }

@@ -5,17 +5,18 @@ import (
 	"backend/database"
 	_ "backend/docs"
 	"backend/routes"
-	"log"
 	"runtime"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
-		log.Fatal("Error loading configuration: ", err)
+		log.Fatal().AnErr("Error loading configuration: ", err)
 	}
 
 	if sysConfigs.Config.Environment == "production" {
@@ -33,6 +34,12 @@ func main() {
 
 	log.Printf("Server starting on port %s", port)
 	if err := router.Run("0.0.0.0:" + port); err != nil {
-		log.Fatal("Server failed to start: ", err)
+		log.Fatal().AnErr("Server failed to start: ", err)
 	}
+}
+
+func init() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.With().Logger()
 }

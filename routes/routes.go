@@ -56,25 +56,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
-	humaConfig := huma.DefaultConfig("Shahbaz Trades Management API", "1.0.0")
-	if isProduction {
-		humaConfig.DocsPath = ""
-		humaConfig.OpenAPIPath = ""
-	}
-	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"bearer": {
-			Type:         "http",
-			Scheme:       "bearer",
-			BearerFormat: "JWT",
-		},
-	}
-
-	humaConfig.Formats["application/json"] = huma.Format{
-		Marshal: func(w io.Writer, v any) error {
-			return sonic.ConfigDefault.NewEncoder(w).Encode(v)
-		},
-		Unmarshal: sonic.Unmarshal,
-	}
+	humaConfig := *getHumaConfig(isProduction)
 
 	humaApi := humagin.New(r, humaConfig)
 
@@ -115,11 +97,8 @@ func initApp(configService service.ConfigService, db *mongo.Database) *gin.Engin
 
 func initGinEngine() *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
-	if configmanager.GetConfig().DebugMode {
-		r.Use(gin.Logger())
-	}
-
+	r.Use(middleware.RecoveryMiddleware)
+	r.Use(middleware.ZerologMiddleware())
 	r.Use(middleware.CORS(configmanager))
 	r.Use(middleware.RateLimiter(configmanager))
 	return r
@@ -152,4 +131,28 @@ func initsvcs() {
 	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc)
 	nseSvc = service.NewNseService(yahooClient)
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
+}
+
+func getHumaConfig(isProduction bool) *huma.Config {
+	humaConfig := huma.DefaultConfig("Shahbaz Trades Management API", "1.0.0")
+	if isProduction {
+		humaConfig.DocsPath = ""
+		humaConfig.OpenAPIPath = ""
+	}
+	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"bearer": {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "JWT",
+		},
+	}
+
+	humaConfig.Formats["application/json"] = huma.Format{
+		Marshal: func(w io.Writer, v any) error {
+			return sonic.ConfigDefault.NewEncoder(w).Encode(v)
+		},
+		Unmarshal: sonic.Unmarshal,
+	}
+
+	return &humaConfig
 }
