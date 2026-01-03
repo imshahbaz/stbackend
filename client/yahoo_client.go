@@ -56,7 +56,6 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 
 	list := make([]model.NSEHistoricalData, 0, 10)
 
-	loc, _ := time.LoadLocation("Asia/Kolkata")
 	timeframes := chartResponse.Chart.Result[0].Timestamp
 	quote := chartResponse.Chart.Result[0].Indicators.Quote[0]
 	open := quote.Open
@@ -72,7 +71,7 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 				High:      formatToTwo(high[i]),
 				Low:       formatToTwo(low[i]),
 				Close:     formatToTwo(close[i]),
-				Timestamp: time.Unix(timeframes[i], 0).In(loc).Format("02-Jan-2006"),
+				Timestamp: time.Unix(timeframes[i], 0).In(util.IstLocation).Format(util.InputLayout),
 			})
 		}
 	}

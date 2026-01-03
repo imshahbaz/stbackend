@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"backend/cache"
 	"backend/middleware"
@@ -104,12 +105,12 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 	}, ctrl.GetFvgMitigation)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "cleanup-fvg",
+		OperationID: "cleanup",
 		Method:      http.MethodPost,
-		Path:        "/api/price-action/fvg/cleanup",
-		Summary:     "Clean up filled FVGs",
+		Path:        "/api/price-action/cleanup",
+		Summary:     "Clean up filled FVGs & OBs",
 		Tags:        []string{"PriceAction"},
-	}, ctrl.FvgCleanUp)
+	}, ctrl.PACleanUp)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "save-fvg",
@@ -140,6 +141,15 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"PriceAction (Admin)"},
 	}, ctrl.DeleteFvg)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "load-pa-from-csv",
+		Method:      http.MethodPost,
+		Path:        "/api/price-action/load-from-csv",
+		Summary:     "Load fvg & ob from CSV",
+		Tags:        []string{"PriceAction"},
+	}, ctrl.loadFromCsv)
+
 }
 
 func (ctrl *PriceActionController) TriggerAutomation(ctx context.Context, input *struct{}) (*model.TriggerAutomationResponse, error) {
@@ -226,12 +236,12 @@ func (ctrl *PriceActionController) GetFvgMitigation(ctx context.Context, input *
 	return NewResponse(data, "FVG mitigation data fetched"), nil
 }
 
-func (ctrl *PriceActionController) FvgCleanUp(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	err := ctrl.paService.FvgCleanUp(ctx)
+func (ctrl *PriceActionController) PACleanUp(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	err := ctrl.paService.PACleanUp(ctx)
 	if err != nil {
 		return NewErrorResponse("Failed to cleanup: " + err.Error()), nil
 	}
-	return NewResponse(nil, "FVG cleanup task executed successfully"), nil
+	return NewResponse(nil, "Price Action cleanup task executed successfully"), nil
 }
 
 func (ctrl *PriceActionController) SaveFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
@@ -257,4 +267,10 @@ func (ctrl *PriceActionController) DeleteFvg(ctx context.Context, input *model.O
 		return NewErrorResponse(err.Error()), nil
 	}
 	return NewResponse(nil, "Deleted successfully"), nil
+}
+
+func (ctrl *PriceActionController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.DefaultResponse, error) {
+	formData := input.RawBody.Data()
+	ctrl.paService.AddOlderFvgAndOb(ctx, formData.File.Filename, formData.File.File, time.Now().AddDate(0, -1, 0).Format("02-01-2006"))
+	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
 }
