@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -25,13 +24,16 @@ func InitRedis(uri string) {
 		log.Fatal().Msgf("Invalid Valkey URI: %v", err)
 	}
 
-	if opts.TLSConfig == nil {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		}
-	}
+	client, err := valkey.NewClient(valkey.ClientOption{
+		InitAddress:       opts.InitAddress,
+		TLSConfig:         opts.TLSConfig,
+		BlockingPoolSize:  100,
+		SelectDB:          opts.SelectDB,
+		PipelineMultiplex: 2,
+		Username:          opts.Username,
+		Password:          opts.Password,
+	})
 
-	client, err := valkey.NewClient(opts)
 	if err != nil {
 		log.Fatal().Msgf("Could not connect to Valkey: %v", err)
 	}
