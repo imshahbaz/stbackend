@@ -6,11 +6,13 @@ import (
 	_ "backend/docs"
 	"backend/routes"
 	"log"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
 		log.Fatal("Error loading configuration: ", err)

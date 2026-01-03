@@ -50,7 +50,7 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 		Get("/" + symbol + ".NS")
 
 	if err != nil || !resp.IsSuccess() || chartResponse.Chart.Error != nil {
-		log.Println("Error calling yahoo api")
+		log.Printf("Error calling yahoo api %v", err)
 		return nil, fmt.Errorf("Yahoo request failed: %v", err)
 	}
 

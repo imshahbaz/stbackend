@@ -2,7 +2,7 @@ package model
 
 type Response struct {
 	Success bool   `json:"success" example:"true"`
-	Message string `json:"message" example:"Update successful"`
+	Message string `json:"message,omitempty" example:"Update successful"`
 	Data    any    `json:"data,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
@@ -10,4 +10,3 @@ type Response struct {
 type DefaultResponse struct {
 	Body Response
 }
-

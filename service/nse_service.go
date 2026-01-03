@@ -28,6 +28,8 @@ const (
 	allIndicesPath = "/api/allindices"
 )
 
+var sfGroup singleflight.Group
+
 type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchHeatMap() ([]model.SectorData, error)
@@ -93,36 +95,47 @@ func (s *NseServiceImpl) WarmUp() error {
 }
 
 func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error) {
+	val, err, _ := sfGroup.Do(symbol, func() (any, error) {
+		yahooResp, err := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
+		if err == nil {
+			return yahooResp, nil
+		}
 
-	yahooResp, err := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
-	if err == nil {
-		return yahooResp, nil
+		var data []model.NSEHistoricalData
+		cacheKey := "nse_history_" + symbol
+		if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+			return data, nil
+		}
+
+		err = s.executeNseRequest(
+			fmt.Sprintf("%s/get-quote/equity/%s", nseUrl, symbol),
+			historicalPath,
+			map[string]string{
+				"functionName": "getHistoricalTradeData",
+				"symbol":       symbol,
+				"series":       "EQ",
+				"fromDate":     time.Now().AddDate(0, -1, 0).Format("02-01-2006"),
+				"toDate":       time.Now().Format("02-01-2006"),
+			},
+			&data,
+		)
+
+		if err == nil {
+			database.RedisHelper.Set(cacheKey, data, util.NseCacheExpiryTime())
+		}
+
+		time.AfterFunc(10*time.Second, func() {
+			sfGroup.Forget(symbol)
+		})
+
+		return data, err
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	var data []model.NSEHistoricalData
-	cacheKey := "nse_history_" + symbol
-	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
-		return data, nil
-	}
-
-	err = s.executeNseRequest(
-		fmt.Sprintf("%s/get-quote/equity/%s", nseUrl, symbol),
-		historicalPath,
-		map[string]string{
-			"functionName": "getHistoricalTradeData",
-			"symbol":       symbol,
-			"series":       "EQ",
-			"fromDate":     time.Now().AddDate(0, -1, 0).Format("02-01-2006"),
-			"toDate":       time.Now().Format("02-01-2006"),
-		},
-		&data,
-	)
-
-	if err == nil {
-		database.RedisHelper.Set(cacheKey, data, util.NseCacheExpiryTime())
-	}
-
-	return data, err
+	return val.([]model.NSEHistoricalData), nil
 }
 
 func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {

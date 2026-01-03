@@ -9,7 +9,9 @@ import (
 	"backend/middleware"
 	"backend/repository"
 	"backend/service"
+	"io"
 
+	"github.com/bytedance/sonic"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
@@ -66,6 +68,14 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 			BearerFormat: "JWT",
 		},
 	}
+
+	humaConfig.Formats["application/json"] = huma.Format{
+		Marshal: func(w io.Writer, v any) error {
+			return sonic.ConfigDefault.NewEncoder(w).Encode(v)
+		},
+		Unmarshal: sonic.Unmarshal,
+	}
+
 	humaApi := humagin.New(r, humaConfig)
 
 	{
