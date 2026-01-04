@@ -21,6 +21,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
@@ -352,8 +353,6 @@ func (ctrl *AuthController) createAuthCookie(token string, maxAge int) string {
 }
 
 func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
-	conf := *ctrl.googleConfig
-
 	var targetURL string
 	isIPhoneRedirect := false
 
@@ -372,37 +371,76 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 			if !isIPhoneRedirect {
 				return nil, huma.Error400BadRequest("Unauthorized redirect origin")
 			}
+
+			id := uuid.New().String()
+			targetURL = targetURL + "/google/callback?code=" + id + "&state=standard"
+			go ctrl.googleCallbackProcessing(context.Background(), input.Code, id)
+
+			return &model.GoogleAuthResponse{
+				Status:   http.StatusTemporaryRedirect,
+				Location: targetURL,
+			}, nil
 		}
 	}
 
-	if isIPhoneRedirect {
-		conf.RedirectURL = ctrl.cfgManager.GetConfig().GoogleAuth.CallbackUrl
-	} else {
-		conf.RedirectURL = "postmessage"
+	if input.State == "standard" {
+		var userDto model.UserDto
+		key := "auth_" + input.Code
+		if ok, _ := database.RedisHelper.GetAsStruct(key, &userDto); !ok {
+			return nil, huma.Error404NotFound("Request still under process or expired")
+		}
+
+		tokenStr, err := auth.GenerateToken(userDto)
+		if err != nil {
+			log.Info().Msgf("Error while generating token %v", err.Error())
+			return nil, huma.Error500InternalServerError("Internal server error")
+		}
+
+		cookie := ctrl.createAuthCookie(tokenStr, 1800)
+		go database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
+		go database.RedisHelper.Delete(key)
+		return &model.GoogleAuthResponse{
+			Status:    http.StatusOK,
+			SetCookie: cookie,
+			Body: model.Response{
+				Success: true,
+				Message: "User created",
+				Data:    userDto,
+			},
+		}, nil
 	}
 
-	detachedCtx := context.WithoutCancel(ctx)
-	token, err := conf.Exchange(detachedCtx, input.Code)
+	return nil, huma.Error401Unauthorized("Invalid state")
+}
+
+func (ctrl *AuthController) googleCallbackProcessing(ctx context.Context, code, uuid string) {
+	conf := *ctrl.googleConfig
+	conf.RedirectURL = ctrl.cfgManager.GetConfig().GoogleAuth.CallbackUrl
+	token, err := conf.Exchange(ctx, code)
 	if err != nil {
-		return nil, huma.Error401Unauthorized("Exchange failed", err)
+		log.Err(err).Msgf("Exchange failed with google %v %v", uuid, err)
+		return
 	}
 
-	client := conf.Client(detachedCtx, token)
+	client := conf.Client(ctx, token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
-		return nil, huma.Error401Unauthorized("Exchange failed", err)
+		log.Err(err).Msgf("Exchange failed with google %v %v", uuid, err)
+		return
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	var gUser model.GoogleUser
 	if err := json.Unmarshal(bodyBytes, &gUser); err != nil {
-		return nil, huma.Error500InternalServerError("JSON decode failed", err)
+		log.Err(err).Msgf("JSON decode failed %v %v", uuid, err)
+		return
 	}
 
-	user, err := ctrl.userSvc.FindUser(detachedCtx, 0, gUser.Email, 0)
+	user, err := ctrl.userSvc.FindUser(ctx, 0, gUser.Email, 0)
 	if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
-		return nil, huma.Error400BadRequest("Invalid Request")
+		log.Err(err).Msgf("Invalid Request %v %v", uuid, err)
+		return
 	}
 
 	if user == nil {
@@ -415,16 +453,17 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 			Profile:  gUser.Picture,
 		}
 
-		newUser, err := ctrl.userSvc.CreateUser(detachedCtx, dto)
+		newUser, err := ctrl.userSvc.CreateUser(ctx, dto)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("Invalid Request")
+			log.Err(err).Msgf("Invalid Request %v %v", uuid, err)
+			return
 		}
 
 		user = newUser
 	}
 
 	if gUser.Picture != "" && (user.Profile == "" || gUser.Picture != user.Profile) {
-		if err := ctrl.userSvc.PatchUserData(detachedCtx, user.UserID, model.User{
+		if err := ctrl.userSvc.PatchUserData(ctx, user.UserID, model.User{
 			Profile: gUser.Picture,
 		}); err != nil {
 			log.Info().Msgf("Unable to update profile picture userId : %v", user.UserID)
@@ -433,31 +472,5 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 		}
 	}
 
-	userDto := user.ToDto()
-	tokenStr, err := auth.GenerateToken(userDto)
-	if err != nil {
-		log.Info().Msgf("Error while generating token %v", err.Error())
-		return nil, huma.Error500InternalServerError("Internal server error")
-	}
-
-	cookie := ctrl.createAuthCookie(tokenStr, 1800)
-	database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
-
-	if isIPhoneRedirect {
-		return &model.GoogleAuthResponse{
-			Status:    http.StatusFound,
-			SetCookie: cookie,
-			Location:  targetURL,
-		}, nil
-	}
-
-	return &model.GoogleAuthResponse{
-		Status:    http.StatusOK,
-		SetCookie: cookie,
-		Body: model.Response{
-			Success: true,
-			Message: "User created",
-			Data:    userDto,
-		},
-	}, nil
+	database.RedisHelper.Set("auth_"+uuid, user.ToDto(), 2*time.Minute)
 }
