@@ -293,8 +293,7 @@ func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model
 		}
 
 		if profile.PhoneNumbers[0] > 0 && (user.Mobile == 0 || user.Mobile != profile.PhoneNumbers[0]) {
-			if err := ctrl.userSvc.PatchUserData(detachedCtx, model.User{
-				UserID: user.UserID,
+			if err := ctrl.userSvc.PatchUserData(detachedCtx, user.UserID, model.User{
 				Mobile: profile.PhoneNumbers[0],
 			}); err != nil {
 				log.Info().Msgf("Unable to update mobile number userId : %v", user.UserID)
@@ -425,8 +424,7 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 	}
 
 	if gUser.Picture != "" && (user.Profile == "" || gUser.Picture != user.Profile) {
-		if err := ctrl.userSvc.PatchUserData(detachedCtx, model.User{
-			UserID:  user.UserID,
+		if err := ctrl.userSvc.PatchUserData(detachedCtx, user.UserID, model.User{
 			Profile: gUser.Picture,
 		}); err != nil {
 			log.Info().Msgf("Unable to update profile picture userId : %v", user.UserID)

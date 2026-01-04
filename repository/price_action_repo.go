@@ -49,15 +49,18 @@ func (r *PriceActionRepo) DeleteFvgByDate(ctx context.Context, symbol, date stri
 }
 
 func (r *PriceActionRepo) GetAllPriceAction(ctx context.Context) ([]model.StockRecord, error) {
-	return r.FindAll(ctx)
+	return r.GenericRepo.GetAll(ctx, nil)
 }
 
 func (r *PriceActionRepo) GetAllPAIn(ctx context.Context, ids []string) ([]model.StockRecord, error) {
-	return r.FindAllByIDs(ctx, ids)
+	filter := bson.M{
+		"_id": bson.M{"$in": ids},
+	}
+	return r.GenericRepo.GetAll(ctx, filter)
 }
 
 func (r *PriceActionRepo) GetPAByID(ctx context.Context, symbol string) (model.StockRecord, error) {
-	res, err := r.FindByID(ctx, symbol)
+	res, err := r.GenericRepo.Get(ctx, symbol)
 	if err != nil {
 		return model.StockRecord{}, err
 	}

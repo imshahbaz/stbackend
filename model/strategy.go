@@ -22,6 +22,13 @@ func (d *StrategyDto) ToEntity() Strategy {
 	}
 }
 
+func (d *Strategy) ToDto() StrategyDto {
+	return StrategyDto{
+		Name:       d.Name,
+		ScanClause: d.ScanClause,
+		Active:     d.Active,
+	}
+}
 
 type CreateStrategyRequest struct {
 	Body StrategyDto
