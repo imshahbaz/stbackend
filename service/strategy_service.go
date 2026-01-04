@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"backend/cache"
 	"backend/model"
@@ -33,7 +32,7 @@ func NewStrategyService(repo *repository.StrategyRepository) StrategyService {
 }
 
 func (s *StrategyServiceImpl) ReloadAllStrategies(ctx context.Context) error {
-	strategies, err := s.repo.FindAll(ctx)
+	strategies, err := s.repo.Generic.GetAll(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -63,23 +62,30 @@ func (s *StrategyServiceImpl) GetAllStrategiesAdmin() []model.StrategyDto {
 
 func (s *StrategyServiceImpl) CreateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error) {
 	entity := request.ToEntity()
-	if err := s.repo.Save(ctx, entity); err != nil {
+	if err := s.repo.Generic.Insert(ctx, entity); err != nil {
 		return model.StrategyDto{}, err
 	}
 
-	cache.StrategyCache.Set(request.Name, request, -1)
+	res := entity.ToDto()
+	cache.StrategyCache.Set(res.Name, res, -1)
 
-	go s.backgroundReload()
-
-	return request, nil
+	return res, nil
 }
 
 func (s *StrategyServiceImpl) UpdateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error) {
-	return s.CreateStrategy(ctx, request)
+	entity := request.ToEntity()
+	if err := s.repo.Generic.Update(ctx, entity.Name, entity); err != nil {
+		return model.StrategyDto{}, err
+	}
+
+	res := entity.ToDto()
+	cache.StrategyCache.Set(res.Name, res, -1)
+
+	return res, nil
 }
 
 func (s *StrategyServiceImpl) DeleteStrategy(ctx context.Context, id string) error {
-	if err := s.repo.DeleteById(ctx, id); err != nil {
+	if err := s.repo.Generic.Delete(ctx, id); err != nil {
 		return err
 	}
 
@@ -87,7 +93,6 @@ func (s *StrategyServiceImpl) DeleteStrategy(ctx context.Context, id string) err
 
 	return nil
 }
-
 
 func (s *StrategyServiceImpl) filterStrategies(includeInactive bool) []model.StrategyDto {
 	items := cache.StrategyCache.Items()
@@ -101,10 +106,4 @@ func (s *StrategyServiceImpl) filterStrategies(includeInactive bool) []model.Str
 		}
 	}
 	return list
-}
-
-func (s *StrategyServiceImpl) backgroundReload() {
-	bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_ = s.ReloadAllStrategies(bgCtx)
 }

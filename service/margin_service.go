@@ -63,7 +63,7 @@ func (s *MarginServiceImpl) GetMargin(symbol string) (*model.Margin, bool) {
 }
 
 func (s *MarginServiceImpl) ReloadAllMargins(ctx context.Context) error {
-	margins, err := s.repo.FindAll(ctx)
+	margins, err := s.repo.GenericRepo.GetAll(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -85,16 +85,16 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 		return fmt.Errorf("csv parsing failed: %w", err)
 	}
 
-	if err := s.repo.SaveAllMargins(ctx, margins); err != nil {
+	if err := s.repo.GenericRepo.SaveAll(ctx, margins, "Symbol"); err != nil {
 		return fmt.Errorf("failed to save margins: %w", err)
 	}
 
-	ids := make([]string, len(margins))
+	ids := make([]any, len(margins))
 	for i, m := range margins {
 		ids[i] = m.Symbol
 	}
 
-	deletedCount, err := s.repo.DeleteByIdNotIn(ctx, ids)
+	deletedCount, err := s.repo.GenericRepo.DeleteByIdNotIn(ctx, ids)
 	if err != nil {
 		log.Info().Msgf("Error deleting old margins: %v", err)
 	}
