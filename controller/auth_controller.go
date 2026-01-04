@@ -18,6 +18,7 @@ import (
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
+	"backend/util"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-resty/resty/v2"
@@ -373,7 +374,8 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 			}
 
 			id := uuid.New().String()
-			targetURL = targetURL + "/google/callback?code=" + id + "&state=standard"
+			signUuid := util.SignState(id, ctrl.cfgManager.GetConfig().GoogleAuth.EncryptionKey)
+			targetURL = targetURL + "/google/callback?code=" + signUuid + "&state=standard"
 			go ctrl.googleCallbackProcessing(context.Background(), input.Code, id)
 
 			return &model.GoogleAuthResponse{
@@ -384,8 +386,13 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 	}
 
 	if input.State == "standard" {
+		id, ok := util.ExtractAndVerify(input.Code, ctrl.cfgManager.GetConfig().GoogleAuth.EncryptionKey)
+		if !ok {
+			return nil, huma.Error400BadRequest("Invalid or tampered session state")
+		}
+
 		var userDto model.UserDto
-		key := "auth_" + input.Code
+		key := "auth_" + id
 		if ok, _ := database.RedisHelper.GetAsStruct(key, &userDto); !ok {
 			return nil, huma.Error404NotFound("Request still under process or expired")
 		}
@@ -415,7 +422,6 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 
 func (ctrl *AuthController) googleCallbackProcessing(ctx context.Context, code, uuid string) {
 	conf := *ctrl.googleConfig
-	conf.RedirectURL = ctrl.cfgManager.GetConfig().GoogleAuth.CallbackUrl
 	token, err := conf.Exchange(ctx, code)
 	if err != nil {
 		log.Err(err).Msgf("Exchange failed with google %v %v", uuid, err)

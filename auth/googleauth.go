@@ -11,7 +11,7 @@ func GetGoogleOAuthConfig(creds model.GoogleAuthCredentials) *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     creds.ClientID,
 		ClientSecret: creds.ClientSecret,
-		RedirectURL:  "postmessage",
+		RedirectURL:  creds.CallbackUrl,
 		Endpoint:     google.Endpoint,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
