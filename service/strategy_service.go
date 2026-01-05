@@ -22,13 +22,9 @@ type StrategyServiceImpl struct {
 }
 
 func NewStrategyService(repo *repository.StrategyRepository) StrategyService {
-	s := &StrategyServiceImpl{
+	return &StrategyServiceImpl{
 		repo: repo,
 	}
-
-	_ = s.ReloadAllStrategies(context.Background())
-
-	return s
 }
 
 func (s *StrategyServiceImpl) ReloadAllStrategies(ctx context.Context) error {
