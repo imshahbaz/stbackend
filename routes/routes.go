@@ -135,7 +135,7 @@ func initsvcs() {
 	nseSvc = service.NewNseService(yahooClient)
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 
-	go func() { LoadInitialData() }()
+	go loadInitialData()
 }
 
 func getHumaConfig(isProduction bool) *huma.Config {
@@ -162,11 +162,22 @@ func getHumaConfig(isProduction bool) *huma.Config {
 	return &humaConfig
 }
 
-func LoadInitialData() {
-	log.Info().Msg("Loading margins...")
-	if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {
-		log.Info().Msgf("Warning: Failed initial margin load: %v", err)
-	} else {
-		log.Info().Msg("Margins loaded on startup...")
-	}
+func loadInitialData() {
+	go func() {
+		log.Info().Msg("Loading margins...")
+		if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {
+			log.Info().Msgf("Warning: Failed initial margin load: %v", err)
+		} else {
+			log.Info().Msg("Margins loaded on startup...")
+		}
+	}()
+
+	go func() {
+		log.Info().Msg("Loading strategies...")
+		if err := strategySvc.ReloadAllStrategies(context.Background()); err != nil {
+			log.Info().Msgf("Warning: Failed initial strategies load: %v", err)
+		} else {
+			log.Info().Msg("Strategies loaded on startup...")
+		}
+	}()
 }
