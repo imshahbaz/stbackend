@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/cache"
 	"backend/config"
 	"backend/database"
 	"backend/model"
@@ -60,7 +61,7 @@ func (s *OtpServiceImpl) SendOtp(ctx context.Context, email string, otpType mode
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	database.RedisHelper.Set(cacheKey, otp, 5*time.Minute)
+	cache.GoSet(cacheKey, otp, 5*time.Minute)
 
 	return nil
 }
@@ -77,7 +78,7 @@ func (s *OtpServiceImpl) VerifyOtp(email, otp string, otpType model.OTPType) (bo
 	}
 
 	if cachedOtp == otp {
-		database.RedisHelper.Delete(cacheKey)
+		cache.GoDelete(cacheKey)
 		return true, nil
 	}
 
