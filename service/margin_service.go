@@ -28,16 +28,10 @@ type MarginServiceImpl struct {
 }
 
 func NewMarginService(repo *repository.MarginRepository, cfg *config.ConfigManager) MarginService {
-	s := &MarginServiceImpl{
+	return &MarginServiceImpl{
 		repo: repo,
 		cfg:  cfg,
 	}
-
-	if err := s.ReloadAllMargins(context.Background()); err != nil {
-		log.Info().Msgf("Warning: Failed initial margin load: %v", err)
-	}
-
-	return s
 }
 
 func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
