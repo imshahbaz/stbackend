@@ -46,6 +46,7 @@ var (
 	chartInkSvc    service.ChartInkService
 	nseSvc         service.NseService
 	priceActionSvc service.PriceActionService
+	googleAuthSvc  service.GoogleAuthService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -73,7 +74,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, googleAuth).RegisterRoutes(humaApi)
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, googleAuth, googleAuthSvc).RegisterRoutes(humaApi)
 
 		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 
@@ -134,6 +135,7 @@ func initsvcs() {
 	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc)
 	nseSvc = service.NewNseService(yahooClient)
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
+	googleAuthSvc = service.NewGoogleAuthService(userSvc, configmanager)
 
 	go loadInitialData()
 }

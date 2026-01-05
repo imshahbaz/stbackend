@@ -37,23 +37,26 @@ var (
 )
 
 type AuthController struct {
-	userSvc      service.UserService
-	cfgManager   *config.ConfigManager
-	otpSvc       service.OtpService
-	isProduction bool
-	restyClient  *resty.Client
-	googleConfig *oauth2.Config
+	userSvc       service.UserService
+	cfgManager    *config.ConfigManager
+	otpSvc        service.OtpService
+	isProduction  bool
+	restyClient   *resty.Client
+	googleConfig  *oauth2.Config
+	googleAuthSvc service.GoogleAuthService
 }
 
 func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
-	otpSvc service.OtpService, isProduction bool, googleConfig *oauth2.Config) *AuthController {
+	otpSvc service.OtpService, isProduction bool, googleConfig *oauth2.Config,
+	googleAuthSvc service.GoogleAuthService) *AuthController {
 	return &AuthController{
-		userSvc:      s,
-		cfgManager:   cfgManager,
-		otpSvc:       otpSvc,
-		isProduction: isProduction,
-		restyClient:  resty.New().SetTimeout(10 * time.Second),
-		googleConfig: googleConfig,
+		userSvc:       s,
+		cfgManager:    cfgManager,
+		otpSvc:        otpSvc,
+		isProduction:  isProduction,
+		restyClient:   resty.New().SetTimeout(10 * time.Second),
+		googleConfig:  googleConfig,
+		googleAuthSvc: googleAuthSvc,
 	}
 }
 
@@ -128,6 +131,14 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Summary:     "Process Google OAuth Callback",
 		Tags:        []string{"Authentication"},
 	}, ctrl.googleAuthCallback)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "google-token-validation",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/google/token",
+		Summary:     "Process Google Token",
+		Tags:        []string{"Authentication"},
+	}, ctrl.validateGoogleToken)
 }
 
 func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest) (*model.LoginResponse, error) {
@@ -482,4 +493,8 @@ func (ctrl *AuthController) googleCallbackProcessing(ctx context.Context, code, 
 	}
 
 	cache.GoSet("auth_"+uuid, user.ToDto(), 2*time.Minute)
+}
+
+func (ctrl *AuthController) validateGoogleToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
+	return ctrl.googleAuthSvc.ValidateToken(ctx, input)
 }
