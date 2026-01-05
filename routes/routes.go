@@ -9,12 +9,14 @@ import (
 	"backend/middleware"
 	"backend/repository"
 	"backend/service"
+	"context"
 	"io"
 
 	"github.com/bytedance/sonic"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
 )
@@ -88,7 +90,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 func initApp(configService service.ConfigService, db *mongo.Database) *gin.Engine {
 	configmanager = configService.GetConfigManager()
 	r := initGinEngine()
-	initDB()
+	go func() { initDB() }()
 	initClients()
 	initRepos(db)
 	initsvcs()
@@ -105,6 +107,7 @@ func initGinEngine() *gin.Engine {
 }
 
 func initDB() {
+	log.Info().Msg("Initialising redis...")
 	database.InitRedis(configmanager.GetConfig().RedisUrl)
 }
 
@@ -131,6 +134,8 @@ func initsvcs() {
 	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc)
 	nseSvc = service.NewNseService(yahooClient)
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
+
+	go func() { LoadInitialData() }()
 }
 
 func getHumaConfig(isProduction bool) *huma.Config {
@@ -155,4 +160,13 @@ func getHumaConfig(isProduction bool) *huma.Config {
 	}
 
 	return &humaConfig
+}
+
+func LoadInitialData() {
+	log.Info().Msg("Loading margins...")
+	if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {
+		log.Info().Msgf("Warning: Failed initial margin load: %v", err)
+	} else {
+		log.Info().Msg("Margins loaded on startup...")
+	}
 }
