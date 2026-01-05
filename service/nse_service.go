@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"backend/cache"
 	"backend/client"
 	"backend/database"
 	"backend/middleware"
@@ -121,7 +122,7 @@ func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]m
 		)
 
 		if err == nil {
-			database.RedisHelper.Set(cacheKey, data, util.NseCacheExpiryTime())
+			cache.GoSet(cacheKey, data, util.NseCacheExpiryTime())
 		}
 
 		time.AfterFunc(10*time.Second, func() {
@@ -154,7 +155,7 @@ func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
 	)
 
 	if err == nil {
-		database.RedisHelper.Set(cacheKey, data, time.Hour)
+		cache.GoSet(cacheKey, data, time.Hour)
 	}
 
 	return data, err
@@ -181,7 +182,7 @@ func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
 	}
 
 	data = s.convertIndices(result.Data)
-	database.RedisHelper.Set(cacheKey, data, time.Hour)
+	cache.GoSet(cacheKey, data, time.Hour)
 	return data, nil
 }
 
@@ -236,5 +237,5 @@ func (s *NseServiceImpl) formatToTwo(n float64) float64 {
 
 func (s *NseServiceImpl) ClearStockDataCache(symbol string) {
 	cacheKey := "nse_history_" + symbol
-	database.RedisHelper.Delete(cacheKey)
+	cache.GoDelete(cacheKey)
 }

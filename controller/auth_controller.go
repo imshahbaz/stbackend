@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"backend/auth"
+	"backend/cache"
 	localCache "backend/cache"
 	"backend/config"
 	"backend/customerrors"
@@ -147,7 +148,7 @@ func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest
 	}
 
 	cookie := ctrl.createAuthCookie(token, 1800)
-	database.RedisHelper.Delete("auth_" + strconv.FormatInt(userDto.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(userDto.UserID, 10))
 
 	return &model.LoginResponse{
 		SetCookie: cookie,
@@ -236,7 +237,7 @@ func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.
 	}
 
 	dto = user.ToDto()
-	database.RedisHelper.Set(cacheKey, dto, time.Hour)
+	cache.GoSet(cacheKey, dto, time.Hour)
 	return &model.LoginResponse{Body: model.Response{
 		Success: true,
 		Message: "User details fetched",
@@ -323,7 +324,7 @@ func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.T
 		}
 
 		cookie := ctrl.createAuthCookie(tokenStr, 1800)
-		database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
+		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
 		return &model.DetailedResponseWrapper{
 			SetCookie: cookie,
@@ -376,7 +377,9 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 			id := uuid.New().String()
 			signUuid := util.SignState(id, ctrl.cfgManager.GetConfig().GoogleAuth.EncryptionKey)
 			targetURL = targetURL + "/google/callback?code=" + signUuid + "&state=standard"
-			go ctrl.googleCallbackProcessing(context.Background(), input.Code, id)
+			go func() {
+				ctrl.googleCallbackProcessing(context.Background(), input.Code, id)
+			}()
 
 			return &model.GoogleAuthResponse{
 				Status:   http.StatusTemporaryRedirect,
@@ -404,8 +407,8 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 		}
 
 		cookie := ctrl.createAuthCookie(tokenStr, 1800)
-		go database.RedisHelper.Set("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
-		go database.RedisHelper.Delete(key)
+		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
+		cache.GoDelete(key)
 		return &model.GoogleAuthResponse{
 			Status:    http.StatusOK,
 			SetCookie: cookie,
@@ -478,5 +481,5 @@ func (ctrl *AuthController) googleCallbackProcessing(ctx context.Context, code, 
 		}
 	}
 
-	database.RedisHelper.Set("auth_"+uuid, user.ToDto(), 2*time.Minute)
+	cache.GoSet("auth_"+uuid, user.ToDto(), 2*time.Minute)
 }

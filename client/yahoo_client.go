@@ -1,6 +1,7 @@
 package client
 
 import (
+	"backend/cache"
 	"backend/database"
 	"backend/model"
 	"backend/util"
@@ -78,7 +79,7 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 
 	if len(list) > 0 {
 		slices.Reverse(list)
-		database.RedisHelper.Set(cacheKey, list, util.NseCacheExpiryTime())
+		cache.GoSet(cacheKey, list, util.NseCacheExpiryTime())
 	}
 
 	return list, nil

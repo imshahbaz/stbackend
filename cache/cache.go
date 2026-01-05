@@ -27,7 +27,7 @@ func getKeyAndExpiry(reqId string, cacheType model.UserCacheType) (string, time.
 
 func SetUserCache(reqId string, userDto model.UserDto, cacheType model.UserCacheType) {
 	key, expiry := getKeyAndExpiry(reqId, cacheType)
-	database.RedisHelper.Set(key, userDto, expiry)
+	GoSet(key, userDto, expiry)
 }
 
 func GetUserCache(reqId string, userDto *model.UserDto, cacheType model.UserCacheType) (bool, error) {
@@ -37,14 +37,14 @@ func GetUserCache(reqId string, userDto *model.UserDto, cacheType model.UserCach
 
 func DeleteUserCache(reqId string, cacheType model.UserCacheType) {
 	key, _ := getKeyAndExpiry(reqId, cacheType)
-	database.RedisHelper.Delete(key)
+	GoDelete(key)
 }
 
 //ChartInkResponseCache
 
 func SetChartInkResponseCache(key string, value []model.StockMarginDto) {
 	key = "chartink_result_" + key
-	database.RedisHelper.Set(key, value, util.NseCacheExpiryTime())
+	GoSet(key, value, util.NseCacheExpiryTime())
 }
 
 func GetChartInkResponseCache(key string, value *[]model.StockMarginDto) (bool, error) {
@@ -56,7 +56,7 @@ func GetChartInkResponseCache(key string, value *[]model.StockMarginDto) (bool, 
 
 func SetPriceActionResponseCache(key string, value []model.ObResponse) {
 	key = "price_action_result_" + key
-	database.RedisHelper.Set(key, value, util.NseCacheExpiryTime())
+	GoSet(key, value, util.NseCacheExpiryTime())
 }
 
 func GetPriceActionResponseCache(key string, value *[]model.ObResponse) (bool, error) {
@@ -66,5 +66,17 @@ func GetPriceActionResponseCache(key string, value *[]model.ObResponse) (bool, e
 
 func DeletePriceActionResponseCache(key string) {
 	key = "price_action_result_" + key
-	database.RedisHelper.Delete(key)
+	GoDelete(key)
+}
+
+func GoSet(key string, value any, expiry time.Duration) {
+	go func() {
+		database.RedisHelper.Set(key, value, expiry)
+	}()
+}
+
+func GoDelete(key string) {
+	go func() {
+		database.RedisHelper.Delete(key)
+	}()
 }

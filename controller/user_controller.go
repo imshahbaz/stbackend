@@ -9,7 +9,6 @@ import (
 
 	"backend/cache"
 	"backend/customerrors"
-	"backend/database"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
@@ -91,7 +90,7 @@ func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.Upd
 		return NewErrorResponse("Failed to update username"), nil
 	}
 
-	database.RedisHelper.Delete("auth_" + strconv.FormatInt(req.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(req.UserID, 10))
 
 	return NewResponse(nil, "Username updated successfully"), nil
 }
@@ -117,7 +116,7 @@ func (ctrl *UserController) UpdateTheme(ctx context.Context, input *model.Update
 		return NewErrorResponse("Internal server error"), nil
 	}
 
-	database.RedisHelper.Delete("auth_" + strconv.FormatInt(userDto.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(userDto.UserID, 10))
 
 	return NewResponse(req.Theme, "Theme synchronized"), nil
 }
@@ -200,6 +199,6 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 	}
 
 	cache.DeleteUserCache(req.Email, model.CredUpdate)
-	database.RedisHelper.Delete("auth_" + strconv.FormatInt(authUser.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(authUser.UserID, 10))
 	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Credential added successfully"}}, nil
 }
