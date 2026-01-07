@@ -34,7 +34,6 @@ var sfGroup singleflight.Group
 
 type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
-	FetchHeatMap() ([]model.SectorData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
 }
@@ -137,28 +136,6 @@ func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]m
 	}
 
 	return val.([]model.NSEHistoricalData), nil
-}
-
-func (s *NseServiceImpl) FetchHeatMap() ([]model.SectorData, error) {
-	cacheKey := "heatmap_sectoral"
-	var data []model.SectorData
-
-	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
-		return data, nil
-	}
-
-	err := s.executeNseRequest(
-		nseUrl+"/market-data/live-market-indices/heatmap",
-		heatMapPath,
-		map[string]string{"type": "Sectoral Indices"},
-		&data,
-	)
-
-	if err == nil {
-		cache.GoSet(cacheKey, data, time.Hour)
-	}
-
-	return data, err
 }
 
 func (s *NseServiceImpl) FetchAllIndices() ([]model.AllIndicesResponse, error) {
