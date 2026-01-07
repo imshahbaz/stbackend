@@ -31,14 +31,6 @@ func (ctrl *NseController) RegisterRoutes(api huma.API) {
 	}, ctrl.GetStockHistory)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "get-heatmap",
-		Method:      http.MethodGet,
-		Path:        "/api/nse/heatmap",
-		Summary:     "Get NSE Sectoral Heatmap",
-		Tags:        []string{"Stocks"},
-	}, ctrl.GetHeatMap)
-
-	huma.Register(api, huma.Operation{
 		OperationID: "get-all-indices",
 		Method:      http.MethodGet,
 		Path:        "/api/nse/allindices",
@@ -51,14 +43,6 @@ func (ctrl *NseController) GetStockHistory(ctx context.Context, input *model.Nse
 	data, err := ctrl.nseService.FetchStockData(ctx, input.Symbol)
 	if err != nil {
 		return NewErrorResponse("Failed to get history"), nil
-	}
-	return NewResponse(data, "Fetch Success"), nil
-}
-
-func (ctrl *NseController) GetHeatMap(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	data, err := ctrl.nseService.FetchHeatMap()
-	if err != nil {
-		return NewErrorResponse("Failed to get heat map"), nil
 	}
 	return NewResponse(data, "Fetch Success"), nil
 }
