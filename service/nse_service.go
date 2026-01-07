@@ -27,6 +27,7 @@ const (
 	historicalPath = "/api/NextApi/apiClient/GetQuoteApi"
 	heatMapPath    = "/api/heatmap-index"
 	allIndicesPath = "/api/allindices"
+	nseDateFormat  = "02-01-2006"
 )
 
 var sfGroup singleflight.Group
@@ -83,7 +84,7 @@ func (s *NseServiceImpl) WarmUp() error {
 			Get("/")
 
 		if err != nil || !resp.IsSuccess() {
-			return nil, fmt.Errorf("warmup failed: %v", err)
+			return nil, fmt.Errorf("NSE warmup failed: %v status: %d", err, resp.StatusCode())
 		}
 
 		s.warmupLock.Lock()
@@ -97,26 +98,25 @@ func (s *NseServiceImpl) WarmUp() error {
 
 func (s *NseServiceImpl) FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error) {
 	val, err, _ := sfGroup.Do(symbol, func() (any, error) {
-		yahooResp, err := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo)
-		if err == nil {
+		if yahooResp, err := s.yahooClient.GetHistoricalData(ctx, symbol, model.Range1mo); err == nil {
 			return yahooResp, nil
 		}
 
 		var data []model.NSEHistoricalData
-		cacheKey := "nse_history_" + symbol
+		cacheKey := s.getHistoryCacheKey(symbol)
 		if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
 			return data, nil
 		}
 
-		err = s.executeNseRequest(
+		err := s.executeNseRequest(
 			fmt.Sprintf("%s/get-quote/equity/%s", nseUrl, symbol),
 			historicalPath,
 			map[string]string{
 				"functionName": "getHistoricalTradeData",
 				"symbol":       symbol,
 				"series":       "EQ",
-				"fromDate":     time.Now().AddDate(0, -1, 0).Format("02-01-2006"),
-				"toDate":       time.Now().Format("02-01-2006"),
+				"fromDate":     time.Now().AddDate(0, -1, 0).Format(nseDateFormat),
+				"toDate":       time.Now().Format(nseDateFormat),
 			},
 			&data,
 		)
@@ -191,14 +191,7 @@ func (s *NseServiceImpl) executeNseRequest(referer, path string, params map[stri
 		return err
 	}
 
-	req := s.client.R().SetHeaders(map[string]string{
-		"Accept":          "*/*",
-		"Accept-Encoding": "gzip, deflate, br",
-		"Referer":         referer,
-		"sec-fetch-dest":  "empty",
-		"sec-fetch-mode":  "cors",
-		"sec-fetch-site":  "same-origin",
-	})
+	req := s.client.R().SetHeaders(s.getStandardHeaders(referer))
 
 	if params != nil {
 		req.SetQueryParams(params)
@@ -206,11 +199,11 @@ func (s *NseServiceImpl) executeNseRequest(referer, path string, params map[stri
 
 	resp, err := req.Get(path)
 	if err != nil || !resp.IsSuccess() {
-		return fmt.Errorf("NSE request failed: %v", err)
+		return fmt.Errorf("NSE request failed for path %s: %v", path, err)
 	}
 
 	if err := json.Unmarshal(resp.Body(), target); err != nil {
-		return fmt.Errorf("decode error: %w", err)
+		return fmt.Errorf("failed to decode NSE response for path %s: %w", path, err)
 	}
 
 	return nil
@@ -236,6 +229,20 @@ func (s *NseServiceImpl) formatToTwo(n float64) float64 {
 }
 
 func (s *NseServiceImpl) ClearStockDataCache(symbol string) {
-	cacheKey := "nse_history_" + symbol
-	cache.GoDelete(cacheKey)
+	cache.GoDelete(s.getHistoryCacheKey(symbol))
+}
+
+func (s *NseServiceImpl) getHistoryCacheKey(symbol string) string {
+	return "nse_history_" + symbol
+}
+
+func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
+	return map[string]string{
+		"Accept":          "*/*",
+		"Accept-Encoding": "gzip, deflate, br",
+		"Referer":         referer,
+		"sec-fetch-dest":  "empty",
+		"sec-fetch-mode":  "cors",
+		"sec-fetch-site":  "same-origin",
+	}
 }

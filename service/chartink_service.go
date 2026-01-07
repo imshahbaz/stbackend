@@ -15,6 +15,11 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+const (
+	tokenKey          = "XSRF-TOKEN"
+	chartInkUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
 type ChartInkService interface {
 	FetchData(strategy model.StrategyDto) (*model.ChartInkResponseDto, error)
 	FetchWithMargin(strategy model.StrategyDto) ([]model.StockMarginDto, error)
@@ -32,7 +37,7 @@ func NewChartInkService(c *client.ChartinkClient, ms MarginService) ChartInkServ
 	return &ChartInkServiceImpl{
 		client:        c,
 		marginService: ms,
-		userAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		userAgent:     chartInkUserAgent,
 	}
 }
 
@@ -75,10 +80,7 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 		}
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Margin > result[j].Margin
-	})
-
+	s.sortResultByMargin(result)
 	localCache.SetChartInkResponseCache(strategy.Name, result)
 	return result, nil
 }
@@ -106,8 +108,9 @@ func (s *ChartInkServiceImpl) executeWithRetry(ctx context.Context, scanClause s
 	if err != nil {
 		return nil, err
 	}
+
 	if !resp.IsSuccess() {
-		return nil, fmt.Errorf("chartink api error: %d", resp.StatusCode())
+		return nil, fmt.Errorf("chartink api error: %d status: %s", resp.StatusCode(), resp.Status())
 	}
 
 	return resp, nil
@@ -129,11 +132,17 @@ func (s *ChartInkServiceImpl) refreshTokens(ctx context.Context) error {
 	}
 
 	for _, c := range resp.Cookies() {
-		if c.Name == "XSRF-TOKEN" {
+		if c.Name == tokenKey {
 			decoded, _ := url.QueryUnescape(c.Value)
 			s.xsrfToken = decoded
 			return nil
 		}
 	}
-	return fmt.Errorf("XSRF-TOKEN not found in cookies")
+	return fmt.Errorf("%s not found in cookies", tokenKey)
+}
+
+func (s *ChartInkServiceImpl) sortResultByMargin(result []model.StockMarginDto) {
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Margin > result[j].Margin
+	})
 }
