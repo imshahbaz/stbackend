@@ -1,0 +1,58 @@
+name: MTF Data Sync
+on:
+  schedule:
+    # 03:30 UTC is 09:00 AM IST. 
+    # Note: Actions can be delayed by 15-30 mins during peak times.
+    - cron: '30 3 * * *' 
+  workflow_dispatch: # Allows manual "Run workflow" from the Actions tab
+
+jobs:
+  sync-mtf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Wake up Render Service
+        env:
+          HEALTH_URL: ${{ secrets.MY_HEALTH_URL }} 
+        run: |
+          echo "Checking service health at $HEALTH_URL..."
+          # Polling loop: Wait up to 5 mins for Render to spin up
+          timeout 300s bash -c '
+          until [ "$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL")" == "200" ]; do
+            echo "Waiting for service to spin up... (Current Status: $(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL"))"
+            sleep 15
+          done'
+          echo "Service is live!"
+
+      - name: Fetch MTF JSON from Zerodha
+        run: |
+          echo "Downloading securities list..."
+          curl -L "https://public.zrd.sh/crux/approved-mtf-securities.json" \
+               -H "authority: public.zrd.sh" \
+               -H "origin: https://zerodha.com" \
+               -H "referer: https://zerodha.com/" \
+               -H "user-agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15" \
+               --compressed \
+               -o mtf_data.json
+          
+          # Check if file is valid JSON (requires jq to be installed, which it is on Ubuntu runners)
+          if ! jq empty mtf_data.json >/dev/null 2>&1; then
+            echo "Error: Downloaded file is not valid JSON"
+            exit 1
+          fi
+          echo "Download successful."
+
+      - name: Push to API and Warmup Cache
+        env:
+          API_URL: ${{ secrets.MY_EXTERNAL_API_URL }}
+        run: |
+          echo "Sending data to backend..."
+          # Use --data-binary to handle the 10,000 lines safely without shell escapes
+          curl -X POST "$API_URL" \
+               -H "Content-Type: application/json" \
+               --data-binary @mtf_data.json \
+               --fail \
+               --show-error
+          echo "Sync and Cache Warmup Complete."
