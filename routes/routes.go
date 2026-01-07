@@ -46,7 +46,8 @@ var (
 	chartInkSvc    service.ChartInkService
 	nseSvc         service.NseService
 	priceActionSvc service.PriceActionService
-	googleAuthSvc  service.GoogleAuthService
+	oauthSvc       service.OAuthService
+	authSvc        service.AuthService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -55,7 +56,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	configService := service.NewConfigService(db, isProduction)
 
-	r := initApp(configService, db)
+	r := initApp(configService, db, isProduction)
 
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
@@ -74,7 +75,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, googleAuth, googleAuthSvc).RegisterRoutes(humaApi)
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi)
 
 		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 
@@ -88,13 +89,13 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	return r
 }
 
-func initApp(configService service.ConfigService, db *mongo.Database) *gin.Engine {
+func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *gin.Engine {
 	configmanager = configService.GetConfigManager()
 	r := initGinEngine()
 	go func() { initDB() }()
 	initClients()
 	initRepos(db)
-	initsvcs()
+	initsvcs(isProduction)
 	return r
 }
 
@@ -126,7 +127,7 @@ func initRepos(db *mongo.Database) {
 	priceActionRepo = repository.NewPriceActionRepo(db)
 }
 
-func initsvcs() {
+func initsvcs(isProduction bool) {
 	emailSvc = service.NewEmailService(brevoClient, configmanager)
 	otpSvc = service.NewOtpService(emailSvc, configmanager)
 	userSvc = service.NewUserService(userRepo)
@@ -135,7 +136,8 @@ func initsvcs() {
 	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc)
 	nseSvc = service.NewNseService(yahooClient)
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
-	googleAuthSvc = service.NewGoogleAuthService(userSvc, configmanager)
+	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
+	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 
 	go loadInitialData()
 }
