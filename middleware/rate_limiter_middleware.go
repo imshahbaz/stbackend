@@ -65,11 +65,6 @@ func RecoveryMiddleware(c *fiber.Ctx) error {
 }
 
 func ZerologMiddleware() fiber.Handler {
-	skipPaths := map[string]bool{
-		"api/health":  true,
-		"api/metrics": true,
-	}
-
 	return func(c *fiber.Ctx) error {
 		path := c.Path()
 
