@@ -51,59 +51,57 @@ var (
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *fiber.App {
-
 	isProduction := cfg.Config.Environment == "production"
 
 	configService := service.NewConfigService(db, isProduction)
-
 	r := initApp(configService, db, isProduction)
 
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
 	humaConfig := *getHumaConfig(isProduction)
-
 	humaApi := humafiber.New(r, humaConfig)
 
-	{
-		controller.NewHealthController().RegisterRoutes(humaApi)
-
-		controller.NewEmailController(emailSvc).RegisterRoutes(humaApi)
-
-		controller.NewMarginController(marginSvc).RegisterRoutes(humaApi)
-
-		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(humaApi)
-
-		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
-
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi)
-
-		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
-
-		controller.NewNseController(nseSvc).RegisterRoutes(humaApi)
-
-		controller.NewConfigController(configService, isProduction).RegisterRoutes(humaApi)
-
-		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
-	}
+	// Register Routes
+	controller.NewHealthController().RegisterRoutes(humaApi)
+	controller.NewEmailController(emailSvc).RegisterRoutes(humaApi)
+	controller.NewMarginController(marginSvc).RegisterRoutes(humaApi)
+	controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(humaApi)
+	controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
+	controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi)
+	controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
+	controller.NewNseController(nseSvc).RegisterRoutes(humaApi)
+	controller.NewConfigController(configService, isProduction).RegisterRoutes(humaApi)
+	controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
 
 	return r
 }
 
 func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *fiber.App {
 	configmanager = configService.GetConfigManager()
-	r := initGinEngine(isProduction)
-	go func() { initDB() }()
+
+	// 1. Initialize core web framework
+	r := initFiberApp(isProduction)
+
+	// 2. Initialize Infrastructure (Synchronous for safety)
+	initDB()
 	initClients()
 	initRepos(db)
+
+	// 3. Initialize Services
 	initsvcs(isProduction)
+
 	return r
 }
 
-func initGinEngine(isProd bool) *fiber.App {
+func initFiberApp(isProd bool) *fiber.App {
 	r := fiber.New(fiber.Config{
 		DisableStartupMessage: isProd,
 		Prefork:               isProd,
+		// Using Sonic for Fiber's internal JSON operations as well
+		JSONEncoder: sonic.Marshal,
+		JSONDecoder: sonic.Unmarshal,
 	})
+
 	r.Use(middleware.RecoveryMiddleware)
 	r.Use(middleware.CORS(configmanager))
 	r.Use(middleware.ZerologMiddleware())
@@ -142,6 +140,7 @@ func initsvcs(isProduction bool) {
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 
+	// Background data loading
 	go loadInitialData()
 }
 
@@ -170,21 +169,22 @@ func getHumaConfig(isProduction bool) *huma.Config {
 }
 
 func loadInitialData() {
+	// Parallel loading of independent data sources
 	go func() {
 		log.Info().Msg("Loading margins...")
 		if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {
-			log.Info().Msgf("Warning: Failed initial margin load: %v", err)
+			log.Error().Err(err).Msg("Failed initial margin load")
 		} else {
-			log.Info().Msg("Margins loaded on startup...")
+			log.Info().Msg("Margins loaded successfully")
 		}
 	}()
 
 	go func() {
 		log.Info().Msg("Loading strategies...")
 		if err := strategySvc.ReloadAllStrategies(context.Background()); err != nil {
-			log.Info().Msgf("Warning: Failed initial strategies load: %v", err)
+			log.Error().Err(err).Msg("Failed initial strategies load")
 		} else {
-			log.Info().Msg("Strategies loaded on startup...")
+			log.Info().Msg("Strategies loaded successfully")
 		}
 	}()
 }
