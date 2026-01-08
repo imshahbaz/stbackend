@@ -14,8 +14,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humagin"
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2/adapters/humafiber"
+	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
@@ -50,7 +50,7 @@ var (
 	authSvc        service.AuthService
 )
 
-func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
+func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *fiber.App {
 
 	isProduction := cfg.Config.Environment == "production"
 
@@ -62,7 +62,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	humaConfig := *getHumaConfig(isProduction)
 
-	humaApi := humagin.New(r, humaConfig)
+	humaApi := humafiber.New(r, humaConfig)
 
 	{
 		controller.NewHealthController().RegisterRoutes(humaApi)
@@ -89,9 +89,9 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 	return r
 }
 
-func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *gin.Engine {
+func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *fiber.App {
 	configmanager = configService.GetConfigManager()
-	r := initGinEngine()
+	r := initGinEngine(isProduction)
 	go func() { initDB() }()
 	initClients()
 	initRepos(db)
@@ -99,11 +99,14 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 	return r
 }
 
-func initGinEngine() *gin.Engine {
-	r := gin.New()
+func initGinEngine(isProd bool) *fiber.App {
+	r := fiber.New(fiber.Config{
+		DisableStartupMessage: isProd,
+		Prefork:               isProd,
+	})
 	r.Use(middleware.RecoveryMiddleware)
-	r.Use(middleware.ZerologMiddleware())
 	r.Use(middleware.CORS(configmanager))
+	r.Use(middleware.ZerologMiddleware())
 	r.Use(middleware.RateLimiter(configmanager))
 	return r
 }

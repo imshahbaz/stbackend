@@ -7,7 +7,6 @@ import (
 	"backend/routes"
 	"runtime"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -17,10 +16,6 @@ func main() {
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
 		log.Fatal().Msgf("Error loading configuration: %v", err)
-	}
-
-	if sysConfigs.Config.Environment == "production" {
-		gin.SetMode(gin.ReleaseMode)
 	}
 
 	_, db := database.InitMongoClient(sysConfigs)
@@ -33,7 +28,7 @@ func main() {
 	}
 
 	log.Info().Msgf("Server starting on port %s", port)
-	if err := router.Run("0.0.0.0:" + port); err != nil {
+	if err := router.Listen("0.0.0.0:" + port); err != nil {
 		log.Fatal().Msgf("Server failed to start: %v", err)
 	}
 }

@@ -2,30 +2,25 @@ package middleware
 
 import (
 	"backend/config"
+	"strings"
 	"time"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
-func CORS(cfg *config.ConfigManager) gin.HandlerFunc {
+func CORS(cfg *config.ConfigManager) fiber.Handler {
 	return cors.New(cors.Config{
-		AllowOrigins: cfg.GetConfig().FrontendUrls,
+		AllowOrigins: strings.Join(cfg.GetConfig().FrontendUrls, ","),
 
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowMethods: "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS",
 
-		AllowHeaders: []string{
-			"Origin",
-			"Content-Type",
-			"Accept",
-			"Authorization",
-			"X-Requested-With",
-		},
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization,X-Requested-With",
 
-		ExposeHeaders: []string{"Content-Length"},
+		ExposeHeaders: "Content-Length",
 
 		AllowCredentials: true,
 
-		MaxAge: 12 * time.Hour,
+		MaxAge: int((12 * time.Hour).Seconds()),
 	})
 }
