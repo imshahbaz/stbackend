@@ -49,10 +49,12 @@ jobs:
           API_URL: ${{ secrets.MY_EXTERNAL_API_URL }}
         run: |
           echo "Sending data to backend..."
-          # Use --data-binary to handle the 10,000 lines safely without shell escapes
-          curl -X POST "$API_URL" \
-               -H "Content-Type: application/json" \
-               --data-binary @mtf_data.json \
-               --fail \
+          curl --request POST \
+               --url "$API_URL" \
+               --header "Accept: application/json, application/problem+json" \
+               --header "Content-Type: multipart/form-data" \
+               --form "file=@mtf_data.json;type=application/json" \
+               --fail-with-body \
                --show-error
+               
           echo "Sync and Cache Warmup Complete."
