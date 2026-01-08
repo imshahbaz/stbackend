@@ -21,7 +21,12 @@ type StockMarginDto struct {
 	Close  float32 `json:"close"`
 }
 
-
 type GetMarginInput struct {
 	Symbol string `path:"symbol" doc:"Stock Symbol" example:"RELIANCE"`
+}
+
+type MTFInput struct {
+	RawBody huma.MultipartFormFiles[struct {
+		File huma.FormFile `form:"file" contentType:"application/json" required:"true"`
+	}]
 }
