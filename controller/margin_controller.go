@@ -56,6 +56,14 @@ func (ctrl *MarginController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Margin"},
 	}, ctrl.loadFromCsv)
 
+	huma.Register(api, huma.Operation{
+		OperationID: "sync-mtf-from-json",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/json",
+		Summary:     "Sync selected MTF data",
+		Tags:        []string{"Margin"},
+	}, ctrl.syncMTF)
+
 }
 
 func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
@@ -88,4 +96,12 @@ func (ctrl *MarginController) loadFromCsv(ctx context.Context, input *model.Uplo
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
+}
+
+func (ctrl *MarginController) syncMTF(ctx context.Context, input *model.MTFInput) (*model.DefaultResponse, error) {
+	formData := input.RawBody.Data().File.File
+	if err := ctrl.marginService.SyncMTF(ctx, formData); err != nil {
+		return nil, huma.Error500InternalServerError(err.Error())
+	}
+	return NewResponse(nil, "MTF data synced successfully"), nil
 }
