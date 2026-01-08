@@ -79,15 +79,10 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *fiber.App {
 func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *fiber.App {
 	configmanager = configService.GetConfigManager()
 
-	// 1. Initialize core web framework
 	r := initFiberApp(isProduction)
-
-	// 2. Initialize Infrastructure (Synchronous for safety)
 	initDB()
 	initClients()
 	initRepos(db)
-
-	// 3. Initialize Services
 	initsvcs(isProduction)
 
 	return r
@@ -97,9 +92,8 @@ func initFiberApp(isProd bool) *fiber.App {
 	r := fiber.New(fiber.Config{
 		DisableStartupMessage: isProd,
 		Prefork:               isProd,
-		// Using Sonic for Fiber's internal JSON operations as well
-		JSONEncoder: sonic.Marshal,
-		JSONDecoder: sonic.Unmarshal,
+		JSONEncoder:           sonic.Marshal,
+		JSONDecoder:           sonic.Unmarshal,
 	})
 
 	r.Use(middleware.RecoveryMiddleware)
@@ -140,7 +134,6 @@ func initsvcs(isProduction bool) {
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 
-	// Background data loading
 	go loadInitialData()
 }
 
@@ -169,7 +162,6 @@ func getHumaConfig(isProduction bool) *huma.Config {
 }
 
 func loadInitialData() {
-	// Parallel loading of independent data sources
 	go func() {
 		log.Info().Msg("Loading margins...")
 		if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {

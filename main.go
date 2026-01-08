@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -67,4 +68,5 @@ func init() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.With().Logger()
+	zerolog.InterfaceMarshalFunc = sonic.Marshal
 }
