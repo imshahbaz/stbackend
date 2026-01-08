@@ -91,7 +91,7 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 func initFiberApp(isProd bool) *fiber.App {
 	r := fiber.New(fiber.Config{
 		DisableStartupMessage: isProd,
-		Prefork:               isProd,
+		Prefork:               false,
 		JSONEncoder:           sonic.Marshal,
 		JSONDecoder:           sonic.Unmarshal,
 	})
