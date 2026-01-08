@@ -27,6 +27,6 @@ type GetMarginInput struct {
 
 type MTFInput struct {
 	RawBody huma.MultipartFormFiles[struct {
-		File huma.FormFile `form:"file" contentType:"application/json" required:"true"`
+		File huma.FormFile `form:"file" required:"true"`
 	}]
 }
