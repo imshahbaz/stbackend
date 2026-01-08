@@ -25,7 +25,6 @@ func NewBrevoClient() *BrevoClient {
 	}
 }
 
-// SendTransactionalEmail handles sending emails via Brevo SMTP API
 func (c *BrevoClient) SendTransactionalEmail(ctx context.Context, apiKey string, emailReq model.BrevoEmailRequest) (string, error) {
 	resp, err := c.client.R().
 		SetContext(ctx).

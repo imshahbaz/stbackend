@@ -2,135 +2,203 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"backend/cache"
+	"backend/customerrors"
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
+	"backend/validator"
 
-	"github.com/gin-gonic/gin"
+	"github.com/Oudwins/zog"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/mitchellh/mapstructure"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct {
 	userSvc      service.UserService
 	isProduction bool
+	otpSvc       service.OtpService
 }
 
-func NewUserController(s service.UserService, isProduction bool) *UserController {
-	return &UserController{userSvc: s, isProduction: isProduction}
+func NewUserController(s service.UserService, isProduction bool, otpSvc service.OtpService) *UserController {
+	return &UserController{userSvc: s, isProduction: isProduction, otpSvc: otpSvc}
 }
 
-func (ctrl *UserController) RegisterRoutes(router *gin.RouterGroup) {
-	userGroup := router.Group("/user")
-	userGroup.Use(middleware.AuthMiddleware(ctrl.isProduction))
-	{
-		userGroup.PATCH("/username", ctrl.UpdateUsername)
-		userGroup.PATCH("/theme", ctrl.UpdateTheme)
-	}
+func (ctrl *UserController) RegisterRoutes(api huma.API) {
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-username",
+		Method:      http.MethodPatch,
+		Path:        "/api/user/username",
+		Summary:     "Update Username",
+		Description: "Updates the username and invalidates the auth cache",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"User"},
+	}, ctrl.UpdateUsername)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-theme",
+		Method:      http.MethodPatch,
+		Path:        "/api/user/theme",
+		Summary:     "Update User Theme",
+		Description: "Updates preference (LIGHT/DARK) for the authenticated user",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"User"},
+	}, ctrl.UpdateTheme)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "send-update-otp",
+		Method:      http.MethodPost,
+		Path:        "/api/user/send-update-otp",
+		Summary:     "Send OTP for Updating Credentials",
+		Description: "Sends an OTP to the user's email for verifying credential updates",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"User"},
+	}, ctrl.sendUpdateOtp)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "verify-update-otp",
+		Method:      http.MethodPost,
+		Path:        "/api/user/verify-update-otp",
+		Summary:     "Verify OTP for Updating Credentials",
+		Description: "Verifies the OTP and updates the user's credentials upon successful verification",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"User"},
+	}, ctrl.verifyUpdateOtp)
 }
 
-// UpdateUsername godoc
-// @Summary      Update Username
-// @Description  Updates the username and invalidates the auth cache
-// @Tags         User
-// @Accept       json
-// @Produce      json
-// @Param        update  body      model.UserDto  true  "Target Email and New Username"
-// @Success      200     {object}  model.Response
-// @Failure      400     {object}  model.Response
-// @Failure      401     {object}  model.Response
-// @Router       /user/username [patch]
-func (ctrl *UserController) UpdateUsername(c *gin.Context) {
-	var req model.UserDto
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid request payload",
-		})
-		return
-	}
+func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.UpdateUsernameRequest) (*model.DefaultResponse, error) {
+	req := input.Body
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := ctrl.userSvc.UpdateUsername(ctx, req.UserID, req.Username)
+	_, err := ctrl.userSvc.UpdateUsername(ctxt, req.UserID, req.Username)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Failed to update username",
-		})
-		return
+		return NewErrorResponse("Failed to update username"), nil
 	}
 
-	// Cache Invalidation: Force refresh on next GetMe call
-	cache.UserAuthCache.Delete(strconv.FormatInt(req.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(req.UserID, 10))
 
-	c.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Username updated successfully",
-	})
+	return NewResponse(nil, "Username updated successfully"), nil
 }
 
-// UpdateTheme godoc
-// @Summary      Update User Theme
-// @Description  Updates preference (LIGHT/DARK) for the authenticated user
-// @Tags         User
-// @Accept       json
-// @Produce      json
-// @Param        request body      model.UpdateThemeRequest  true  "Theme Preference"
-// @Success      200     {object}  model.Response
-// @Failure      400     {object}  model.Response
-// @Router       /user/theme [patch]
-func (ctrl *UserController) UpdateTheme(c *gin.Context) {
-	var req model.UpdateThemeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid request format",
-		})
-		return
-	}
+func (ctrl *UserController) UpdateTheme(ctx context.Context, input *model.UpdateThemeInput) (*model.DefaultResponse, error) {
+	req := input.Body
 
 	if req.Theme != model.ThemeLight && req.Theme != model.ThemeDark {
-		c.JSON(http.StatusBadRequest, model.Response{
-			Success: false,
-			Error:   "Invalid theme: must be LIGHT or DARK",
-		})
-		return
+		return nil, huma.Error400BadRequest("Invalid theme: must be LIGHT or DARK")
 	}
 
-	// Extract user from context (set by AuthMiddleware)
-	val, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, model.Response{
-			Success: false,
-			Error:   "User session not found",
-		})
-		return
+	val := ctx.Value("user")
+	if val == nil {
+		return nil, huma.Error401Unauthorized("User session not found")
 	}
 
 	userDto := val.(model.UserDto)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if _, err := ctrl.userSvc.UpdateUserTheme(ctx, userDto.UserID, req.Theme); err != nil {
-		c.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Internal server error",
-		})
-		return
+	if _, err := ctrl.userSvc.UpdateUserTheme(ctxt, userDto.UserID, req.Theme); err != nil {
+		return NewErrorResponse("Internal server error"), nil
 	}
 
-	// Clear cache so that subsequent requests reflect the new theme
-	cache.UserAuthCache.Delete(strconv.FormatInt(userDto.UserID, 10))
+	cache.GoDelete("auth_" + strconv.FormatInt(userDto.UserID, 10))
 
-	c.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Theme synchronized",
-		Data:    req.Theme,
-	})
+	return NewResponse(req.Theme, "Theme synchronized"), nil
+}
+
+func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.Request) (*model.MessageResponseWrapper, error) {
+	var req model.UserDto
+	if err := mapstructure.Decode(input.Body, &req); err != nil {
+		return nil, huma.Error400BadRequest("Invalid Request")
+	}
+
+	authUser := ctx.Value("user").(model.UserDto)
+	if authUser.UserID != req.UserID {
+		return nil, huma.Error403Forbidden("Unauthorized to update credentials for this user")
+	}
+
+	bodyValidation := zog.Struct(validator.UserIdShape).
+		Extend(validator.BaseShape).
+		Extend(validator.PasswordShape).
+		Extend(validator.ConfirmShape).
+		TestFunc(validator.PasswordMatchTest)
+
+	if err := bodyValidation.Validate(&req); err != nil {
+		log.Info().Msgf("Validation error %v", err)
+		return nil, huma.Error400BadRequest("Invalid Request")
+	}
+
+	existingUser, err := ctrl.userSvc.FindUser(ctx, 0, req.Email, 0)
+	if err != nil && !errors.Is(err, customerrors.ErrUserNotFound) {
+		return nil, huma.Error500InternalServerError("Unable to process request at this time")
+	}
+
+	if existingUser != nil {
+		return nil, huma.Error400BadRequest("Email already in use")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Something went wrong")
+	}
+	req.Password = string(hashed)
+	cache.SetUserCache(strconv.FormatInt(req.UserID, 10), req, model.CredUpdate)
+	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := ctrl.otpSvc.SendOtp(ctxt, req.Email, model.OTPUpdate); err != nil {
+		if errors.Is(err, service.ErrDuplicateOtp) {
+			return nil, huma.Error409Conflict(err.Error())
+		}
+		return nil, huma.Error500InternalServerError(err.Error())
+	}
+
+	return &model.MessageResponseWrapper{
+		Body: model.Response{
+			Success: true,
+			Message: "OTP sent to " + req.Email,
+			Data:    model.MessageResponse{OtpSent: true, Message: "OTP sent to " + req.Email},
+		},
+	}, nil
+}
+
+func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
+	req := input.Body
+	authUser := ctx.Value("user").(model.UserDto)
+
+	match, err := ctrl.otpSvc.VerifyOtp(req.Email, req.Otp, model.OTPUpdate)
+	if err != nil || !match {
+		return nil, huma.Error400BadRequest("Invalid OTP")
+	}
+
+	var cacheUser model.UserDto
+	ok, err := cache.GetUserCache(strconv.FormatInt(authUser.UserID, 10), &cacheUser, model.CredUpdate)
+	if err != nil || !ok {
+		return nil, huma.Error400BadRequest("Invalid or expired request")
+	}
+
+	_, err = ctrl.userSvc.AddCredentials(ctx, cacheUser)
+	if err != nil {
+		log.Info().Msgf("Error adding credentials: %v", err)
+		return nil, huma.Error500InternalServerError("Something went wrong")
+	}
+
+	cache.DeleteUserCache(req.Email, model.CredUpdate)
+	cache.GoDelete("auth_" + strconv.FormatInt(authUser.UserID, 10))
+	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Credential added successfully"}}, nil
 }

@@ -2,45 +2,47 @@ package service
 
 import (
 	"context"
-	"log"
-	"net/http"
 
 	"backend/config"
 	"backend/model"
 
-	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ConfigService interface {
 	GetConfigManager() *config.ConfigManager
-	LoadMongoEnvConfig(ctx *gin.Context)
-	UpdateMongoEnvConfig(ctx *gin.Context, cfg model.MongoEnvConfig)
+
+	//backend
+	LoadMongoEnvConfig(ctx context.Context) error
+	UpdateMongoEnvConfig(ctx context.Context, cfg model.MongoEnvConfig) error
 	FindMongoEnvConfig(ctx context.Context) (*model.MongoEnvConfig, error)
-	GetActiveMongoEnvConfig(ctx *gin.Context)
+	GetActiveMongoEnvConfig() model.MongoEnvConfig
+
+	//client
+	LoadClientConfig(ctx context.Context) error
+	FindMongoClientConfig(ctx context.Context) (*model.ClientConfigs, error)
+	GetActiveMongoClientConfig() model.ClientConfigs
+	UpdateMongoClientConfig(ctx context.Context, cfg model.ClientConfigs) error
 }
 
 type ConfigServiceImpl struct {
-	collection    *mongo.Collection
-	configManager *config.ConfigManager
-	mongoId       string
+	collection     *mongo.Collection
+	configManager  *config.ConfigManager
+	mongoId        string
+	clientConfigId string
 }
 
-func NewConfigService(db *mongo.Database, mongoId string) ConfigService {
+func NewConfigService(db *mongo.Database, isProduction bool) ConfigService {
 	collection := db.Collection("configs")
-
-	// Initial boot-up load
-	var mongoConfig model.MongoEnvConfig
-	err := collection.FindOne(context.Background(), bson.M{"_id": mongoId}).Decode(&mongoConfig)
-	if err != nil {
-		log.Panicf("Critical error: Could not load initial config from MongoDB: %v", err)
-	}
+	m, c, m1, c1 := initMongoConfigs(isProduction, collection)
 
 	return &ConfigServiceImpl{
-		collection:    collection,
-		configManager: config.NewConfigManager(&mongoConfig),
-		mongoId:       mongoId,
+		collection:     collection,
+		configManager:  config.NewConfigManager(m1, c1),
+		mongoId:        m,
+		clientConfigId: c,
 	}
 }
 
@@ -48,47 +50,31 @@ func (s *ConfigServiceImpl) GetConfigManager() *config.ConfigManager {
 	return s.configManager
 }
 
-// LoadMongoEnvConfig refreshes the in-memory ConfigManager from the Database
-func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx *gin.Context) {
-	val, err := s.FindMongoEnvConfig(ctx.Request.Context())
+func (s *ConfigServiceImpl) LoadMongoEnvConfig(ctx context.Context) error {
+	val, err := s.FindMongoEnvConfig(ctx)
 	if err != nil {
-		log.Printf("Error Loading Mongo Configs: %v", err)
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Error Loading Mongo Configs",
-		})
-		return
+		log.Info().Msgf("Error Loading Mongo Configs: %v", err)
+		return err
 	}
 
 	s.configManager.UpdateConfig(val)
-
-	log.Printf("Mongo Configs Loaded Successfully")
-	ctx.JSON(http.StatusOK, model.Response{
-		Success: true,
-		Message: "Mongo Configs Loaded Successfully",
-	})
+	log.Info().Msg("Mongo Configs Loaded Successfully")
+	return nil
 }
 
-// UpdateMongoEnvConfig updates the DB and then reloads the ConfigManager
-func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx *gin.Context, cfg model.MongoEnvConfig) {
+func (s *ConfigServiceImpl) UpdateMongoEnvConfig(ctx context.Context, cfg model.MongoEnvConfig) error {
 	filter := bson.M{"_id": s.mongoId}
 	update := bson.M{"$set": cfg}
 
-	_, err := s.collection.UpdateOne(ctx.Request.Context(), filter, update)
+	_, err := s.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		log.Printf("Error Updating Mongo Configs: %v", err)
-		ctx.JSON(http.StatusInternalServerError, model.Response{
-			Success: false,
-			Error:   "Error Updating Mongo Configs",
-		})
-		return
+		log.Info().Msgf("Error Updating Mongo Configs: %v", err)
+		return err
 	}
 
-	// Trigger reload to sync in-memory ConfigManager
-	s.LoadMongoEnvConfig(ctx)
+	return s.LoadMongoEnvConfig(ctx)
 }
 
-// FindMongoEnvConfig is a pure data fetcher (Decoupled from Gin)
 func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.MongoEnvConfig, error) {
 	var cfg model.MongoEnvConfig
 	err := s.collection.FindOne(ctx, bson.M{"_id": s.mongoId}).Decode(&cfg)
@@ -98,7 +84,95 @@ func (s *ConfigServiceImpl) FindMongoEnvConfig(ctx context.Context) (*model.Mong
 	return &cfg, nil
 }
 
-// GetActiveMongoEnvConfig returns the current in-memory configuration
-func (s *ConfigServiceImpl) GetActiveMongoEnvConfig(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, s.configManager.GetConfig())
+func (s *ConfigServiceImpl) GetActiveMongoEnvConfig() model.MongoEnvConfig {
+	return *s.configManager.GetConfig()
+}
+
+func (s *ConfigServiceImpl) LoadClientConfig(ctx context.Context) error {
+	val, err := s.FindMongoClientConfig(ctx)
+	if err != nil {
+		log.Info().Msgf("Error Loading Mongo Client Configs: %v", err)
+		return err
+	}
+
+	s.configManager.UpdateClientConfig(val)
+	log.Info().Msg("Mongo Client Configs Loaded Successfully")
+	return nil
+}
+
+func (s *ConfigServiceImpl) FindMongoClientConfig(ctx context.Context) (*model.ClientConfigs, error) {
+	var cfg model.ClientConfigs
+	err := s.collection.FindOne(ctx, bson.M{"_id": s.clientConfigId}).Decode(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func (s *ConfigServiceImpl) GetActiveMongoClientConfig() model.ClientConfigs {
+	return *s.configManager.GetClientConfig()
+}
+
+func (s *ConfigServiceImpl) UpdateMongoClientConfig(ctx context.Context, cfg model.ClientConfigs) error {
+	filter := bson.M{"_id": s.clientConfigId}
+	update := bson.M{"$set": cfg}
+
+	_, err := s.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.Info().Msgf("Error Updating Mongo Client Configs: %v", err)
+		return err
+	}
+
+	return s.LoadClientConfig(ctx)
+}
+
+func initMongoConfigs(isProduction bool, collection *mongo.Collection) (string, string, *model.MongoEnvConfig, *model.ClientConfigs) {
+	mongoId := "mongoConfigDev"
+	if isProduction {
+		mongoId = "mongoConfig"
+	}
+
+	clientConfigId := "clientConfigIdDev"
+	if isProduction {
+		clientConfigId = "clientConfigId"
+	}
+
+	idsToFetch := []string{mongoId, clientConfigId}
+
+	// 2. Use $in operator to fetch multiple documents in one call
+	cursor, err := collection.Find(context.Background(), bson.M{"_id": bson.M{"$in": idsToFetch}})
+	if err != nil {
+		log.Fatal().Msgf("Critical error: Could not query MongoDB: %v", err)
+	}
+
+	// 3. Decode results into a slice of maps
+	var results []bson.M
+	if err = cursor.All(context.Background(), &results); err != nil {
+		log.Fatal().Msgf("Critical error: Could not decode results: %v", err)
+	}
+
+	// 4. Map the generic results back to your specific structs
+	var mongoConfig model.MongoEnvConfig
+	var clientConfig model.ClientConfigs
+
+	for _, doc := range results {
+		id := doc["_id"].(string)
+
+		// Convert the map back to BSON bytes then into the specific struct
+		bsonBytes, _ := bson.Marshal(doc)
+
+		switch id {
+		case mongoId:
+			bson.Unmarshal(bsonBytes, &mongoConfig)
+		case clientConfigId:
+			bson.Unmarshal(bsonBytes, &clientConfig)
+		}
+	}
+
+	// 5. Safety check to ensure both were found
+	if mongoConfig.ID == "" || clientConfig.ID == "" {
+		log.Fatal().Msg("Critical error: One or more config documents missing from MongoDB")
+	}
+
+	return mongoId, clientConfigId, &mongoConfig, &clientConfig
 }

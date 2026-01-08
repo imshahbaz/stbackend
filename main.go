@@ -5,22 +5,18 @@ import (
 	"backend/database"
 	_ "backend/docs"
 	"backend/routes"
-	"log"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-// @title           Trades Management API
-// @version         1.0
-// @description     This is a specialized server for managing trading strategies and margins.
-// @BasePath  /api
-
-//go:generate swag init
 func main() {
-	// Initialize the config
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
-		log.Fatal("Error loading configuration: ", err)
+		log.Fatal().Msgf("Error loading configuration: %v", err)
 	}
 
 	if sysConfigs.Config.Environment == "production" {
@@ -29,17 +25,21 @@ func main() {
 
 	_, db := database.InitMongoClient(sysConfigs)
 
-	// 3. Setup Router & Initialize all Services (Clean delegation)
 	router := routes.SetupRouter(db, sysConfigs)
 
-	// 4. Start Server
 	port := sysConfigs.Config.Port
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	log.Info().Msgf("Server starting on port %s", port)
 	if err := router.Run("0.0.0.0:" + port); err != nil {
-		log.Fatal("Server failed to start: ", err)
+		log.Fatal().Msgf("Server failed to start: %v", err)
 	}
+}
+
+func init() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.With().Logger()
 }

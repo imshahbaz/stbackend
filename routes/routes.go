@@ -5,92 +5,183 @@ import (
 	"backend/client"
 	"backend/config"
 	"backend/controller"
+	"backend/database"
 	"backend/middleware"
 	"backend/repository"
 	"backend/service"
+	"context"
+	"io"
 
+	"github.com/bytedance/sonic"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/oauth2"
+)
+
+var configmanager *config.ConfigManager
+
+var (
+	brevoClient    *client.BrevoClient
+	chartInkClient *client.ChartinkClient
+	yahooClient    *client.YahooClient
+	googleAuth     *oauth2.Config
+)
+
+var (
+	userRepo        *repository.UserRepository
+	marginRepo      *repository.MarginRepository
+	strategyRepo    *repository.StrategyRepository
+	priceActionRepo *repository.PriceActionRepo
+)
+
+var (
+	emailSvc       service.EmailService
+	otpSvc         service.OtpService
+	userSvc        service.UserService
+	marginSvc      service.MarginService
+	strategySvc    service.StrategyService
+	chartInkSvc    service.ChartInkService
+	nseSvc         service.NseService
+	priceActionSvc service.PriceActionService
+	oauthSvc       service.OAuthService
+	authSvc        service.AuthService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
-	r := gin.New()
-	r.Use(gin.Recovery())
+
 	isProduction := cfg.Config.Environment == "production"
-	mongoId := "mongoConfigDev"
-	if isProduction {
-		mongoId = "mongoConfig"
-	}
-	configService := service.NewConfigService(db, mongoId)
-	configmanager := configService.GetConfigManager()
 
-	if configmanager.GetConfig().DebugMode {
-		r.Use(gin.Logger())
-	}
+	configService := service.NewConfigService(db, isProduction)
 
-	r.Use(middleware.CORS(configmanager))
-	r.Use(middleware.RateLimiter(configmanager))
+	r := initApp(configService, db, isProduction)
 
-	// --- 1. Clients ---
-	brevoClient := client.NewBrevoClient()
-	chartInkClient := client.NewChartinkClient()
-
-	// --- 2. Repositories ---
-	userRepo := repository.NewUserRepository(db)
-	marginRepo := repository.NewMarginRepository(db)
-	strategyRepo := repository.NewStrategyRepository(db)
-
-	// --- 3. Services (Dependency Injection) ---
-	emailSvc := service.NewEmailService(brevoClient, configmanager)
-	otpSvc := service.NewOtpService(emailSvc, configmanager)
-	userSvc := service.NewUserService(userRepo)
-
-	marginSvc := service.NewMarginService(marginRepo, configmanager)
-	strategySvc := service.NewStrategyService(strategyRepo)
-	chartInkSvc := service.NewChartInkService(chartInkClient, marginSvc)
-	yahooClient := client.NewYahooClient()
-	nseSvc := service.NewNseService(yahooClient)
 	auth.SecretKey = []byte(configmanager.GetConfig().JwtSecret)
 
-	if !isProduction {
-		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	}
+	humaConfig := *getHumaConfig(isProduction)
 
-	priceActionRepo := repository.NewPriceActionRepo(db)
-	priceActionSvc := service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
+	humaApi := humagin.New(r, humaConfig)
 
-	// --- 4. Routes & Controllers ---
-	api := r.Group("/api")
 	{
+		controller.NewHealthController().RegisterRoutes(humaApi)
 
-		// Health Check
-		controller.NewHealthController().RegisterRoutes(api)
+		controller.NewEmailController(emailSvc).RegisterRoutes(humaApi)
 
-		// Email Endpoints
-		controller.NewEmailController(emailSvc).RegisterRoutes(api)
+		controller.NewMarginController(marginSvc).RegisterRoutes(humaApi)
 
-		// Margin Endpoints
-		controller.NewMarginController(marginSvc).RegisterRoutes(api)
+		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(humaApi)
 
-		// Strategy Endpoints
-		controller.NewStrategyController(strategySvc, isProduction).RegisterRoutes(api)
+		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		// ChartInk Endpoints
-		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(api)
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi)
 
-		//User/Auth Endpoints (Once implemented)
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction).RegisterRoutes(api)
+		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 
-		controller.NewUserController(userSvc, isProduction).RegisterRoutes(api)
+		controller.NewNseController(nseSvc).RegisterRoutes(humaApi)
 
-		controller.NewNseController(nseSvc).RegisterRoutes(api)
+		controller.NewConfigController(configService, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewConfigController(configService, isProduction).RegisterRoutes(api)
-
-		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(api)
+		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
+}
+
+func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *gin.Engine {
+	configmanager = configService.GetConfigManager()
+	r := initGinEngine()
+	go func() { initDB() }()
+	initClients()
+	initRepos(db)
+	initsvcs(isProduction)
+	return r
+}
+
+func initGinEngine() *gin.Engine {
+	r := gin.New()
+	r.Use(middleware.RecoveryMiddleware)
+	r.Use(middleware.ZerologMiddleware())
+	r.Use(middleware.CORS(configmanager))
+	r.Use(middleware.RateLimiter(configmanager))
+	return r
+}
+
+func initDB() {
+	log.Info().Msg("Initialising redis...")
+	database.InitRedis(configmanager.GetConfig().RedisUrl)
+}
+
+func initClients() {
+	brevoClient = client.NewBrevoClient()
+	chartInkClient = client.NewChartinkClient()
+	yahooClient = client.NewYahooClient()
+	googleAuth = auth.GetGoogleOAuthConfig(configmanager.GetConfig().GoogleAuth)
+}
+
+func initRepos(db *mongo.Database) {
+	userRepo = repository.NewUserRepository(db)
+	marginRepo = repository.NewMarginRepository(db)
+	strategyRepo = repository.NewStrategyRepository(db)
+	priceActionRepo = repository.NewPriceActionRepo(db)
+}
+
+func initsvcs(isProduction bool) {
+	emailSvc = service.NewEmailService(brevoClient, configmanager)
+	otpSvc = service.NewOtpService(emailSvc, configmanager)
+	userSvc = service.NewUserService(userRepo)
+	marginSvc = service.NewMarginService(marginRepo, configmanager)
+	strategySvc = service.NewStrategyService(strategyRepo)
+	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc)
+	nseSvc = service.NewNseService(yahooClient)
+	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
+	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
+	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
+
+	go loadInitialData()
+}
+
+func getHumaConfig(isProduction bool) *huma.Config {
+	humaConfig := huma.DefaultConfig("Shahbaz Trades Management API", "1.0.0")
+	if isProduction {
+		humaConfig.DocsPath = ""
+		humaConfig.OpenAPIPath = ""
+	}
+	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"bearer": {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "JWT",
+		},
+	}
+
+	humaConfig.Formats["application/json"] = huma.Format{
+		Marshal: func(w io.Writer, v any) error {
+			return sonic.ConfigDefault.NewEncoder(w).Encode(v)
+		},
+		Unmarshal: sonic.Unmarshal,
+	}
+
+	return &humaConfig
+}
+
+func loadInitialData() {
+	go func() {
+		log.Info().Msg("Loading margins...")
+		if err := marginSvc.ReloadAllMargins(context.Background()); err != nil {
+			log.Info().Msgf("Warning: Failed initial margin load: %v", err)
+		} else {
+			log.Info().Msg("Margins loaded on startup...")
+		}
+	}()
+
+	go func() {
+		log.Info().Msg("Loading strategies...")
+		if err := strategySvc.ReloadAllStrategies(context.Background()); err != nil {
+			log.Info().Msgf("Warning: Failed initial strategies load: %v", err)
+		} else {
+			log.Info().Msg("Strategies loaded on startup...")
+		}
+	}()
 }

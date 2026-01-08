@@ -1,17 +1,18 @@
 package client
 
 import (
-	localCache "backend/cache"
+	"backend/cache"
+	"backend/database"
 	"backend/model"
 	"backend/util"
 	"context"
 	"fmt"
-	"log"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/rs/zerolog/log"
 )
 
 type YahooClient struct {
@@ -34,9 +35,11 @@ func NewYahooClient() *YahooClient {
 }
 
 func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, timeRange model.YahooTimeRange) ([]model.NSEHistoricalData, error) {
-	cacheKey := "history_" + symbol + "_" + string(timeRange)
-	if val, found := localCache.YahooHistoryCache.Get(cacheKey); found {
-		return val.([]model.NSEHistoricalData), nil
+	cacheKey := "yahoo_history_" + symbol + "_" + string(timeRange)
+	var data []model.NSEHistoricalData
+
+	if ok, _ := database.RedisHelper.GetAsStruct(cacheKey, &data); ok {
+		return data, nil
 	}
 
 	var chartResponse model.YahooChartResponse
@@ -48,13 +51,12 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 		Get("/" + symbol + ".NS")
 
 	if err != nil || !resp.IsSuccess() || chartResponse.Chart.Error != nil {
-		log.Println("Error calling yahoo api")
+		log.Info().Msgf("Error calling yahoo api %v", err)
 		return nil, fmt.Errorf("Yahoo request failed: %v", err)
 	}
 
 	list := make([]model.NSEHistoricalData, 0, 10)
 
-	loc, _ := time.LoadLocation("Asia/Kolkata")
 	timeframes := chartResponse.Chart.Result[0].Timestamp
 	quote := chartResponse.Chart.Result[0].Indicators.Quote[0]
 	open := quote.Open
@@ -70,14 +72,14 @@ func (y *YahooClient) GetHistoricalData(ctx context.Context, symbol string, time
 				High:      formatToTwo(high[i]),
 				Low:       formatToTwo(low[i]),
 				Close:     formatToTwo(close[i]),
-				Timestamp: time.Unix(timeframes[i], 0).In(loc).Format("02-Jan-2006"),
+				Timestamp: time.Unix(timeframes[i], 0).In(util.IstLocation).Format(util.InputLayout),
 			})
 		}
 	}
 
 	if len(list) > 0 {
 		slices.Reverse(list)
-		localCache.YahooHistoryCache.Set(cacheKey, list, util.NseCacheExpiryTime())
+		cache.GoSet(cacheKey, list, util.NseCacheExpiryTime())
 	}
 
 	return list, nil

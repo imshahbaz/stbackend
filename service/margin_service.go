@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 
 	"backend/cache"
@@ -12,14 +11,17 @@ import (
 	"backend/model"
 	"backend/repository"
 	"backend/util"
+
+	"github.com/bytedance/sonic"
+	"github.com/rs/zerolog/log"
 )
 
-// MarginService defines the contract for managing stock margins and CSV uploads.
 type MarginService interface {
 	GetAllMargins() []model.Margin
 	GetMargin(symbol string) (*model.Margin, bool)
 	ReloadAllMargins(ctx context.Context) error
 	LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error
+	SyncMTF(ctx context.Context, file io.Reader) error
 }
 
 type MarginServiceImpl struct {
@@ -27,22 +29,13 @@ type MarginServiceImpl struct {
 	cfg  *config.ConfigManager
 }
 
-// NewMarginService initializes the service and performs an initial cache load.
 func NewMarginService(repo *repository.MarginRepository, cfg *config.ConfigManager) MarginService {
-	s := &MarginServiceImpl{
+	return &MarginServiceImpl{
 		repo: repo,
 		cfg:  cfg,
 	}
-
-	// Initial load to populate MarginCache on startup
-	if err := s.ReloadAllMargins(context.Background()); err != nil {
-		log.Printf("Warning: Failed initial margin load: %v", err)
-	}
-
-	return s
 }
 
-// GetAllMargins retrieves all margins from the local cache.
 func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
 	items := cache.MarginCache.Items()
 	margins := make([]model.Margin, 0, len(items))
@@ -55,7 +48,6 @@ func (s *MarginServiceImpl) GetAllMargins() []model.Margin {
 	return margins
 }
 
-// GetMargin retrieves a specific margin by symbol from the local cache.
 func (s *MarginServiceImpl) GetMargin(symbol string) (*model.Margin, bool) {
 	val, exists := cache.MarginCache.Get(symbol)
 	if !exists {
@@ -66,9 +58,8 @@ func (s *MarginServiceImpl) GetMargin(symbol string) (*model.Margin, bool) {
 	return &margin, true
 }
 
-// ReloadAllMargins synchronizes the MarginCache with the latest data from the database.
 func (s *MarginServiceImpl) ReloadAllMargins(ctx context.Context) error {
-	margins, err := s.repo.FindAll(ctx)
+	margins, err := s.repo.GenericRepo.GetAll(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -77,7 +68,6 @@ func (s *MarginServiceImpl) ReloadAllMargins(ctx context.Context) error {
 	return nil
 }
 
-// LoadFromCsv parses a CSV, updates the DB, removes stale records, and refreshes the cache.
 func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error {
 	if file == nil {
 		return fmt.Errorf("file is empty")
@@ -86,42 +76,77 @@ func (s *MarginServiceImpl) LoadFromCsv(ctx context.Context, fileName string, fi
 		return fmt.Errorf("invalid file type: must be .csv")
 	}
 
-	// 1. Parse CSV using utility
 	margins, err := util.Read(file, s.cfg.GetConfig().Leverage)
 	if err != nil {
 		return fmt.Errorf("csv parsing failed: %w", err)
 	}
 
-	// 2. Persist to DB
-	if err := s.repo.SaveAll(ctx, margins); err != nil {
+	if err := s.syncMargins(ctx, margins, "CSV"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *MarginServiceImpl) updateLocalCache(margins []model.Margin) {
+	cache.MarginCache.Flush()
+	for _, m := range margins {
+		cache.MarginCache.Set(m.Symbol, m, -1)
+	}
+}
+
+func (s *MarginServiceImpl) SyncMTF(ctx context.Context, file io.Reader) error {
+	leverage := s.cfg.GetConfig().Leverage
+
+	var rawMargins []struct {
+		Symbol   string  `json:"tradingsymbol"`
+		Leverage float32 `json:"leverage"`
+	}
+
+	decoder := sonic.ConfigDefault.NewDecoder(file)
+	if err := decoder.Decode(&rawMargins); err != nil {
+		return fmt.Errorf("failed to decode MTF JSON: %w", err)
+	}
+
+	var margins []model.Margin
+	for _, m := range rawMargins {
+		if m.Leverage >= leverage {
+			margins = append(margins, model.Margin{
+				Symbol: m.Symbol,
+				Name:   m.Symbol,
+				Margin: float32(m.Leverage),
+			})
+		}
+	}
+
+	if err := s.syncMargins(ctx, margins, "MTF JSON"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *MarginServiceImpl) syncMargins(ctx context.Context, margins []model.Margin, source string) error {
+	if len(margins) == 0 {
+		return nil
+	}
+
+	if err := s.repo.GenericRepo.SaveAll(ctx, margins, "Symbol"); err != nil {
 		return fmt.Errorf("failed to save margins: %w", err)
 	}
 
-	// 3. Clean up stale records (Delete symbols not present in the new CSV)
-	ids := make([]string, len(margins))
+	ids := make([]any, len(margins))
 	for i, m := range margins {
 		ids[i] = m.Symbol
 	}
 
-	deletedCount, err := s.repo.DeleteByIdNotIn(ctx, ids)
+	deletedCount, err := s.repo.GenericRepo.DeleteByIdNotIn(ctx, ids)
 	if err != nil {
-		log.Printf("Error deleting old margins: %v", err)
+		log.Error().Err(err).Msgf("Error deleting old margins from %s", source)
 	}
 
-	// 4. Synchronize Cache
 	s.updateLocalCache(margins)
 
-	log.Printf("CSV Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", len(margins), deletedCount)
+	log.Info().Msgf("%s Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", source, len(margins), deletedCount)
 	return nil
-}
-
-// --- Internal Helpers ---
-
-// updateLocalCache provides a single point of truth for refreshing the MarginCache.
-func (s *MarginServiceImpl) updateLocalCache(margins []model.Margin) {
-	cache.MarginCache.Flush()
-	for _, m := range margins {
-		// Set with NoExpiration (-1)
-		cache.MarginCache.Set(m.Symbol, m, -1)
-	}
 }

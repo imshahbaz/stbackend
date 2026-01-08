@@ -2,7 +2,6 @@ package model
 
 type YahooTimeRange string
 
-// Simple constants with direct string values
 const (
 	Range1d  YahooTimeRange = "1d"
 	Range5d  YahooTimeRange = "5d"
@@ -17,7 +16,6 @@ const (
 	RangeMax YahooTimeRange = "max"
 )
 
-// YahooChartResponse is the top-level container
 type YahooChartResponse struct {
 	Chart ChartData `json:"chart"`
 }
