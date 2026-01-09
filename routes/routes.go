@@ -12,6 +12,8 @@ import (
 	"context"
 	"io"
 
+	"sync"
+
 	"github.com/bytedance/sonic"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -92,9 +94,25 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 func initApp(configService service.ConfigService, db *mongo.Database, isProduction bool) *gin.Engine {
 	configmanager = configService.GetConfigManager()
 	r := initGinEngine()
-	go func() { initDB() }()
-	initClients()
-	initRepos(db)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		initClients()
+	}()
+
+	go func() {
+		defer wg.Done()
+		initRepos(db)
+	}()
+
+	go func() {
+		initDB()
+	}()
+
+	wg.Wait()
 	initsvcs(isProduction)
 	return r
 }

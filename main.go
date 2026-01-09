@@ -5,7 +5,6 @@ import (
 	"backend/database"
 	_ "backend/docs"
 	"backend/routes"
-	"runtime"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -13,7 +12,6 @@ import (
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	sysConfigs, err := config.LoadConfigs()
 	if err != nil {
 		log.Fatal().Msgf("Error loading configuration: %v", err)
