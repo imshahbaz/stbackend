@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"backend/config"
 	"backend/model"
@@ -139,16 +140,19 @@ func initMongoConfigs(isProduction bool, collection *mongo.Collection) (string, 
 
 	idsToFetch := []string{mongoId, clientConfigId}
 
-	// 2. Use $in operator to fetch multiple documents in one call
-	cursor, err := collection.Find(context.Background(), bson.M{"_id": bson.M{"$in": idsToFetch}})
+	// 2. Use $in operator to fetch multiple documents in one call with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{"_id": bson.M{"$in": idsToFetch}})
 	if err != nil {
-		log.Fatal().Msgf("Critical error: Could not query MongoDB: %v", err)
+		log.Fatal().Msgf("Critical error: Could not query MongoDB for configs: %v", err)
 	}
 
 	// 3. Decode results into a slice of maps
 	var results []bson.M
-	if err = cursor.All(context.Background(), &results); err != nil {
-		log.Fatal().Msgf("Critical error: Could not decode results: %v", err)
+	if err = cursor.All(ctx, &results); err != nil {
+		log.Fatal().Msgf("Critical error: Could not decode config results: %v", err)
 	}
 
 	// 4. Map the generic results back to your specific structs
