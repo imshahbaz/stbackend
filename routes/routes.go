@@ -11,6 +11,7 @@ import (
 	"backend/service"
 	"context"
 	"io"
+	"net/url"
 
 	"sync"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
@@ -55,7 +57,6 @@ var (
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 	isProduction := cfg.Config.Environment == "production"
-
 	configService := service.NewConfigService(db, isProduction)
 
 	r := initApp(configService, db, isProduction)
@@ -77,7 +78,23 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewChartInkController(chartInkSvc, strategySvc).RegisterRoutes(humaApi)
 
-		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi)
+		frontendUrl := "http://localhost:3000"
+		rpId := "localhost"
+		frontendUrl = configmanager.GetConfig().FrontendUrls[0]
+		if u, err := url.Parse(frontendUrl); err == nil {
+			rpId = u.Hostname()
+		}
+
+		w, err := webauthn.New(&webauthn.Config{
+			RPDisplayName: "Shahbaz Trades",
+			RPID:          rpId,
+			RPOrigins:     []string{frontendUrl},
+		})
+		if err != nil {
+			log.Fatal().Msgf("Failed to initialize WebAuthn: %v", err)
+		}
+
+		controller.NewAuthController(userSvc, configmanager, otpSvc, isProduction, oauthSvc, authSvc).RegisterRoutes(humaApi, w)
 
 		controller.NewUserController(userSvc, isProduction, otpSvc).RegisterRoutes(humaApi)
 

@@ -8,8 +8,10 @@ import (
 	"backend/middleware"
 	"backend/model"
 	"backend/service"
+	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 var (
@@ -39,7 +41,7 @@ func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
 	}
 }
 
-func (ctrl *AuthController) RegisterRoutes(api huma.API) {
+func (ctrl *AuthController) RegisterRoutes(api huma.API, w *webauthn.WebAuthn) {
 	huma.Register(api, huma.Operation{
 		OperationID: "login",
 		Method:      http.MethodPost,
@@ -118,6 +120,61 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Summary:     "Process Google Token",
 		Tags:        []string{"Authentication"},
 	}, ctrl.validateGoogleToken)
+
+	// Public WebAuthn Routes (Login Flow)
+	huma.Register(api, huma.Operation{
+		OperationID: "webauthn-login-options",
+		Method:      http.MethodPost, // Post because we need the email/identifier
+		Path:        "/api/auth/webauthn/login/options",
+		Summary:     "Get WebAuthn Login Options",
+		Tags:        []string{"WebAuthn"},
+	}, func(ctx context.Context, input *model.WebAuthnLoginOptionsRequest) (*model.WebAuthnLoginOptionsResponse, error) {
+		return ctrl.WebAuthnBeginLogin(ctx, input, w)
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "webauthn-login-verify",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/webauthn/login/verify",
+		Summary:     "Verify WebAuthn Login",
+		Tags:        []string{"WebAuthn"},
+	}, func(ctx context.Context, input *model.WebAuthnLoginVerifyRequest) (*model.LoginResponse, error) {
+		return ctrl.WebAuthnFinishLogin(ctx, input, w)
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "webauthn-register-options",
+		Method:      http.MethodGet,
+		Path:        "/api/auth/webauthn/register/options",
+		Middlewares: huma.Middlewares{authMw},
+		Summary:     "Get Registration Options",
+		Tags:        []string{"WebAuthn"},
+	}, func(ctx context.Context, input *struct{}) (*model.WebAuthnOptionsResponse, error) {
+		return ctrl.WebAuthnBeginRegistration(ctx, w)
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "webauthn-register-verify",
+		Method:      http.MethodPost,
+		Path:        "/api/auth/webauthn/register/verify",
+		Middlewares: huma.Middlewares{authMw},
+		Summary:     "Verify Registration",
+		Tags:        []string{"WebAuthn"},
+	}, func(ctx context.Context, input *model.WebAuthnVerifyRequest) (*model.DefaultResponse, error) {
+		return ctrl.WebAuthnFinishRegistration(ctx, input, w)
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "webauthn-toggle",
+		Method:      http.MethodPatch,
+		Path:        "/api/user/webauthn/toggle",
+		Middlewares: huma.Middlewares{authMw},
+		Summary:     "Toggle WebAuthn",
+		Tags:        []string{"WebAuthn"},
+	}, func(ctx context.Context, input *model.WebAuthnToggleRequest) (*model.DefaultResponse, error) {
+		return ctrl.WebAuthnToggle(ctx, input)
+	})
+
 }
 
 func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest) (*model.LoginResponse, error) {
@@ -154,4 +211,124 @@ func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model
 
 func (ctrl *AuthController) validateGoogleToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
 	return ctrl.oauthSvc.ValidateToken(ctx, input)
+}
+
+func (ctrl *AuthController) WebAuthnBeginRegistration(ctx context.Context, w *webauthn.WebAuthn) (*model.WebAuthnOptionsResponse, error) {
+	user := ctrl.authSvc.GetUserFromContext(ctx)
+	if user == nil {
+		return nil, huma.Error401Unauthorized("User not authenticated", nil)
+	}
+
+	options, session, err := w.BeginRegistration(user)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to begin registration", err)
+	}
+
+	// Store session in Redis/DB using your service
+	ctrl.authSvc.SaveWebAuthnSession(user.WebAuthnID(), session)
+
+	resp := &model.WebAuthnOptionsResponse{}
+	resp.Body.Success = true
+	resp.Body.Data = options
+	return resp, nil
+}
+
+func (ctrl *AuthController) WebAuthnFinishRegistration(ctx context.Context, input *model.WebAuthnVerifyRequest, w *webauthn.WebAuthn) (*model.DefaultResponse, error) {
+	userDto := ctrl.authSvc.GetUserFromContext(ctx)
+	if userDto == nil {
+		return nil, huma.Error401Unauthorized("User not authenticated", nil)
+	}
+
+	session := ctrl.authSvc.GetWebAuthnSession(userDto.WebAuthnID())
+	if session == nil {
+		return nil, huma.Error400BadRequest("Session expired", nil)
+	}
+
+	credential, err := w.CreateCredential(userDto, *session, input.Body.Response)
+	if err != nil {
+		return nil, huma.Error400BadRequest("Verification failed", err)
+	}
+
+	// Persist credential to DB via user service
+	userDto.AddCredential(*credential)
+	userDto.WebAuthnEnabled = true
+
+	user, err := userDto.ToEntity()
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to process user data", err)
+	}
+
+	ctrl.userSvc.PatchUserData(ctx, user.UserID, *user)
+
+	return &model.DefaultResponse{Body: model.Response{Success: true, Message: "Linked"}}, nil
+}
+
+func (ctrl *AuthController) WebAuthnBeginLogin(ctx context.Context, input *model.WebAuthnLoginOptionsRequest, w *webauthn.WebAuthn) (*model.WebAuthnLoginOptionsResponse, error) {
+	var mobile int64
+	var email string
+
+	// Parse identifier into either mobile (int64) or email (string)
+	if m, parseErr := strconv.ParseInt(input.Body.Identifier, 10, 64); parseErr == nil && len(input.Body.Identifier) >= 10 {
+		mobile = m
+	} else {
+		email = input.Body.Identifier
+	}
+
+	user, err := ctrl.userSvc.FindUser(ctx, mobile, email, 0)
+	if err != nil {
+		return nil, huma.Error404NotFound("User not found", err)
+	}
+
+	options, session, err := w.BeginLogin(user)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to begin login", err)
+	}
+
+	ctrl.authSvc.SaveWebAuthnSession(user.WebAuthnID(), session)
+
+	resp := &model.WebAuthnLoginOptionsResponse{}
+	resp.Body.Success = true
+	resp.Body.Data = options
+	return resp, nil
+}
+
+func (ctrl *AuthController) WebAuthnFinishLogin(ctx context.Context, input *model.WebAuthnLoginVerifyRequest, w *webauthn.WebAuthn) (*model.LoginResponse, error) {
+
+	uidStr := string(input.Body.Response.Response.UserHandle)
+	userId, _ := strconv.ParseInt(uidStr, 10, 64)
+
+	session := ctrl.authSvc.GetWebAuthnSession([]byte(uidStr))
+	if session == nil {
+		return nil, huma.Error400BadRequest("Login session expired", nil)
+	}
+
+	user, err := ctrl.userSvc.FindUser(ctx, 0, "", userId)
+	if err != nil {
+		return nil, huma.Error404NotFound("User not found", nil)
+	}
+
+	_, err = w.ValidateLogin(user, *session, input.Body.Response)
+	if err != nil {
+		return nil, huma.Error401Unauthorized("Authentication failed", err)
+	}
+
+	// Reuse user existing login logic to create JWT/Cookies
+	return ctrl.authSvc.CreateAuthSession(ctx, user)
+}
+
+func (ctrl *AuthController) WebAuthnToggle(ctx context.Context, input *model.WebAuthnToggleRequest) (*model.DefaultResponse, error) {
+	userDto := ctrl.authSvc.GetUserFromContext(ctx)
+	if userDto == nil {
+		return nil, huma.Error401Unauthorized("User not authenticated", nil)
+	}
+
+	user, err := userDto.ToEntity()
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to process user data", err)
+	}
+
+	user.WebAuthnEnabled = input.Body.Enabled
+	ctrl.userSvc.PatchUserData(ctx, user.UserID, *user)
+
+	return &model.DefaultResponse{Body: model.Response{Success: true, Message: "Updated"}}, nil
 }

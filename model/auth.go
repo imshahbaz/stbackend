@@ -1,5 +1,7 @@
 package model
 
+import "github.com/go-webauthn/webauthn/protocol"
+
 type UserRole string
 
 type UserTheme string
@@ -85,4 +87,47 @@ type GoogleAuthResponse struct {
 	SetCookie string `header:"Set-Cookie"`
 	Status    int    `status:"302"`
 	Body      Response
+}
+
+// Options Response for Huma
+type WebAuthnOptionsResponse struct {
+	Body struct {
+		Success bool                         `json:"success"`
+		Data    *protocol.CredentialCreation `json:"data"`
+	}
+}
+
+// Verification Request for Huma
+type WebAuthnVerifyRequest struct {
+	Body struct {
+		Response *protocol.ParsedCredentialCreationData `json:"response"`
+	}
+}
+
+// Toggle Request
+type WebAuthnToggleRequest struct {
+	Body struct {
+		Enabled bool `json:"enabled"`
+	}
+}
+
+type WebAuthnLoginVerifyRequest struct {
+	Body struct {
+		Response *protocol.ParsedCredentialAssertionData `json:"response"`
+	}
+}
+
+type WebAuthnLoginOptionsDto struct {
+	Identifier string `json:"email" validate:"required"`
+}
+
+type WebAuthnLoginOptionsRequest struct {
+	Body WebAuthnLoginOptionsDto
+}
+
+type WebAuthnLoginOptionsResponse struct {
+	Body struct {
+		Success bool                          `json:"success"`
+		Data    *protocol.CredentialAssertion `json:"data"`
+	}
 }

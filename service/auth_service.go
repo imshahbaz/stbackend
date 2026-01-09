@@ -14,6 +14,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/jinzhu/copier"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -24,6 +25,13 @@ type AuthService interface {
 	VerifyOtp(ctx context.Context, req model.VerifyOtpRequest) (*model.MessageResponseWrapper, error)
 	Logout() *model.LogoutResponse
 	GetMe(ctx context.Context) (*model.LoginResponse, error)
+
+	// WebAuthn methods
+	SaveWebAuthnSession(userID []byte, session *webauthn.SessionData)
+	GetWebAuthnSession(userID []byte) *webauthn.SessionData
+	GetWebAuthnSessionByChallenge(challenge string) *webauthn.SessionData
+	GetUserFromContext(ctx context.Context) *model.UserDto
+	CreateAuthSession(ctx context.Context, user *model.User) (*model.LoginResponse, error)
 }
 
 type AuthServiceImpl struct {
@@ -166,4 +174,56 @@ func (s *AuthServiceImpl) wrapLoginResponse(user model.UserDto, token string, me
 		resp.SetCookie = s.createAuthCookie(token, 1800)
 	}
 	return resp
+}
+
+func (s *AuthServiceImpl) SaveWebAuthnSession(userID []byte, session *webauthn.SessionData) {
+	key := "webauthn_" + string(session.Challenge)
+	database.RedisHelper.Set(key, session, 5*time.Minute)
+	// Also store by UserID for registration
+	database.RedisHelper.Set("webauthn_user_"+string(userID), session, 5*time.Minute)
+}
+
+func (s *AuthServiceImpl) GetWebAuthnSession(userID []byte) *webauthn.SessionData {
+	var session webauthn.SessionData
+	ok, _ := database.RedisHelper.GetAsStruct("webauthn_user_"+string(userID), &session)
+	if !ok {
+		return nil
+	}
+	return &session
+}
+
+func (s *AuthServiceImpl) GetWebAuthnSessionByChallenge(challenge string) *webauthn.SessionData {
+	var session webauthn.SessionData
+	ok, _ := database.RedisHelper.GetAsStruct("webauthn_challenge_"+challenge, &session)
+	if !ok {
+		// Try generic challenge if that was the key
+		ok, _ = database.RedisHelper.GetAsStruct("webauthn_"+challenge, &session)
+	}
+	if !ok {
+		return nil
+	}
+	return &session
+}
+
+func (s *AuthServiceImpl) GetUserFromContext(ctx context.Context) *model.UserDto {
+	val := ctx.Value("user")
+	if val == nil {
+		return nil
+	}
+	user, ok := val.(model.UserDto)
+	if !ok {
+		return nil
+	}
+	return &user
+}
+
+func (s *AuthServiceImpl) CreateAuthSession(ctx context.Context, user *model.User) (*model.LoginResponse, error) {
+	userDto := user.ToDto()
+	token, err := auth.GenerateToken(userDto)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Internal server error")
+	}
+
+	cache.GoDelete(s.getAuthCacheKey(userDto.UserID))
+	return s.wrapLoginResponse(userDto, token, "Login successful"), nil
 }
