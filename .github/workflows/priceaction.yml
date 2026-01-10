@@ -2,6 +2,7 @@ name: Price Action External Trigger
 on:
   repository_dispatch:
     types: [pa_event]
+  workflow_dispatch:  
 
 jobs:
   warmup:
