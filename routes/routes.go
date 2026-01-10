@@ -52,6 +52,7 @@ var (
 	priceActionSvc service.PriceActionService
 	oauthSvc       service.OAuthService
 	authSvc        service.AuthService
+	newsSvc        service.NewsService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -103,6 +104,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewConfigController(configService, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
+
+		controller.NewNewsController(newsSvc).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -173,6 +176,7 @@ func initsvcs(isProduction bool) {
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
+	newsSvc = service.NewNewsService()
 
 	go loadInitialData()
 }
