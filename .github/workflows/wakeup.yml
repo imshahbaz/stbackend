@@ -1,13 +1,8 @@
 name: NSE API Warmup Schedule IST
 
 on:
-  schedule:
-    # 08:00 AM to 08:50 AM IST (02:30 to 02:50 UTC)
-    - cron: '30,40,50 2 * * *'
-    # 09:00 AM to 11:20 PM IST (03:30 to 17:50 UTC)
-    - cron: '*/10 3-17 * * *'
-    # 11:30 PM to 12:00 AM IST (18:00 to 18:30 UTC)
-    - cron: '0,10,20,30 18 * * *'
+  repository_dispatch:
+    types: [nse-warmup-trigger]
   workflow_dispatch:
 
 jobs:
