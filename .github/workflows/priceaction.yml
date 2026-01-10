@@ -1,0 +1,37 @@
+name: Price Action External Trigger
+on:
+  repository_dispatch:
+    types: [pa_event]
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: API POST 1
+        run: |
+          curl -X POST "https://shahbaz-trades-backend.onrender.com/api/price-action/automate" \
+          -H "Content-Type: application/json" \
+
+      - name: Delay 10s
+        run: sleep 10
+
+      - name: API POST 2
+        run: |
+          curl -X POST "https://shahbaz-trades-backend.onrender.com/api/price-action/cleanup" \
+          -H "Content-Type: application/json" \
+
+      - name: Delay 10s
+        run: sleep 10
+
+      - name: API POST 3
+        run: |
+          curl -X POST "https://shahbaz-trades-backend.onrender.com/api/price-action/fvg/check" \
+          -H "Content-Type: application/json" \
+
+      - name: Delay 10s
+        run: sleep 10
+
+      - name: API POST 4
+        run: |
+          curl -X POST "https://shahbaz-trades-backend.onrender.com/api/price-action/ob/check" \
+          -H "Content-Type: application/json" \
