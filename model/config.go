@@ -34,6 +34,7 @@ type GoogleAuthCredentials struct {
 	ClientSecret  string `json:"secret" bson:"secret"`
 	CallbackUrl   string `json:"callbackUrl" bson:"callbackUrl"`
 	EncryptionKey string `json:"encryptionKey" bson:"encryptionKey"`
+	GeminiApiKey  string `json:"geminiKey" bson:"geminiKey"`
 }
 
 type ClientConfigs struct {
