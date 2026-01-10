@@ -30,6 +30,7 @@ var (
 	chartInkClient *client.ChartinkClient
 	yahooClient    *client.YahooClient
 	googleAuth     *oauth2.Config
+	genAiClient    *client.GenAiClient
 )
 
 var (
@@ -139,6 +140,7 @@ func initClients() {
 	chartInkClient = client.NewChartinkClient()
 	yahooClient = client.NewYahooClient()
 	googleAuth = auth.GetGoogleOAuthConfig(configmanager.GetConfig().GoogleAuth)
+	genAiClient = client.NewGenAiClient(configmanager.GetConfig().GoogleAuth)
 }
 
 func initRepos(db *mongo.Database) {
@@ -159,7 +161,7 @@ func initsvcs(isProduction bool) {
 	priceActionSvc = service.NewPriceActionService(chartInkSvc, nseSvc, priceActionRepo, marginSvc)
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
-	newsSvc = service.NewNewsService()
+	newsSvc = service.NewNewsService(genAiClient, nseSvc)
 
 	go loadInitialData()
 }
