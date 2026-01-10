@@ -1,0 +1,42 @@
+name: NSE API Warmup Schedule
+
+on:
+  schedule:
+    # Runs every 10 minutes from 08:00 to 23:50 UTC
+    # '0-23' covers the hours, '*/10' covers every 10 mins
+    - cron: '*/10 8-23 * * *'
+  workflow_dispatch:
+
+jobs:
+  warmup-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Cache for Warmup Strategy
+        id: cache-warmup
+        uses: actions/cache@v3
+        with:
+          path: .cache/warmup_timestamp
+          key: ${{ runner.os }}-warmup-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-warmup-
+
+      - name: Call NSE API with JWT
+        run: |
+          mkdir -p .cache
+          CURRENT_TIME=$(date +%s)
+          
+          # Call the API using JWT from secrets
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.WAKEUP }}" \
+            -H "Authorization: Bearer ${{ secrets.JWT_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "API Warmup Successful."
+            echo "$CURRENT_TIME" > .cache/warmup_timestamp
+          else
+            echo "API Warmup Failed with status: $RESPONSE"
+            exit 1
+          fi
