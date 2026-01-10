@@ -1,10 +1,13 @@
-name: NSE API Warmup Schedule
+name: NSE API Warmup IST
 
 on:
   schedule:
-    # Runs every 10 minutes from 08:00 to 23:50 UTC
-    # '0-23' covers the hours, '*/10' covers every 10 mins
-    - cron: '*/10 8-23 * * *'
+    # 1. 02:30 UTC to 02:50 UTC (8:00 AM to 8:20 AM IST)
+    - cron: '30,40,50 2 * * *'
+    # 2. 03:00 UTC to 17:50 UTC (8:30 AM to 11:20 PM IST)
+    - cron: '*/10 3-17 * * *'
+    # 3. 18:00 UTC to 18:30 UTC (11:30 PM to 12:00 AM IST)
+    - cron: '0,10,20,30 18 * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,16 +29,13 @@ jobs:
       - name: Call NSE API with JWT
         run: |
           mkdir -p .cache
-          CURRENT_TIME=$(date +%s)
-          
-          # Call the API using JWT from secrets
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.WAKEUP }}" \
-            -H "Authorization: Bearer ${{ secrets.JWT_TOKEN }}" \
+          # JWT and URL should be stored in GitHub Secrets
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.WARMUP }}" \
             -H "Content-Type: application/json")
 
           if [ "$RESPONSE" -eq 200 ]; then
-            echo "API Warmup Successful."
-            echo "$CURRENT_TIME" > .cache/warmup_timestamp
+            echo "API Warmup Successful at $(date)"
+            date +%s > .cache/warmup_timestamp
           else
             echo "API Warmup Failed with status: $RESPONSE"
             exit 1
