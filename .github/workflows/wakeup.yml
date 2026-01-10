@@ -1,12 +1,12 @@
-name: NSE API Warmup IST
+name: NSE API Warmup Schedule IST
 
 on:
   schedule:
-    # 1. 02:30 UTC to 02:50 UTC (8:00 AM to 8:20 AM IST)
+    # 08:00 AM to 08:50 AM IST (02:30 to 02:50 UTC)
     - cron: '30,40,50 2 * * *'
-    # 2. 03:00 UTC to 17:50 UTC (8:30 AM to 11:20 PM IST)
+    # 09:00 AM to 11:20 PM IST (03:30 to 17:50 UTC)
     - cron: '*/10 3-17 * * *'
-    # 3. 18:00 UTC to 18:30 UTC (11:30 PM to 12:00 AM IST)
+    # 11:30 PM to 12:00 AM IST (18:00 to 18:30 UTC)
     - cron: '0,10,20,30 18 * * *'
   workflow_dispatch:
 
@@ -22,6 +22,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: .cache/warmup_timestamp
+          # Changed key to use github.run_id to ensure cache is saved every time
           key: ${{ runner.os }}-warmup-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-warmup-
@@ -29,13 +30,15 @@ jobs:
       - name: Call NSE API with JWT
         run: |
           mkdir -p .cache
-          # JWT and URL should be stored in GitHub Secrets
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.WARMUP }}" \
+          CURRENT_TIME=$(date +%s)
+          
+          # Call the API using JWT from secrets
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.WAKEUP }}" \
             -H "Content-Type: application/json")
 
           if [ "$RESPONSE" -eq 200 ]; then
             echo "API Warmup Successful at $(date)"
-            date +%s > .cache/warmup_timestamp
+            echo "$CURRENT_TIME" > .cache/warmup_timestamp
           else
             echo "API Warmup Failed with status: $RESPONSE"
             exit 1
