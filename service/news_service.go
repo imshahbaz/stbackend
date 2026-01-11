@@ -103,6 +103,7 @@ func (svc *NewsServiceImpl) FetchGenAiAnalysis(symbol string) (*model.DefaultRes
 		return nil, huma.Error500InternalServerError("error fetching analysis")
 	}
 
+	log.Info().Msg(res)
 	sonic.Unmarshal([]byte(res), &resp)
 
 	cache.GoSet("genai_"+symbol, resp, util.NseCacheExpiryTime())
