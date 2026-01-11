@@ -36,6 +36,9 @@ func (c *GenAiClient) GetGenAiStockAnalysis(symbol string, data []model.NSEHisto
 	}
 
 	config := &genai.GenerateContentConfig{
+		Temperature:      ptrFloat32(0.0),
+		TopP:             ptrFloat32(0.1),
+		Seed:             ptrInt(21),
 		ResponseMIMEType: "application/json",
 		ResponseJsonSchema: &genai.Schema{
 			Type: genai.TypeObject,
@@ -45,14 +48,16 @@ func (c *GenAiClient) GetGenAiStockAnalysis(symbol string, data []model.NSEHisto
 				"trend":      {Type: genai.TypeString},
 				"reasoning":  {Type: genai.TypeString},
 			},
-			Required: []string{"action", "confidence", "reasoning"},
+			Required: []string{"action", "confidence", "reasoning", "trend"},
 		},
 		SystemInstruction: genai.NewContentFromText(
-			"You are a professional NSE technical analyst. Respond ONLY in minified JSON.",
+			"You are a Senior NSE Technical Analyst. Perform a logical trend analysis "+
+				"based strictly on the provided OHLC data. Identify support/resistance "+
+				"and price momentum. Output must be valid, minified JSON only.",
 			genai.RoleUser),
 	}
 
-	prompt := fmt.Sprintf("Analyze trend for %s using this 30-day data:\n%s",
+	prompt := fmt.Sprintf("Analyze 30-day trend for %s. Respond with strategy:\n%s",
 		symbol, strings.Join(dataRows, "\n"))
 
 	// 3. Generate Prediction
@@ -63,3 +68,6 @@ func (c *GenAiClient) GetGenAiStockAnalysis(symbol string, data []model.NSEHisto
 
 	return fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0].Text), nil
 }
+
+func ptrFloat32(v float32) *float32 { return &v }
+func ptrInt(v int32) *int32         { return &v }
