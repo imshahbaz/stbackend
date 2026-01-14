@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	nseUrl         = "https://www.nseindia.com"
-	userAgent      = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
-	historicalPath = "/api/NextApi/apiClient/GetQuoteApi"
-	heatMapPath    = "/api/heatmap-index"
-	allIndicesPath = "/api/allindices"
-	nseDateFormat  = "02-01-2006"
+	nseUrl                = "https://www.nseindia.com"
+	userAgent             = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
+	historicalPath        = "/api/NextApi/apiClient/GetQuoteApi"
+	heatMapPath           = "/api/heatmap-index"
+	allIndicesPath        = "/api/allindices"
+	nseDateFormat         = "02-01-2006"
+	deliveryPercentageUrl = "/api/historicalOR/generateSecurityWiseHistoricalData"
 )
 
 var sfGroup singleflight.Group
@@ -36,6 +37,7 @@ type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
+	FetchDeliveryData(ctx context.Context, symbol string) (float32, error)
 }
 
 type NseServiceImpl struct {
@@ -222,4 +224,24 @@ func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
 		"sec-fetch-mode":  "cors",
 		"sec-fetch-site":  "same-origin",
 	}
+}
+
+func (s *NseServiceImpl) FetchDeliveryData(ctx context.Context, symbol string) (float32, error) {
+	var resp model.NseDeliveryData
+	err := s.executeNseRequest("https://www.nseindia.com/report-detail/eq_security", deliveryPercentageUrl,
+		map[string]string{
+			"from":   time.Now().AddDate(0, 0, -7).Format(nseDateFormat),
+			"to":     time.Now().Format(nseDateFormat),
+			"symbol": symbol,
+			"type":   "priceVolumeDeliverable",
+			"series": "ALL",
+		}, &resp)
+
+	if err != nil {
+		log.Err(err).Msg("Error calling nse delivery api")
+		return 0, nil
+	}
+
+	data := resp.Data
+	return data[len(data)-1].DeliveryPercent, nil
 }

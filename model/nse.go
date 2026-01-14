@@ -41,7 +41,13 @@ type NseResponseWrapper[T any] struct {
 	Data []T `json:"data"`
 }
 
-
 type NseHistoryInput struct {
 	Symbol string `query:"symbol" doc:"Stock Symbol (e.g. RELIANCE)" required:"true"`
+}
+
+type NseDeliveryData struct {
+	Data []struct {
+		Timestamp       string  `json:"mTIMESTAMP"`
+		DeliveryPercent float32 `json:"COP_DELIV_PERC"`
+	} `json:"data"`
 }
