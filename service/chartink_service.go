@@ -31,13 +31,15 @@ type ChartInkServiceImpl struct {
 	xsrfToken     string
 	userAgent     string
 	mu            sync.RWMutex
+	nseSvc        NseService
 }
 
-func NewChartInkService(c *client.ChartinkClient, ms MarginService) ChartInkService {
+func NewChartInkService(c *client.ChartinkClient, ms MarginService, nseSvc NseService) ChartInkService {
 	return &ChartInkServiceImpl{
 		client:        c,
 		marginService: ms,
 		userAgent:     chartInkUserAgent,
+		nseSvc:        nseSvc,
 	}
 }
 
@@ -78,6 +80,10 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 				Close:  stock.Close,
 			})
 		}
+	}
+
+	if strategy.Name == "BULLISH MARUBOZU" {
+		s.addDeliveryPercentage(&result)
 	}
 
 	s.sortResultByMargin(result)
@@ -145,4 +151,38 @@ func (s *ChartInkServiceImpl) sortResultByMargin(result []model.StockMarginDto) 
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Margin > result[j].Margin
 	})
+}
+
+func (s *ChartInkServiceImpl) addDeliveryPercentage(result *[]model.StockMarginDto) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	originalData := *result
+	filteredData := make([]model.StockMarginDto, 0, len(originalData))
+
+	semaphore := make(chan struct{}, 2)
+
+	for i := range originalData {
+		wg.Add(1)
+
+		semaphore <- struct{}{}
+
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			dto := originalData[idx]
+			percent, err := s.nseSvc.FetchDeliveryData(context.Background(), dto.Symbol)
+
+			if err == nil && percent >= 50 {
+				dto.DeliveryPercent = percent
+				mu.Lock()
+				filteredData = append(filteredData, dto)
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	*result = filteredData
 }
