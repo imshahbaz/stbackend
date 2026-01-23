@@ -38,6 +38,7 @@ var (
 	marginRepo      *repository.MarginRepository
 	strategyRepo    *repository.StrategyRepository
 	priceActionRepo *repository.PriceActionRepo
+	orderRepo       *repository.OrderRepo
 )
 
 var (
@@ -52,6 +53,8 @@ var (
 	oauthSvc       service.OAuthService
 	authSvc        service.AuthService
 	newsSvc        service.NewsService
+	zerodhaSvc     service.ZerodhaService
+	orderSvc       service.OrderService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -90,6 +93,10 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewNewsController(newsSvc).RegisterRoutes(humaApi)
+
+		controller.NewZerodhaController(zerodhaSvc, isProduction).RegisterRoutes(humaApi)
+
+		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -148,6 +155,7 @@ func initRepos(db *mongo.Database) {
 	marginRepo = repository.NewMarginRepository(db)
 	strategyRepo = repository.NewStrategyRepository(db)
 	priceActionRepo = repository.NewPriceActionRepo(db)
+	orderRepo = repository.NewOrderRepo(db)
 }
 
 func initsvcs(isProduction bool) {
@@ -162,6 +170,8 @@ func initsvcs(isProduction bool) {
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
+	zerodhaSvc = service.NewZerodhaService(&configmanager.GetConfig().ZerodhaConfig)
+	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc)
 
 	go loadInitialData()
 }

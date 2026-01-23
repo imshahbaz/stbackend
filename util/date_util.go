@@ -47,3 +47,21 @@ func NseCacheExpiryTime() time.Duration {
 
 	return time.Until(start.AddDate(0, 0, 1))
 }
+
+func ZerodhaTokenExpiry() time.Duration {
+	now := time.Now()
+	target := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
+	if now.After(target) {
+		target = target.AddDate(0, 0, 1)
+	}
+	return target.Sub(now)
+}
+
+func GetISTMidnight() time.Time {
+	now := time.Now().In(IstLocation)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, IstLocation)
+}
+
+func ToIST(t time.Time) time.Time {
+	return t.In(IstLocation)
+}

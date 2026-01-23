@@ -86,3 +86,10 @@ type GoogleAuthResponse struct {
 	Status    int    `status:"302"`
 	Body      Response
 }
+
+type ZerodhaInput struct {
+	Body struct {
+		RequestToken string `json:"request_token" doc:"The temporary request token returned by Zerodha after login" required:"true"`
+		UserId       int64  `json:"user_id" doc:"The internal user identifier" required:"true"`
+	}
+}

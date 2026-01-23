@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/rs/zerolog v1.34.0
+	github.com/zerodha/gokiteconnect/v4 v4.3.5
 	golang.org/x/time v0.14.0
 	google.golang.org/api v0.259.0
 )
@@ -35,7 +36,9 @@ require (
 	github.com/go-openapi/swag/stringutils v0.25.4 // indirect
 	github.com/go-openapi/swag/typeutils v0.25.4 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
+	github.com/gocarina/gocsv v0.0.0-20180809181117-b8c38cb1ba36 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.8 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect
