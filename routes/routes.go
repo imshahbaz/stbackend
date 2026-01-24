@@ -95,7 +95,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewNewsController(newsSvc).RegisterRoutes(humaApi)
 
-		controller.NewZerodhaController(zerodhaSvc, isProduction).RegisterRoutes(humaApi)
+		controller.NewZerodhaController(zerodhaSvc, isProduction, userSvc).RegisterRoutes(humaApi)
 
 		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
 
@@ -174,7 +174,7 @@ func initsvcs(isProduction bool) {
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
-	zerodhaSvc = service.NewZerodhaService(&configmanager.GetConfig().ZerodhaConfig)
+	zerodhaSvc = service.NewZerodhaService(userSvc)
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc)
 

@@ -17,10 +17,11 @@ import (
 type ZerodhaController struct {
 	zerodhaSvc   service.ZerodhaService
 	isProduction bool
+	userSvc      service.UserService
 }
 
-func NewZerodhaController(zerodhaSvc service.ZerodhaService, isProduction bool) *ZerodhaController {
-	return &ZerodhaController{zerodhaSvc: zerodhaSvc, isProduction: isProduction}
+func NewZerodhaController(zerodhaSvc service.ZerodhaService, isProduction bool, userSvc service.UserService) *ZerodhaController {
+	return &ZerodhaController{zerodhaSvc: zerodhaSvc, isProduction: isProduction, userSvc: userSvc}
 }
 
 func (ctrl *ZerodhaController) RegisterRoutes(api huma.API) {
@@ -47,6 +48,17 @@ func (ctrl *ZerodhaController) RegisterRoutes(api huma.API) {
 		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Zerodha"},
 	}, ctrl.auth)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "zerodha-config",
+		Method:      http.MethodPost,
+		Path:        "/api/zerodha/config",
+		Summary:     "Handle Zerodha Config",
+		Description: "Stores the Zerodha config for the authenticated user.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Zerodha"},
+	}, ctrl.config)
 }
 
 func (ctrl *ZerodhaController) login(ctx context.Context, input *model.ZerodhaInput) (*model.ResponseWrapper, error) {
@@ -59,15 +71,40 @@ func (ctrl *ZerodhaController) login(ctx context.Context, input *model.ZerodhaIn
 }
 
 func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
-	user, ok := ctx.Value("user").(model.UserDto)
+	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")
 	}
 
+	user, err := ctrl.userSvc.FindUser(ctx, 0, "", userDto.UserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Error getting user")
+	}
+
+	if user.ZerodhaConfig.ApiKey == "" || user.ZerodhaConfig.ApiSecret == "" {
+		return nil, huma.Error404NotFound("E001")
+	}
+
 	ok = database.RedisHelper.Exists("zerodha_token_" + strconv.FormatInt(user.UserID, 10))
 	if !ok {
-		return nil, huma.Error404NotFound("Token expired")
+		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
 	}
 
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Token already exist", Data: user.UserID}}, nil
+}
+
+func (ctrl *ZerodhaController) config(ctx context.Context, input *struct{ Body model.ZerodhaConfig }) (*model.ResponseWrapper, error) {
+	userDto, ok := ctx.Value("user").(model.UserDto)
+	if !ok {
+		return nil, huma.Error401Unauthorized("User context missing")
+	}
+
+	user, err := ctrl.userSvc.FindUser(ctx, 0, "", userDto.UserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Error getting user")
+	}
+
+	user.ZerodhaConfig = input.Body
+	ctrl.userSvc.PatchUserData(ctx, user.UserID, *user)
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Zerodha config updated successfully", Data: user.UserID}}, nil
 }

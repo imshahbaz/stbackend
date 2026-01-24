@@ -12,7 +12,6 @@ type MongoEnvConfig struct {
 	JwtSecret      string                `json:"jwtSecret" bson:"jwtSecret"`
 	RedisUrl       string                `json:"redisUrl" bson:"redisUrl"`
 	GoogleAuth     GoogleAuthCredentials `json:"googleAuth" bson:"googleAuth"`
-	ZerodhaConfig  ZerodhaConfig         `json:"zerodhaConfig" bson:"zerodhaConfig"`
 	AngelOneConfig AngelOneConfig        `json:"angelOneConfig" bson:"angelOneConfig"`
 }
 
@@ -46,11 +45,6 @@ type ClientConfigs struct {
 		Email      bool `json:"email" bson:"email"`
 		TrueCaller bool `json:"truecaller" bson:"truecaller"`
 	} `json:"auth" bson:"auth"`
-}
-
-type ZerodhaConfig struct {
-	ApiKey    string `json:"apiKey" bson:"apiKey"`
-	ApiSecret string `json:"apiSecret" bson:"apiSecret"`
 }
 
 type AngelOneConfig struct {

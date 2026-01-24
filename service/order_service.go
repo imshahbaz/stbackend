@@ -154,7 +154,7 @@ func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskNa
 				return
 			}
 
-			kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken)
+			kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, uid)
 			if err != nil {
 				log.Error().Err(err).Int64("userId", uid).Msg("Failed to initiate KiteConnect for user")
 				return
@@ -319,7 +319,7 @@ func (s *OrderServiceImpl) processOrder(ctx context.Context, cancel context.Canc
 		return
 	}
 
-	kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken)
+	kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, order.UserID)
 	if err != nil {
 		log.Error().Err(err).Int64("userId", order.UserID).Msg("Failed to initiate KiteConnect for user")
 		return

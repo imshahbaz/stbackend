@@ -1,7 +1,6 @@
 package service
 
 import (
-	"backend/model"
 	"context"
 	"fmt"
 
@@ -9,7 +8,7 @@ import (
 )
 
 type ZerodhaService interface {
-	InitiateKiteConnect(ctx context.Context, accessToken string) (*kiteconnect.Client, error)
+	InitiateKiteConnect(ctx context.Context, accessToken string, userId int64) (*kiteconnect.Client, error)
 	GenerateAccessToken(requestToken string, userId int64) (string, error)
 	PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64) (kiteconnect.OrderResponse, error)
 	PlaceMTFStopLossOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, triggerPrice float64) (string, error)
@@ -18,21 +17,29 @@ type ZerodhaService interface {
 }
 
 type ZerodhaServiceImpl struct {
-	zerodhaConfig *model.ZerodhaConfig
+	userSvc UserService
 }
 
-func NewZerodhaService(zc *model.ZerodhaConfig) ZerodhaService {
-	fmt.Println(zc)
+func NewZerodhaService(userSvc UserService) ZerodhaService {
 	return &ZerodhaServiceImpl{
-		zerodhaConfig: zc,
+		userSvc: userSvc,
 	}
 }
 
 func (s *ZerodhaServiceImpl) GenerateAccessToken(requestToken string, userId int64) (string, error) {
 
-	kc := kiteconnect.New(s.zerodhaConfig.ApiKey)
+	user, err := s.userSvc.FindUser(context.Background(), 0, "", userId)
+	if err != nil {
+		return "", err
+	}
 
-	userSession, err := kc.GenerateSession(requestToken, s.zerodhaConfig.ApiSecret)
+	if user.ZerodhaConfig.ApiKey == "" || user.ZerodhaConfig.ApiSecret == "" {
+		return "", fmt.Errorf("zerodha config not found")
+	}
+
+	kc := kiteconnect.New(user.ZerodhaConfig.ApiKey)
+
+	userSession, err := kc.GenerateSession(requestToken, user.ZerodhaConfig.ApiSecret)
 	if err != nil {
 		return "", err
 	}
@@ -40,8 +47,18 @@ func (s *ZerodhaServiceImpl) GenerateAccessToken(requestToken string, userId int
 	return userSession.AccessToken, nil
 }
 
-func (s *ZerodhaServiceImpl) InitiateKiteConnect(ctx context.Context, accessToken string) (*kiteconnect.Client, error) {
-	kc := kiteconnect.New(s.zerodhaConfig.ApiKey)
+func (s *ZerodhaServiceImpl) InitiateKiteConnect(ctx context.Context, accessToken string, userId int64) (*kiteconnect.Client, error) {
+	user, err := s.userSvc.FindUser(context.Background(), 0, "", userId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if user.ZerodhaConfig.ApiKey == "" || user.ZerodhaConfig.ApiSecret == "" {
+		return nil, fmt.Errorf("zerodha config not found")
+	}
+
+	kc := kiteconnect.New(user.ZerodhaConfig.ApiKey)
 	kc.SetAccessToken(accessToken)
 	return kc, nil
 }
