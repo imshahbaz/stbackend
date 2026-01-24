@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"backend/cache"
 	"backend/config"
@@ -13,6 +14,7 @@ import (
 	"backend/util"
 
 	"github.com/bytedance/sonic"
+	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,6 +24,7 @@ type MarginService interface {
 	ReloadAllMargins(ctx context.Context) error
 	LoadFromCsv(ctx context.Context, fileName string, file io.Reader) error
 	SyncMTF(ctx context.Context, file io.Reader) error
+	SyncMarginToken(ctx context.Context) error
 }
 
 type MarginServiceImpl struct {
@@ -148,5 +151,77 @@ func (s *MarginServiceImpl) syncMargins(ctx context.Context, margins []model.Mar
 	s.updateLocalCache(margins)
 
 	log.Info().Msgf("%s Loaded. Cache updated. Symbols synced: %d. Deleted stale: %d", source, len(margins), deletedCount)
+	return nil
+}
+
+func (s *MarginServiceImpl) SyncMarginToken(ctx context.Context) error {
+	type MinimalInstrument struct {
+		Name    string `json:"name"`
+		Symbol  string `json:"symbol"`
+		Token   string `json:"token"`
+		ExchSeg string `json:"exch_seg"`
+	}
+
+	marginItems := cache.MarginCache.Items()
+	if len(marginItems) == 0 {
+		return nil
+	}
+
+	targetMargins := make(map[string]model.Margin, len(marginItems))
+	for symbol, item := range marginItems {
+		if m, ok := item.Object.(model.Margin); ok {
+			targetMargins[symbol] = m
+		}
+	}
+
+	client := resty.New()
+	url := "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+
+	resp, err := client.R().
+		SetContext(ctx).
+		SetDoNotParseResponse(true).
+		Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch instrument list: %w", err)
+	}
+	defer resp.RawBody().Close()
+
+	var allInstruments []MinimalInstrument
+	decoder := sonic.ConfigDefault.NewDecoder(resp.RawBody())
+	if err := decoder.Decode(&allInstruments); err != nil {
+		return fmt.Errorf("failed to decode instrument list: %w", err)
+	}
+
+	updatedMargins := make([]model.Margin, 0, len(targetMargins))
+	for i := range allInstruments {
+		inst := &allInstruments[i]
+
+		if inst.ExchSeg != "NSE" || !strings.HasSuffix(inst.Symbol, "-EQ") {
+			continue
+		}
+
+		if margin, exists := targetMargins[inst.Name]; exists {
+			margin.Token = inst.Token
+			updatedMargins = append(updatedMargins, margin)
+			delete(targetMargins, inst.Name)
+		}
+
+		if len(targetMargins) == 0 {
+			break
+		}
+	}
+
+	if len(updatedMargins) == 0 {
+		log.Info().Msg("No matching margin tokens found to update")
+		return nil
+	}
+
+	if err := s.repo.GenericRepo.SaveAll(ctx, updatedMargins, "Symbol"); err != nil {
+		return fmt.Errorf("failed to save updated margins: %w", err)
+	}
+
+	s.updateLocalCache(updatedMargins)
+
+	log.Info().Msgf("Margin tokens synced. Symbols updated: %d", len(updatedMargins))
 	return nil
 }

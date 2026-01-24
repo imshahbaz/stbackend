@@ -55,6 +55,7 @@ var (
 	newsSvc        service.NewsService
 	zerodhaSvc     service.ZerodhaService
 	orderSvc       service.OrderService
+	angelOneSvc    service.AngelOneService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -97,6 +98,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewZerodhaController(zerodhaSvc, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
+
+		controller.NewAngelOneController(angelOneSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -107,7 +110,7 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 	r := initGinEngine()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
@@ -120,6 +123,7 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 	}()
 
 	go func() {
+		defer wg.Done()
 		initDB()
 	}()
 
@@ -172,6 +176,7 @@ func initsvcs(isProduction bool) {
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
 	zerodhaSvc = service.NewZerodhaService(&configmanager.GetConfig().ZerodhaConfig)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc)
+	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig)
 
 	go loadInitialData()
 }
@@ -216,6 +221,15 @@ func loadInitialData() {
 			log.Info().Msgf("Warning: Failed initial strategies load: %v", err)
 		} else {
 			log.Info().Msg("Strategies loaded on startup...")
+		}
+	}()
+
+	go func() {
+		log.Info().Msg("Refreshing Angel One broker session...")
+		if err := angelOneSvc.RefreshBrokerSession(); err != nil {
+			log.Error().Err(err).Msg("Warning: Failed initial Angel One session refresh")
+		} else {
+			log.Info().Msg("Angel One broker session refreshed on startup...")
 		}
 	}()
 }
