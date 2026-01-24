@@ -9,15 +9,16 @@ import (
 )
 
 type User struct {
-	UserID   int64     `bson:"_id" json:"userId"`
-	Email    string    `bson:"email" json:"email"`
-	Username string    `bson:"username" json:"username"`
-	Password string    `bson:"password" json:"password"`
-	Role     UserRole  `bson:"role" json:"role"`
-	Theme    UserTheme `bson:"theme" json:"theme"`
-	Mobile   int64     `bson:"mobile" json:"mobile"`
-	Name     string    `bson:"name" json:"name"`
-	Profile  string    `bson:"profile" json:"profile"`
+	UserID        int64         `bson:"_id" json:"userId"`
+	Email         string        `bson:"email" json:"email"`
+	Username      string        `bson:"username" json:"username"`
+	Password      string        `bson:"password" json:"password"`
+	Role          UserRole      `bson:"role" json:"role"`
+	Theme         UserTheme     `bson:"theme" json:"theme"`
+	Mobile        int64         `bson:"mobile" json:"mobile"`
+	Name          string        `bson:"name" json:"name"`
+	Profile       string        `bson:"profile" json:"profile"`
+	ZerodhaConfig ZerodhaConfig `bson:"zerodhaConfig" json:"zerodhaConfig"`
 }
 
 func (u *User) ToDto() UserDto {
@@ -105,4 +106,9 @@ type GoogleUser struct {
 	Picture       string `json:"picture"`
 	GivenName     string `json:"given_name"`
 	FamilyName    string `json:"family_name"`
+}
+
+type ZerodhaConfig struct {
+	ApiKey    string `json:"apiKey" bson:"apiKey"`
+	ApiSecret string `json:"apiSecret" bson:"apiSecret"`
 }

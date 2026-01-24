@@ -38,6 +38,7 @@ var (
 	marginRepo      *repository.MarginRepository
 	strategyRepo    *repository.StrategyRepository
 	priceActionRepo *repository.PriceActionRepo
+	orderRepo       *repository.OrderRepo
 )
 
 var (
@@ -52,6 +53,9 @@ var (
 	oauthSvc       service.OAuthService
 	authSvc        service.AuthService
 	newsSvc        service.NewsService
+	zerodhaSvc     service.ZerodhaService
+	orderSvc       service.OrderService
+	angelOneSvc    service.AngelOneService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -90,6 +94,12 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewPriceActionController(priceActionSvc, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewNewsController(newsSvc).RegisterRoutes(humaApi)
+
+		controller.NewZerodhaController(zerodhaSvc, isProduction, userSvc).RegisterRoutes(humaApi)
+
+		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
+
+		controller.NewAngelOneController(angelOneSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -100,7 +110,7 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 	r := initGinEngine()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
@@ -113,6 +123,7 @@ func initApp(configService service.ConfigService, db *mongo.Database, isProducti
 	}()
 
 	go func() {
+		defer wg.Done()
 		initDB()
 	}()
 
@@ -148,6 +159,7 @@ func initRepos(db *mongo.Database) {
 	marginRepo = repository.NewMarginRepository(db)
 	strategyRepo = repository.NewStrategyRepository(db)
 	priceActionRepo = repository.NewPriceActionRepo(db)
+	orderRepo = repository.NewOrderRepo(db)
 }
 
 func initsvcs(isProduction bool) {
@@ -162,6 +174,9 @@ func initsvcs(isProduction bool) {
 	oauthSvc = service.NewOAuthService(userSvc, configmanager, isProduction, googleAuth)
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
+	zerodhaSvc = service.NewZerodhaService(userSvc)
+	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig)
+	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc)
 
 	go loadInitialData()
 }
@@ -206,6 +221,15 @@ func loadInitialData() {
 			log.Info().Msgf("Warning: Failed initial strategies load: %v", err)
 		} else {
 			log.Info().Msg("Strategies loaded on startup...")
+		}
+	}()
+
+	go func() {
+		log.Info().Msg("Refreshing Angel One broker session...")
+		if err := angelOneSvc.RefreshBrokerSession(); err != nil {
+			log.Error().Err(err).Msg("Warning: Failed initial Angel One session refresh")
+		} else {
+			log.Info().Msg("Angel One broker session refreshed on startup...")
 		}
 	}()
 }

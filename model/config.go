@@ -1,17 +1,18 @@
 package model
 
 type MongoEnvConfig struct {
-	ID           string                `json:"-" bson:"_id,omitempty"`
-	FrontendUrls []string              `json:"frontendUrls" bson:"frontendUrls"`
-	BrevoEmail   string                `json:"brevoEmail" bson:"brevoEmail"`
-	BrevoApiKey  string                `json:"brevoApiKey" bson:"brevoApiKey"`
-	ApiKey       string                `json:"apiKey" bson:"apiKey"`
-	Leverage     float32               `json:"leverage" bson:"leverage"`
-	DebugMode    bool                  `json:"debugMode" bson:"debugMode"`
-	RateLimiter  bool                  `json:"rateLimiter" bson:"rateLimiter"`
-	JwtSecret    string                `json:"jwtSecret" bson:"jwtSecret"`
-	RedisUrl     string                `json:"redisUrl" bson:"redisUrl"`
-	GoogleAuth   GoogleAuthCredentials `json:"googleAuth" bson:"googleAuth"`
+	ID             string                `json:"-" bson:"_id,omitempty"`
+	FrontendUrls   []string              `json:"frontendUrls" bson:"frontendUrls"`
+	BrevoEmail     string                `json:"brevoEmail" bson:"brevoEmail"`
+	BrevoApiKey    string                `json:"brevoApiKey" bson:"brevoApiKey"`
+	ApiKey         string                `json:"apiKey" bson:"apiKey"`
+	Leverage       float32               `json:"leverage" bson:"leverage"`
+	DebugMode      bool                  `json:"debugMode" bson:"debugMode"`
+	RateLimiter    bool                  `json:"rateLimiter" bson:"rateLimiter"`
+	JwtSecret      string                `json:"jwtSecret" bson:"jwtSecret"`
+	RedisUrl       string                `json:"redisUrl" bson:"redisUrl"`
+	GoogleAuth     GoogleAuthCredentials `json:"googleAuth" bson:"googleAuth"`
+	AngelOneConfig AngelOneConfig        `json:"angelOneConfig" bson:"angelOneConfig"`
 }
 
 type EnvConfig struct {
@@ -44,4 +45,11 @@ type ClientConfigs struct {
 		Email      bool `json:"email" bson:"email"`
 		TrueCaller bool `json:"truecaller" bson:"truecaller"`
 	} `json:"auth" bson:"auth"`
+}
+
+type AngelOneConfig struct {
+	ApiKey   string `json:"apiKey" bson:"apiKey"`
+	ClientID string `json:"clientId" bson:"clientId"`
+	Password string `json:"password" bson:"password"`
+	Seed     string `json:"seed" bson:"seed"`
 }

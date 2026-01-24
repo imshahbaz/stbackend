@@ -54,9 +54,12 @@ func (v *valkeyUtil) Set(key string, value any, expiration time.Duration) error 
 	var data []byte
 	var err error
 
-	if b, ok := value.([]byte); ok {
-		data = b
-	} else {
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
 		data, err = sonic.ConfigDefault.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("sonic marshal error: %w", err)
