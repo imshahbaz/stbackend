@@ -14,6 +14,7 @@ type ZerodhaService interface {
 	PlaceMTFStopLossOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, triggerPrice float64) (string, error)
 	GetOrderDetails(kc *kiteconnect.Client, orderID string) (kiteconnect.Order, error)
 	UpdateMTFStopLossOrder(kc *kiteconnect.Client, orderID string, newPrice float64, newTriggerPrice float64) error
+	CancelOrder(kc *kiteconnect.Client, orderID string) (kiteconnect.OrderResponse, error)
 }
 
 type ZerodhaServiceImpl struct {
@@ -122,4 +123,13 @@ func (s *ZerodhaServiceImpl) UpdateMTFStopLossOrder(kc *kiteconnect.Client, orde
 
 	_, err := kc.ModifyOrder(kiteconnect.VarietyRegular, orderID, modParams)
 	return err
+}
+
+func (s *ZerodhaServiceImpl) CancelOrder(kc *kiteconnect.Client, orderID string) (kiteconnect.OrderResponse, error) {
+	orderResponse, err := kc.CancelOrder(kiteconnect.VarietyAMO, orderID, nil)
+	if err != nil {
+		return kiteconnect.OrderResponse{}, fmt.Errorf("failed to cancel order %s: %w", orderID, err)
+	}
+
+	return orderResponse, nil
 }
