@@ -155,6 +155,11 @@ func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
 			}
 
 			for _, ord := range list {
+				if ord.BuyOrder.OrderID != "" {
+					log.Info().Str("orderId", ord.BuyOrder.OrderID).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("MTF order already placed")
+					continue
+				}
+
 				orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0)
 				if err != nil {
 					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to place MTF order")
@@ -163,7 +168,17 @@ func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
 					ord.BuyOrder = model.OrderInfo{
 						OrderID: orderResponse.OrderID,
 					}
-					go s.repo.PatchStruct(ctx, ord.ID, ord)
+
+					objID, err := primitive.ObjectIDFromHex(ord.ID)
+					if err != nil {
+						log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update buy order")
+						continue
+					}
+
+					_, err = s.repo.PatchStruct(context.Background(), objID, ord)
+					if err != nil {
+						log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update buy order")
+					}
 				}
 			}
 		}(userID, oList)
