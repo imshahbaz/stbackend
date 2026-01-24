@@ -15,7 +15,7 @@ type Order struct {
 type OrderInfo struct {
 	OrderID      string  `json:"orderId" bson:"orderId"`
 	OrderStatus  string  `json:"orderStatus" bson:"orderStatus"`
-	AveragePrice float32 `json:"averagePrice" bson:"averagePrice"`
+	AveragePrice float64 `json:"averagePrice" bson:"averagePrice"`
 }
 
 type OrderDto struct {

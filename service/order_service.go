@@ -11,6 +11,7 @@ import (
 	"backend/util"
 
 	"github.com/rs/zerolog/log"
+	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -25,6 +26,7 @@ type OrderService interface {
 	Create(ctx context.Context, dto model.OrderDto) error
 	Update(ctx context.Context, id string, dto model.OrderDto) error
 	Delete(ctx context.Context, id string) error
+	UpdateOrderStatus(ctx context.Context)
 }
 
 type OrderServiceImpl struct {
@@ -122,15 +124,15 @@ func (s *OrderServiceImpl) GetTodaysOrders(ctx context.Context) ([]model.Order, 
 	return s.repo.GetAll(ctx, filter)
 }
 
-func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
+func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskName string, processFn func(kc *kiteconnect.Client, ord *model.Order) error) {
 	orders, err := s.GetTodaysOrders(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to fetch today's orders for MTF initiation")
+		log.Error().Err(err).Msgf("Failed to fetch today's orders for %s", taskName)
 		return
 	}
 
 	if len(orders) == 0 {
-		log.Info().Msg("No orders found for today to initiate MTF")
+		log.Info().Msgf("No orders found for today to %s", taskName)
 		return
 	}
 
@@ -155,34 +157,44 @@ func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
 			}
 
 			for _, ord := range list {
-				if ord.BuyOrder.OrderID != "" {
-					log.Info().Str("orderId", ord.BuyOrder.OrderID).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("MTF order already placed")
+				if err := processFn(kc, &ord); err != nil {
+					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msgf("Error processing order in %s", taskName)
 					continue
 				}
 
-				orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0)
+				objID, err := primitive.ObjectIDFromHex(ord.ID)
 				if err != nil {
-					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to place MTF order")
-				} else {
-					log.Info().Str("orderId", orderResponse.OrderID).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("MTF order placed successfully")
-					ord.BuyOrder = model.OrderInfo{
-						OrderID: orderResponse.OrderID,
-					}
+					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Invalid ObjectID during update")
+					continue
+				}
 
-					objID, err := primitive.ObjectIDFromHex(ord.ID)
-					if err != nil {
-						log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update buy order")
-						continue
-					}
-
-					_, err = s.repo.PatchStruct(context.Background(), objID, ord)
-					if err != nil {
-						log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update buy order")
-					}
+				_, err = s.repo.PatchStruct(context.Background(), objID, ord)
+				if err != nil {
+					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update order in database")
 				}
 			}
 		}(userID, oList)
 	}
+}
+
+func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
+	s.processTodayOrdersPerUser(ctx, "Initiate MTF", func(kc *kiteconnect.Client, ord *model.Order) error {
+		if ord.BuyOrder.OrderID != "" {
+			log.Info().Str("orderId", ord.BuyOrder.OrderID).Str("symbol", ord.Symbol).Int64("userId", ord.UserID).Msg("MTF order already placed")
+			return nil
+		}
+
+		orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0)
+		if err != nil {
+			return err
+		}
+
+		log.Info().Str("orderId", orderResponse.OrderID).Str("symbol", ord.Symbol).Int64("userId", ord.UserID).Msg("MTF order placed successfully")
+		ord.BuyOrder = model.OrderInfo{
+			OrderID: orderResponse.OrderID,
+		}
+		return nil
+	})
 }
 
 func (s *OrderServiceImpl) Create(ctx context.Context, dto model.OrderDto) error {
@@ -254,4 +266,28 @@ func (s *OrderServiceImpl) toDto(o *model.Order) *model.OrderDto {
 		Quantity: o.Quantity,
 		Date:     util.ToIST(o.Date).Format(time.RFC3339),
 	}
+}
+
+func (s *OrderServiceImpl) UpdateOrderStatus(ctx context.Context) {
+	s.processTodayOrdersPerUser(ctx, "Update MTF Status", func(kc *kiteconnect.Client, ord *model.Order) error {
+		if ord.BuyOrder.OrderID == "" {
+			log.Info().Str("symbol", ord.Symbol).Int64("userId", ord.UserID).Msg("MTF order not found, skipping status update")
+			return nil
+		}
+
+		orderResponse, err := s.zerodhaSvc.GetOrderDetails(kc, ord.BuyOrder.OrderID)
+		if err != nil {
+			return err
+		}
+
+		if orderResponse.Status != "" {
+			ord.BuyOrder.OrderStatus = orderResponse.Status
+		}
+
+		if orderResponse.AveragePrice > 0 {
+			ord.BuyOrder.AveragePrice = orderResponse.AveragePrice
+		}
+
+		return nil
+	})
 }

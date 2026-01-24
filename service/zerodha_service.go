@@ -58,7 +58,7 @@ func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string
 		Validity:        kiteconnect.ValidityDay,
 	}
 
-	return kc.PlaceOrder(kiteconnect.VarietyAMO, orderParams)
+	return kc.PlaceOrder(kiteconnect.VarietyRegular, orderParams)
 }
 
 func (s *ZerodhaServiceImpl) PlaceMTFStopLossOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, triggerPrice float64) (string, error) {
