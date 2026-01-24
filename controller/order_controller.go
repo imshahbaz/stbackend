@@ -103,6 +103,15 @@ func (ctrl *OrderController) RegisterRoutes(api huma.API) {
 		Description: "Fetches today's orders and updates their status from Zerodha",
 		Tags:        []string{"Order"},
 	}, ctrl.UpdateOrderStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "start-trading",
+		Method:      http.MethodPost,
+		Path:        "/api/order/start-trading",
+		Summary:     "Start trading for today's orders",
+		Description: "Fetches today's orders and starts processing them",
+		Tags:        []string{"Order"},
+	}, ctrl.StartTrading)
 }
 
 func (ctrl *OrderController) Get(ctx context.Context, input *model.GetOrderInput) (*model.DefaultResponse, error) {
@@ -164,4 +173,9 @@ func (ctrl *OrderController) InitiateMtfOrders(ctx context.Context, input *struc
 func (ctrl *OrderController) UpdateOrderStatus(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	ctrl.orderService.UpdateOrderStatus(ctx)
 	return NewResponse(nil, "Order status update triggered"), nil
+}
+
+func (ctrl *OrderController) StartTrading(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	ctrl.orderService.StartTrading(ctx)
+	return NewResponse(nil, "Trading started successfully"), nil
 }

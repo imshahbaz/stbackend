@@ -175,8 +175,8 @@ func initsvcs(isProduction bool) {
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
 	zerodhaSvc = service.NewZerodhaService(&configmanager.GetConfig().ZerodhaConfig)
-	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc)
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig)
+	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc)
 
 	go loadInitialData()
 }
