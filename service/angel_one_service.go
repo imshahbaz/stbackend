@@ -17,6 +17,7 @@ import (
 type AngelOneService interface {
 	RefreshBrokerSession() error
 	GetLTP(tradingSymbol, symbolToken string) (float64, error)
+	GetMultipleLTP(tokens []string) (map[string]float64, error)
 }
 
 type AngelOneServiceImpl struct {
@@ -119,4 +120,42 @@ func (s *AngelOneServiceImpl) GetLTP(tradingSymbol, symbolToken string) (float64
 	}
 
 	return 0, fmt.Errorf("no ltp data found for token %s", symbolToken)
+}
+
+func (s *AngelOneServiceImpl) GetMultipleLTP(tokens []string) (map[string]float64, error) {
+	var result model.QuoteResponse
+
+	requestBody := map[string]any{
+		"mode": "LTP",
+		"exchangeTokens": map[string][]string{
+			"NSE": tokens,
+		},
+	}
+
+	resp, err := s.restyClient.R().
+		SetHeader("Authorization", "Bearer "+s.token).
+		SetBody(requestBody).
+		SetResult(&result).
+		Post("/rest/secure/angelbroking/market/v1/quote/")
+
+	if err != nil {
+		return nil, fmt.Errorf("bulk ltp request failed: %w", err)
+	}
+
+	if resp.StatusCode() == 401 || result.Errorcode == "AG8001" {
+		if err := s.RefreshBrokerSession(); err == nil {
+			return s.GetMultipleLTP(tokens)
+		}
+	}
+
+	if !resp.IsSuccess() || !result.Status {
+		return nil, fmt.Errorf("api error: %s (code: %s)", result.Message, result.Errorcode)
+	}
+
+	ltpMap := make(map[string]float64, len(result.Data.Fetched))
+	for _, item := range result.Data.Fetched {
+		ltpMap[item.SymbolToken] = item.Ltp
+	}
+
+	return ltpMap, nil
 }

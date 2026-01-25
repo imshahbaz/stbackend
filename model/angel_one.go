@@ -5,6 +5,12 @@ type AngelOneLTPInput struct {
 	SymbolToken   string `query:"symbolToken" doc:"The symbol token of the instrument" required:"true"`
 }
 
+type AngelOneMultipleLTPInput struct {
+	Body struct {
+		Tokens []string `json:"tokens" doc:"List of symbol tokens" required:"true"`
+	}
+}
+
 type QuoteData struct {
 	Exchange      string  `json:"exchange"`
 	TradingSymbol string  `json:"tradingSymbol"`
