@@ -38,6 +38,7 @@ type OrderService interface {
 	Delete(ctx context.Context, id string) error
 	UpdateOrderStatus(ctx context.Context)
 	StartTrading(ctx context.Context)
+	ResetTradingSystem(ctx context.Context) error
 }
 
 type OrderServiceImpl struct {
@@ -480,4 +481,23 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 		}
 		return 0
 	}
+}
+
+func (s *OrderServiceImpl) ResetTradingSystem(ctx context.Context) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	log.Info().Msg("Manual System Reset Triggered via Controller")
+
+	if oneMinuteCron != nil {
+		oneMinuteCron.Stop()
+		oneMinuteCron = nil
+	}
+	if fifteenMinuteCron != nil {
+		fifteenMinuteCron.Stop()
+		fifteenMinuteCron = nil
+	}
+
+	log.Info().Msg("System state cleared. Ready for re-initialization.")
+	return nil
 }
