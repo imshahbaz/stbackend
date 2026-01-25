@@ -14,10 +14,22 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	IntervalOneMin     = "ONE_MINUTE"
+	IntervalThreeMin   = "THREE_MINUTE"
+	IntervalFiveMin    = "FIVE_MINUTE"
+	IntervalTenMin     = "TEN_MINUTE"
+	IntervalFifteenMin = "FIFTEEN_MINUTE"
+	IntervalThirtyMin  = "THIRTY_MINUTE"
+	IntervalOneHour    = "ONE_HOUR"
+	IntervalOneDay     = "ONE_DAY"
+)
+
 type AngelOneService interface {
 	RefreshBrokerSession() error
 	GetLTP(tradingSymbol, symbolToken string) (float64, error)
 	GetMultipleLTP(tokens []string) (map[string]float64, error)
+	GetHistoricalData(symbolToken string, interval string, fromDate, toDate string) ([]model.AngelOneCandle, error)
 }
 
 type AngelOneServiceImpl struct {
@@ -152,4 +164,47 @@ func (s *AngelOneServiceImpl) GetMultipleLTP(tokens []string) (map[string]float6
 	}
 
 	return ltpMap, nil
+}
+
+func (s *AngelOneServiceImpl) GetHistoricalData(symbolToken string, interval string, fromDate, toDate string) ([]model.AngelOneCandle, error) {
+	var result model.CandleDataResponse
+
+	resp, err := s.restyClient.R().
+		SetHeader("Authorization", "Bearer "+s.token).
+		SetBody(map[string]string{
+			"exchange":    "NSE",
+			"symboltoken": symbolToken,
+			"interval":    interval,
+			"fromdate":    fromDate,
+			"todate":      toDate,
+		}).
+		SetResult(&result).
+		Post("/rest/secure/angelbroking/historical/v1/getCandleData")
+
+	if err != nil {
+		return nil, fmt.Errorf("historical data request failed: %w", err)
+	}
+
+	if !resp.IsSuccess() || !result.Status {
+		return nil, fmt.Errorf("api error: %s", result.Message)
+	}
+
+	var candles []model.AngelOneCandle
+	for _, row := range result.Data {
+		if len(row) < 6 {
+			continue
+		}
+
+		candle := model.AngelOneCandle{
+			Time:   fmt.Sprint(row[0]),
+			Open:   row[1].(float64),
+			High:   row[2].(float64),
+			Low:    row[3].(float64),
+			Close:  row[4].(float64),
+			Volume: int64(row[5].(float64)),
+		}
+		candles = append(candles, candle)
+	}
+
+	return candles, nil
 }
