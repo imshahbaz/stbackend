@@ -142,12 +142,6 @@ func (s *AngelOneServiceImpl) GetMultipleLTP(tokens []string) (map[string]float6
 		return nil, fmt.Errorf("bulk ltp request failed: %w", err)
 	}
 
-	if resp.StatusCode() == 401 || result.Errorcode == "AG8001" {
-		if err := s.RefreshBrokerSession(); err == nil {
-			return s.GetMultipleLTP(tokens)
-		}
-	}
-
 	if !resp.IsSuccess() || !result.Status {
 		return nil, fmt.Errorf("api error: %s (code: %s)", result.Message, result.Errorcode)
 	}
