@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 type Order struct {
 	ID            string    `json:"id" bson:"_id,omitempty"`
@@ -10,6 +12,7 @@ type Order struct {
 	Date          time.Time `json:"date" bson:"date"`
 	BuyOrder      OrderInfo `json:"buyOrder" bson:"buyOrder"`
 	StopLossOrder OrderInfo `json:"stopLossOrder" bson:"stopLossOrder"`
+	Margin        Margin    `json:"margin" bson:"margin"`
 }
 
 type OrderInfo struct {

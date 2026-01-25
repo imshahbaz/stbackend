@@ -12,6 +12,7 @@ import (
 var StrategyCache = cache.New(cache.NoExpiration, 0)
 var MarginCache = cache.New(cache.NoExpiration, 0)
 var RateLimiterCache = cache.New(10*time.Minute, 15*time.Minute)
+var KiteClientCache = cache.New(10*time.Hour, 1*time.Hour)
 
 func getKeyAndExpiry(reqId string, cacheType model.UserCacheType) (string, time.Duration) {
 	stringType := string(cacheType) + "_"
