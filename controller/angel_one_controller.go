@@ -37,6 +37,15 @@ func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
 		Description: "Fetches the Last Traded Price (LTP) for a given symbol from Angel One.",
 		Tags:        []string{"Angel One"},
 	}, ctrl.getLTP)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-angelone-multiple-ltp",
+		Method:      http.MethodPost,
+		Path:        "/api/angelone/ltp/bulk",
+		Summary:     "Get LTP for multiple symbols",
+		Description: "Fetches the Last Traded Price (LTP) for multiple symbol tokens from Angel One.",
+		Tags:        []string{"Angel One"},
+	}, ctrl.getMultipleLTP)
 }
 
 func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
@@ -53,4 +62,12 @@ func (ctrl *AngelOneController) getLTP(ctx context.Context, input *model.AngelOn
 		return nil, huma.Error500InternalServerError("Error fetching LTP: " + err.Error())
 	}
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: ltp}}, nil
+}
+
+func (ctrl *AngelOneController) getMultipleLTP(ctx context.Context, input *model.AngelOneMultipleLTPInput) (*model.ResponseWrapper, error) {
+	ltpMap, err := ctrl.angelOneSvc.GetMultipleLTP(input.Body.Tokens)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Error fetching bulk LTP: " + err.Error())
+	}
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: ltpMap}}, nil
 }

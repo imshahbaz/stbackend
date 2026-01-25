@@ -370,16 +370,27 @@ func (s *OrderServiceImpl) StartTrading(ctx context.Context) {
 		if len(orders) == 0 {
 			return
 		}
+
+		tokens := s.extractTokens(orders)
+
+		ltpMap, err := s.angelSvc.GetMultipleLTP(tokens)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to fetch LTP")
+			return
+		}
+
 		for _, order := range orders {
-			go func(o *model.Order) {
-				res := s.processOrder(o)
-				if res < 0 {
-					firstSlTradeManager.RemoveTrade(o.ID)
-				} else if res == 1 {
-					firstSlTradeManager.RemoveTrade(o.ID)
-					trailingSlTradeManager.AddTrade(o)
-				}
-			}(order)
+			if ltp, ok := ltpMap[order.Margin.Token]; ok {
+				go func(o *model.Order, ltp float64) {
+					res := s.processOrder(o, ltp)
+					if res < 0 {
+						firstSlTradeManager.RemoveTrade(o.ID)
+					} else if res == 1 {
+						firstSlTradeManager.RemoveTrade(o.ID)
+						trailingSlTradeManager.AddTrade(o)
+					}
+				}(order, ltp)
+			}
 		}
 	})
 
@@ -388,18 +399,37 @@ func (s *OrderServiceImpl) StartTrading(ctx context.Context) {
 		if len(orders) == 0 {
 			return
 		}
+
+		tokens := s.extractTokens(orders)
+
+		ltpMap, err := s.angelSvc.GetMultipleLTP(tokens)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to fetch LTP")
+			return
+		}
+
 		for _, order := range orders {
-			go func(o *model.Order) {
-				res := s.processOrder(o)
-				if res < 0 {
-					trailingSlTradeManager.RemoveTrade(o.ID)
-				}
-			}(order)
+			if ltp, ok := ltpMap[order.Margin.Token]; ok {
+				go func(o *model.Order, ltp float64) {
+					res := s.processOrder(o, ltp)
+					if res < 0 {
+						trailingSlTradeManager.RemoveTrade(o.ID)
+					}
+				}(order, ltp)
+			}
 		}
 	})
 }
 
-func (s *OrderServiceImpl) processOrder(order *model.Order) int8 {
+func (s *OrderServiceImpl) extractTokens(orders []*model.Order) []string {
+	tokens := make([]string, len(orders))
+	for i, o := range orders {
+		tokens[i] = o.Margin.Token
+	}
+	return tokens
+}
+
+func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64) int8 {
 	var kc *kiteconnect.Client
 	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(order.UserID, 10))
 	if !ok {
@@ -427,13 +457,7 @@ func (s *OrderServiceImpl) processOrder(order *model.Order) int8 {
 		return -1
 	}
 
-	currentPrice, err := s.angelSvc.GetLTP(order.Margin.Symbol, order.Margin.Token)
-	if err != nil {
-		log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get LTP")
-		return 0
-	}
-
-	return s.addStopLoss(order, currentPrice, buyPrice, kc)
+	return s.addStopLoss(order, ltp, buyPrice, kc)
 }
 
 func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client) int8 {
