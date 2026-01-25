@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strconv"
+	"sync"
 	"time"
 
 	"backend/cache"
@@ -12,10 +13,17 @@ import (
 	"backend/repository"
 	"backend/util"
 
+	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+var (
+	mu                sync.Mutex
+	oneMinuteCron     *cron.Cron
+	fifteenMinuteCron *cron.Cron
 )
 
 type OrderService interface {
@@ -147,34 +155,42 @@ func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskNa
 
 	for userID, oList := range userOrders {
 		go func(uid int64, list []model.Order) {
-			var accessToken string
-			ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(uid, 10), &accessToken)
-			if !ok || accessToken == "" {
-				log.Warn().Int64("userId", uid).Msg("AccessToken not found in Redis for user")
-				return
+			var kc *kiteconnect.Client
+			var err error
+			val, ok := cache.KiteClientCache.Get(strconv.FormatInt(uid, 10))
+			if !ok {
+				var accessToken string
+				ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(uid, 10), &accessToken)
+				if !ok || accessToken == "" {
+					log.Warn().Int64("userId", uid).Msg("AccessToken not found in Redis for user")
+					return
+				}
+
+				kc, err = s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, uid)
+				if err != nil {
+					log.Error().Err(err).Int64("userId", uid).Msg("Failed to initiate KiteConnect for user")
+					return
+				}
+				cache.KiteClientCache.Set(strconv.FormatInt(uid, 10), kc, util.ZerodhaTokenExpiry())
+			} else {
+				kc = val.(*kiteconnect.Client)
 			}
 
-			kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, uid)
-			if err != nil {
-				log.Error().Err(err).Int64("userId", uid).Msg("Failed to initiate KiteConnect for user")
-				return
-			}
-
-			for _, ord := range list {
-				if err := processFn(kc, &ord); err != nil {
-					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msgf("Error processing order in %s", taskName)
+			for i := range list {
+				if err := processFn(kc, &list[i]); err != nil {
+					log.Error().Err(err).Str("symbol", list[i].Symbol).Int64("userId", uid).Msgf("Error processing order in %s", taskName)
 					continue
 				}
 
-				objID, err := primitive.ObjectIDFromHex(ord.ID)
+				objID, err := primitive.ObjectIDFromHex(list[i].ID)
 				if err != nil {
-					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Invalid ObjectID during update")
+					log.Error().Err(err).Str("symbol", list[i].Symbol).Int64("userId", uid).Msg("Invalid ObjectID during update")
 					continue
 				}
 
-				_, err = s.repo.PatchStruct(context.Background(), objID, ord)
+				_, err = s.repo.PatchStruct(context.Background(), objID, list[i])
 				if err != nil {
-					log.Error().Err(err).Str("symbol", ord.Symbol).Int64("userId", uid).Msg("Failed to update order in database")
+					log.Error().Err(err).Str("symbol", list[i].Symbol).Int64("userId", uid).Msg("Failed to update order in database")
 				}
 			}
 		}(userID, oList)
@@ -216,12 +232,20 @@ func (s *OrderServiceImpl) Create(ctx context.Context, dto model.OrderDto) error
 		orderDate = util.ToIST(orderDate)
 	}
 
+	val, ok := cache.MarginCache.Get(dto.Symbol)
+	if !ok {
+		return errors.New("Margin not found")
+	}
+
+	margin := val.(model.Margin)
 	order := model.Order{
 		UserID:   dto.UserID,
 		Symbol:   dto.Symbol,
 		Quantity: dto.Quantity,
 		Date:     orderDate,
+		Margin:   margin,
 	}
+
 	return s.repo.Insert(ctx, order)
 }
 
@@ -243,11 +267,19 @@ func (s *OrderServiceImpl) Update(ctx context.Context, id string, dto model.Orde
 		orderDate = util.ToIST(orderDate)
 	}
 
+	val, ok := cache.MarginCache.Get(dto.Symbol)
+	if !ok {
+		return errors.New("Margin not found")
+	}
+
+	margin := val.(model.Margin)
+
 	updateData := model.Order{
 		UserID:   dto.UserID,
 		Symbol:   dto.Symbol,
 		Quantity: dto.Quantity,
 		Date:     orderDate,
+		Margin:   margin,
 	}
 
 	_, err = s.repo.PatchStruct(ctx, objID, updateData)
@@ -297,94 +329,140 @@ func (s *OrderServiceImpl) UpdateOrderStatus(ctx context.Context) {
 }
 
 func (s *OrderServiceImpl) StartTrading(ctx context.Context) {
-	duration := 1 * time.Minute
+
 	orders, err := s.GetTodaysOrders(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch today's orders")
 		return
 	}
-	for _, order := range orders {
-		bgCtx, cancel := context.WithTimeout(context.Background(), duration)
-		go s.processOrder(bgCtx, cancel, order)
+
+	if len(orders) == 0 {
+		log.Info().Msg("No orders found for today")
+		return
 	}
+
+	mu.Lock()
+	if oneMinuteCron != nil {
+		oneMinuteCron.Stop()
+		oneMinuteCron = nil
+	}
+
+	if fifteenMinuteCron != nil {
+		fifteenMinuteCron.Stop()
+		fifteenMinuteCron = nil
+	}
+	mu.Unlock()
+
+	firstSlTradeManager := util.NewTradeManager()
+	trailingSlTradeManager := util.NewTradeManager()
+
+	newMap := make(map[string]*model.Order, len(orders))
+
+	for i := range orders {
+		newMap[orders[i].ID] = &orders[i]
+	}
+
+	firstSlTradeManager.ReplaceAll(newMap)
+
+	oneMinuteCron, err = util.ScheduleTask(util.OneMinSpec, func() {
+		orders := firstSlTradeManager.GetActiveList()
+		if len(orders) == 0 {
+			return
+		}
+		for _, order := range orders {
+			go func(o *model.Order) {
+				res := s.processOrder(o)
+				if res < 0 {
+					firstSlTradeManager.RemoveTrade(o.ID)
+				} else if res == 1 {
+					firstSlTradeManager.RemoveTrade(o.ID)
+					trailingSlTradeManager.AddTrade(o)
+				}
+			}(order)
+		}
+	})
+
+	fifteenMinuteCron, err = util.ScheduleTask(util.FifteenMinSpec, func() {
+		orders := trailingSlTradeManager.GetActiveList()
+		if len(orders) == 0 {
+			return
+		}
+		for _, order := range orders {
+			go func(o *model.Order) {
+				res := s.processOrder(o)
+				if res < 0 {
+					trailingSlTradeManager.RemoveTrade(o.ID)
+				}
+			}(order)
+		}
+	})
 }
 
-func (s *OrderServiceImpl) processOrder(ctx context.Context, cancel context.CancelFunc, order model.Order) {
-	defer cancel()
+func (s *OrderServiceImpl) processOrder(order *model.Order) int8 {
+	var kc *kiteconnect.Client
+	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(order.UserID, 10))
+	if !ok {
+		var accessToken string
+		ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(order.UserID, 10), &accessToken)
+		if !ok || accessToken == "" {
+			log.Warn().Int64("userId", order.UserID).Msg("AccessToken not found in Redis for user")
+			return -1
+		}
 
-	var accessToken string
-	ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(order.UserID, 10), &accessToken)
-	if !ok || accessToken == "" {
-		log.Warn().Int64("userId", order.UserID).Msg("AccessToken not found in Redis for user")
-		return
-	}
-
-	kc, err := s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, order.UserID)
-	if err != nil {
-		log.Error().Err(err).Int64("userId", order.UserID).Msg("Failed to initiate KiteConnect for user")
-		return
+		var err error
+		kc, err = s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, order.UserID)
+		if err != nil {
+			log.Error().Err(err).Int64("userId", order.UserID).Msg("Failed to initiate KiteConnect for user")
+			return -1
+		}
+		cache.KiteClientCache.Set(strconv.FormatInt(order.UserID, 10), kc, util.ZerodhaTokenExpiry())
+	} else {
+		kc = val.(*kiteconnect.Client)
 	}
 
 	buyPrice := order.BuyOrder.AveragePrice
 	if buyPrice == 0 {
 		log.Error().Str("symbol", order.Symbol).Msg("Buy price not found")
-		return
+		return -1
 	}
 
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	val, ok := cache.MarginCache.Get(order.Symbol)
-	if !ok {
-		log.Error().Str("symbol", order.Symbol).Msg("Margin not found")
-		return
+	currentPrice, err := s.angelSvc.GetLTP(order.Margin.Symbol, order.Margin.Token)
+	if err != nil {
+		log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get LTP")
+		return 0
 	}
 
-	margin := val.(model.Margin)
-
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("Order %s stopped externally\n", order.ID)
-			return
-		case <-ticker.C:
-			currentPrice, err := s.angelSvc.GetLTP(margin.Symbol, margin.Token)
-			if err != nil {
-				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get LTP")
-				return
-			}
-			s.addStopLoss(order, currentPrice, buyPrice, kc, cancel)
-		}
-	}
+	return s.addStopLoss(order, currentPrice, buyPrice, kc)
 }
 
-func (s *OrderServiceImpl) addStopLoss(order model.Order, ltp, buyPrice float64, kc *kiteconnect.Client, cancel context.CancelFunc) {
+func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client) int8 {
 	if order.StopLossOrder.OrderID == "" {
-		if ltp >= buyPrice*1.01 {
+		if ltp >= buyPrice*1.008 {
 			sl := util.FixToTick(buyPrice * 1.004)
 			orderId, err := s.zerodhaSvc.PlaceMTFStopLossOrder(kc, order.Symbol, order.Quantity, sl, sl)
 			if err != nil {
 				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to place stop loss order")
-				return
+				return 0
 			}
 			order.StopLossOrder.OrderID = orderId
 			objID, err := primitive.ObjectIDFromHex(order.ID)
 			if err != nil {
 				log.Error().Err(err).Str("symbol", order.Symbol).Int64("userId", order.UserID).Msg("Invalid ObjectID during update")
-				return
+				return 1
 			}
-			s.repo.PatchStruct(context.Background(), objID, order)
+			s.repo.PatchStruct(context.Background(), objID, *order)
+			return 1
 		}
+		return 0
 	} else {
 		orderResp, err := s.zerodhaSvc.GetOrderDetails(kc, order.StopLossOrder.OrderID)
 		if err != nil {
 			log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get order details")
-			return
+			return 0
 		}
 
 		if orderResp.Status == "COMPLETE" {
-			cancel()
-			return
+			return -1
 		}
 
 		oldSl := orderResp.Price
@@ -396,9 +474,10 @@ func (s *OrderServiceImpl) addStopLoss(order model.Order, ltp, buyPrice float64,
 			err := s.zerodhaSvc.UpdateMTFStopLossOrder(kc, order.StopLossOrder.OrderID, newSl, newSl)
 			if err != nil {
 				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to update stop loss order")
-				return
+				return 0
 			}
+			return 1
 		}
-
+		return 0
 	}
 }
