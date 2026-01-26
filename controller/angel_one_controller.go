@@ -46,6 +46,15 @@ func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
 		Description: "Fetches the Last Traded Price (LTP) for multiple symbol tokens from Angel One.",
 		Tags:        []string{"Angel One"},
 	}, ctrl.getMultipleLTP)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-angelone-historical",
+		Method:      http.MethodGet,
+		Path:        "/api/angelone/historical",
+		Summary:     "Get historical candle data",
+		Description: "Fetches historical candle data for a given symbol from Angel One.",
+		Tags:        []string{"Angel One"},
+	}, ctrl.getHistoricalData)
 }
 
 func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
@@ -70,4 +79,12 @@ func (ctrl *AngelOneController) getMultipleLTP(ctx context.Context, input *model
 		return nil, huma.Error500InternalServerError("Error fetching bulk LTP: " + err.Error())
 	}
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: ltpMap}}, nil
+}
+
+func (ctrl *AngelOneController) getHistoricalData(ctx context.Context, input *model.AngelOneHistoricalInput) (*model.ResponseWrapper, error) {
+	candles, err := ctrl.angelOneSvc.GetHistoricalData(input.SymbolToken, input.Interval, input.FromDate, input.ToDate)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Error fetching historical data: " + err.Error())
+	}
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: candles}}, nil
 }
