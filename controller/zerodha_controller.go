@@ -67,6 +67,7 @@ func (ctrl *ZerodhaController) login(ctx context.Context, input *model.ZerodhaIn
 		return nil, huma.Error500InternalServerError("Error Generating token")
 	}
 	cache.GoSet("zerodha_token_"+strconv.FormatInt(input.Body.UserId, 10), token, util.ZerodhaTokenExpiry())
+	cache.KiteClientCache.Delete(strconv.FormatInt(input.Body.UserId, 10))
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
 }
 
