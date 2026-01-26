@@ -67,16 +67,16 @@ func generateTOTP(secret string) (string, error) {
 }
 
 func (s *AngelOneServiceImpl) RefreshBrokerSession() error {
-	otp, err := generateTOTP(s.angelOneConfig.Seed)
-	if err != nil {
-		return fmt.Errorf("failed to generate TOTP: %w", err)
-	}
-
 	var accessToken string
 	database.RedisHelper.GetAsStruct("broker_access_token", &accessToken)
 	if accessToken != "" {
 		s.token = accessToken
 		return nil
+	}
+
+	otp, err := generateTOTP(s.angelOneConfig.Seed)
+	if err != nil {
+		return fmt.Errorf("failed to generate TOTP: %w", err)
 	}
 
 	var result model.AngelOneLoginResponse
