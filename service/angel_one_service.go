@@ -30,6 +30,8 @@ type AngelOneService interface {
 	GetLTP(tradingSymbol, symbolToken string) (float64, error)
 	GetMultipleLTP(tokens []string) (map[string]float64, error)
 	GetHistoricalData(symbolToken string, interval string, fromDate, toDate string) ([]model.AngelOneCandle, error)
+	GetConfig() *model.AngelOneConfig
+	GetTokens() (jwt, feed string)
 }
 
 type AngelOneServiceImpl struct {
@@ -101,6 +103,8 @@ func (s *AngelOneServiceImpl) RefreshBrokerSession() error {
 
 	s.token = result.Data.JwtToken
 	cache.GoSet("broker_access_token", result.Data.JwtToken, util.ZerodhaTokenExpiry())
+
+	cache.GoSet("broker_feed_token", result.Data.FeedToken, util.ZerodhaTokenExpiry())
 
 	log.Info().Msg("Broker session established via Resty")
 	return nil
@@ -207,4 +211,14 @@ func (s *AngelOneServiceImpl) GetHistoricalData(symbolToken string, interval str
 	}
 
 	return candles, nil
+}
+
+func (s *AngelOneServiceImpl) GetConfig() *model.AngelOneConfig {
+	return s.angelOneConfig
+}
+
+func (s *AngelOneServiceImpl) GetTokens() (jwt, feed string) {
+	var feedToken string
+	database.RedisHelper.GetAsStruct("broker_feed_token", &feedToken)
+	return s.token, feedToken
 }

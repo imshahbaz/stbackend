@@ -5,6 +5,8 @@ import (
 	"backend/service"
 	"context"
 	"net/http"
+	"strconv"
+	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -55,6 +57,33 @@ func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
 		Description: "Fetches historical candle data for a given symbol from Angel One.",
 		Tags:        []string{"Angel One"},
 	}, ctrl.getHistoricalData)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "angel-one-ws-connect",
+		Method:      http.MethodPost,
+		Path:        "/api/angelone/ws/connect",
+		Summary:     "Connect Angel One Smart Stream",
+		Description: "Establishes a background WebSocket connection to Angel One for real-time data.",
+		Tags:        []string{"Angel One"},
+	}, ctrl.wsConnect)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "angel-one-ws-subscribe",
+		Method:      http.MethodPost,
+		Path:        "/api/angelone/ws/subscribe",
+		Summary:     "Subscribe to tokens",
+		Description: "Adds tokens to the active background WebSocket subscription list.",
+		Tags:        []string{"Angel One"},
+	}, ctrl.wsSubscribe)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "angel-one-ws-disconnect",
+		Method:      http.MethodPost,
+		Path:        "/api/angelone/ws/disconnect",
+		Summary:     "Disconnect Angel One WebSocket",
+		Description: "Gracefully closes the background Angel One WebSocket connection.",
+		Tags:        []string{"Angel One"},
+	}, ctrl.wsDisconnect)
 }
 
 func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
@@ -87,4 +116,58 @@ func (ctrl *AngelOneController) getHistoricalData(ctx context.Context, input *mo
 		return nil, huma.Error500InternalServerError("Error fetching historical data: " + err.Error())
 	}
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: candles}}, nil
+}
+
+// Internal WebSocket manager
+var activeWS *service.AngelOneWebSocket
+var wsMu sync.Mutex
+
+func (ctrl *AngelOneController) wsConnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+	wsMu.Lock()
+	defer wsMu.Unlock()
+
+	if activeWS != nil {
+		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket already connected"}}, nil
+	}
+
+	jwt, feedToken := ctrl.angelOneSvc.GetTokens()
+	config := ctrl.angelOneSvc.GetConfig()
+	activeWS = service.NewAngelOneWebSocket(jwt, config.ApiKey, config.ClientID, feedToken)
+	if activeWS == nil {
+		return nil, huma.Error500InternalServerError("Failed to initialize WebSocket")
+	}
+
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket connected successfully"}}, nil
+}
+
+func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
+	Body struct {
+		Tokens []string `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
+	}
+}) (*model.ResponseWrapper, error) {
+	wsMu.Lock()
+	defer wsMu.Unlock()
+
+	if activeWS == nil {
+		return nil, huma.Error400BadRequest("WebSocket is not connected. Call /connect first.")
+	}
+
+	for _, token := range input.Body.Tokens {
+		stockChan := make(chan float64, 50)
+		activeWS.Subscribe(token, stockChan)
+	}
+
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Subscription requests sent for " + strconv.Itoa(len(input.Body.Tokens)) + " tokens"}}, nil
+}
+
+func (ctrl *AngelOneController) wsDisconnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+	wsMu.Lock()
+	defer wsMu.Unlock()
+
+	if activeWS != nil {
+		activeWS.Disconnect()
+		activeWS = nil
+		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket disconnected"}}, nil
+	}
+	return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "No active WebSocket found"}}, nil
 }
