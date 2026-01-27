@@ -6,18 +6,18 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 )
 
 type AngelOneController struct {
-	angelOneSvc  service.AngelOneService
-	isProduction bool
+	angelOneSvc    service.AngelOneService
+	isProduction   bool
+	angelOneWebSvc service.AngelOneWebSocket
 }
 
-func NewAngelOneController(angelOneSvc service.AngelOneService, isProduction bool) *AngelOneController {
-	return &AngelOneController{angelOneSvc: angelOneSvc, isProduction: isProduction}
+func NewAngelOneController(angelOneSvc service.AngelOneService, isProduction bool, angelOneWebSvc service.AngelOneWebSocket) *AngelOneController {
+	return &AngelOneController{angelOneSvc: angelOneSvc, isProduction: isProduction, angelOneWebSvc: angelOneWebSvc}
 }
 
 func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
@@ -87,7 +87,7 @@ func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
 }
 
 func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
-	err := ctrl.angelOneSvc.RefreshBrokerSession()
+	_, _, err := ctrl.angelOneSvc.RefreshBrokerSession()
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error refreshing broker session: " + err.Error())
 	}
@@ -118,22 +118,9 @@ func (ctrl *AngelOneController) getHistoricalData(ctx context.Context, input *mo
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: candles}}, nil
 }
 
-// Internal WebSocket manager
-var activeWS *service.AngelOneWebSocket
-var wsMu sync.Mutex
-
 func (ctrl *AngelOneController) wsConnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
-	wsMu.Lock()
-	defer wsMu.Unlock()
-
-	if activeWS != nil {
-		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket already connected"}}, nil
-	}
-
-	jwt, feedToken := ctrl.angelOneSvc.GetTokens()
-	config := ctrl.angelOneSvc.GetConfig()
-	activeWS = service.NewAngelOneWebSocket(jwt, config.ApiKey, config.ClientID, feedToken)
-	if activeWS == nil {
+	err := ctrl.angelOneWebSvc.StartWebsocket()
+	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to initialize WebSocket")
 	}
 
@@ -145,29 +132,18 @@ func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
 		Tokens []string `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
 	}
 }) (*model.ResponseWrapper, error) {
-	wsMu.Lock()
-	defer wsMu.Unlock()
-
-	if activeWS == nil {
-		return nil, huma.Error400BadRequest("WebSocket is not connected. Call /connect first.")
-	}
 
 	for _, token := range input.Body.Tokens {
-		stockChan := make(chan float64, 50)
-		activeWS.Subscribe(token, stockChan)
+		_, err := ctrl.angelOneWebSvc.Subscribe(token)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Failed to subscribe to token: " + err.Error())
+		}
 	}
 
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Subscription requests sent for " + strconv.Itoa(len(input.Body.Tokens)) + " tokens"}}, nil
 }
 
 func (ctrl *AngelOneController) wsDisconnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
-	wsMu.Lock()
-	defer wsMu.Unlock()
-
-	if activeWS != nil {
-		activeWS.Disconnect()
-		activeWS = nil
-		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket disconnected"}}, nil
-	}
-	return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "No active WebSocket found"}}, nil
+	ctrl.angelOneWebSvc.Disconnect()
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket disconnected"}}, nil
 }

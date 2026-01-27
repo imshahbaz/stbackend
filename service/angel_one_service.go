@@ -26,21 +26,20 @@ const (
 )
 
 type AngelOneService interface {
-	RefreshBrokerSession() error
+	RefreshBrokerSession() (string, string, error)
 	GetLTP(tradingSymbol, symbolToken string) (float64, error)
 	GetMultipleLTP(tokens []string) (map[string]float64, error)
 	GetHistoricalData(symbolToken string, interval string, fromDate, toDate string) ([]model.AngelOneCandle, error)
-	GetConfig() *model.AngelOneConfig
-	GetTokens() (jwt, feed string)
 }
 
 type AngelOneServiceImpl struct {
 	angelOneConfig *model.AngelOneConfig
 	restyClient    *resty.Client
 	token          string
+	angelOneWebSvc AngelOneWebSocket
 }
 
-func NewAngelOneService(angelOneConfig *model.AngelOneConfig) AngelOneService {
+func NewAngelOneService(angelOneConfig *model.AngelOneConfig, angelOneWebSvc AngelOneWebSocket) AngelOneService {
 	client := resty.New().
 		SetBaseURL("https://apiconnect.angelone.in").
 		SetHeader("Content-Type", "application/json").
@@ -57,7 +56,7 @@ func NewAngelOneService(angelOneConfig *model.AngelOneConfig) AngelOneService {
 		SetJSONMarshaler(sonic.ConfigDefault.Marshal).
 		SetJSONUnmarshaler(sonic.ConfigDefault.Unmarshal)
 
-	return &AngelOneServiceImpl{angelOneConfig: angelOneConfig, restyClient: client}
+	return &AngelOneServiceImpl{angelOneConfig: angelOneConfig, restyClient: client, angelOneWebSvc: angelOneWebSvc}
 }
 
 func generateTOTP(secret string) (string, error) {
@@ -68,17 +67,19 @@ func generateTOTP(secret string) (string, error) {
 	return code, nil
 }
 
-func (s *AngelOneServiceImpl) RefreshBrokerSession() error {
+func (s *AngelOneServiceImpl) RefreshBrokerSession() (string, string, error) {
 	var accessToken string
 	database.RedisHelper.GetAsStruct("broker_access_token", &accessToken)
-	if accessToken != "" {
+	var feedToken string
+	database.RedisHelper.GetAsStruct("broker_feed_token", &feedToken)
+	if accessToken != "" && feedToken != "" {
 		s.token = accessToken
-		return nil
+		return accessToken, feedToken, nil
 	}
 
 	otp, err := generateTOTP(s.angelOneConfig.Seed)
 	if err != nil {
-		return fmt.Errorf("failed to generate TOTP: %w", err)
+		return "", "", fmt.Errorf("failed to generate TOTP: %w", err)
 	}
 
 	var result model.AngelOneLoginResponse
@@ -93,12 +94,12 @@ func (s *AngelOneServiceImpl) RefreshBrokerSession() error {
 		Post("/rest/auth/angelbroking/user/v1/loginByPassword")
 
 	if err != nil {
-		return fmt.Errorf("login request failed: %w", err)
+		return "", "", fmt.Errorf("login request failed: %w", err)
 	}
 
 	if !resp.IsSuccess() || !result.Status {
 		log.Error().Str("msg", result.Message).Msg("AngelOne login rejected")
-		return fmt.Errorf("broker auth failed: %s", result.Message)
+		return "", "", fmt.Errorf("broker auth failed: %s", result.Message)
 	}
 
 	s.token = result.Data.JwtToken
@@ -107,7 +108,8 @@ func (s *AngelOneServiceImpl) RefreshBrokerSession() error {
 	cache.GoSet("broker_feed_token", result.Data.FeedToken, util.ZerodhaTokenExpiry())
 
 	log.Info().Msg("Broker session established via Resty")
-	return nil
+
+	return result.Data.JwtToken, result.Data.FeedToken, nil
 }
 
 func (s *AngelOneServiceImpl) GetLTP(tradingSymbol, symbolToken string) (float64, error) {
@@ -211,14 +213,4 @@ func (s *AngelOneServiceImpl) GetHistoricalData(symbolToken string, interval str
 	}
 
 	return candles, nil
-}
-
-func (s *AngelOneServiceImpl) GetConfig() *model.AngelOneConfig {
-	return s.angelOneConfig
-}
-
-func (s *AngelOneServiceImpl) GetTokens() (jwt, feed string) {
-	var feedToken string
-	database.RedisHelper.GetAsStruct("broker_feed_token", &feedToken)
-	return s.token, feedToken
 }

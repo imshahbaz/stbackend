@@ -1,7 +1,9 @@
 package service
 
 import (
+	"backend/model"
 	"encoding/binary"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,49 +14,50 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type AngelOneWebSocket struct {
-	Conn          *websocket.Conn
+var ErrConnectionClosed = errors.New("websocket connection is nil or closed")
+
+type AngelOneWebSocket interface {
+	Subscribe(token string) (chan float64, error)
+	Unsubscribe(token string)
+	Disconnect()
+	StartWebsocket() error
+	UpdateConfig(jwt, feedToken string)
+}
+
+type AngelOneWebSocketImpl struct {
+	conn          *websocket.Conn
 	mu            sync.RWMutex
+	writeMu       sync.Mutex
 	stockChannels map[string]chan float64
+	jwt           string
+	apiKey        string
+	clientCode    string
+	feedToken     string
+	config        *model.AngelOneConfig
 }
 
-func NewAngelOneWebSocket(jwt, apiKey, clientCode, feedToken string) *AngelOneWebSocket {
-	header := http.Header{}
-	header.Add("Authorization", "Bearer "+jwt)
-	header.Add("x-api-key", apiKey)
-	header.Add("x-client-code", clientCode)
-	header.Add("x-feed-token", feedToken)
-
-	url := "wss://smartapisocket.angelone.in/smart-stream"
-	conn, _, err := websocket.DefaultDialer.Dial(url, header)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to connect to Smart Stream")
-		return nil
-	}
-
-	aws := &AngelOneWebSocket{
-		Conn:          conn,
+func NewAngelOneWebSocket(jwt, feedToken string, config *model.AngelOneConfig) AngelOneWebSocket {
+	return &AngelOneWebSocketImpl{
 		stockChannels: make(map[string]chan float64),
+		jwt:           jwt,
+		apiKey:        config.ApiKey,
+		clientCode:    config.ClientID,
+		feedToken:     feedToken,
+		config:        config,
 	}
-
-	go aws.readLoop()
-	go aws.heartbeatLoop()
-
-	return aws
 }
 
-func (aws *AngelOneWebSocket) readLoop() {
+func (aws *AngelOneWebSocketImpl) readLoop() {
 	defer aws.Disconnect()
 
 	for {
-		_, message, err := aws.Conn.ReadMessage()
+		_, message, err := aws.conn.ReadMessage()
 		if err != nil {
 			log.Error().Err(err).Msg("Read error in AngelOneWebSocket")
 			return
 		}
 
 		if len(message) == 4 && string(message) == "pong" {
-			log.Info().Msg("Pong received")
 			continue
 		}
 
@@ -77,44 +80,36 @@ func (aws *AngelOneWebSocket) readLoop() {
 	}
 }
 
-func (aws *AngelOneWebSocket) Subscribe(token string, ch chan float64) {
+func (aws *AngelOneWebSocketImpl) Subscribe(token string) (chan float64, error) {
 	aws.mu.Lock()
+	ch, exists := aws.stockChannels[token]
+	if exists {
+		aws.mu.Unlock()
+		return ch, nil
+	}
+
+	ch = make(chan float64, 100)
 	aws.stockChannels[token] = ch
 	aws.mu.Unlock()
 
-	// Fixed Structure: mode and tokenList must be inside "params"
 	request := map[string]any{
-		"correlationId": "shahbaz_trail",
+		"correlationId": "shahbaz_trades",
 		"action":        1,
 		"params": map[string]any{
-			"mode": 1, // 1 = LTP
+			"mode": 1,
 			"tokenList": []map[string]any{
 				{
-					"exchangeType": 1, // 1 = NSE
+					"exchangeType": 1,
 					"tokens":       []string{token},
 				},
 			},
 		},
 	}
 
-	data, err := sonic.Marshal(request)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to marshal subscription")
-		return
-	}
-
-	aws.mu.Lock()
-	err = aws.Conn.WriteMessage(websocket.TextMessage, data)
-	aws.mu.Unlock()
-
-	if err != nil {
-		log.Error().Err(err).Str("token", token).Msg("Failed to send subscription")
-	} else {
-		log.Info().Str("token", token).Msg("📡 Subscribed (Server request sent)")
-	}
+	return ch, aws.safeWrite(websocket.TextMessage, request)
 }
 
-func (aws *AngelOneWebSocket) Unsubscribe(token string) {
+func (aws *AngelOneWebSocketImpl) Unsubscribe(token string) {
 	aws.mu.Lock()
 	if ch, exists := aws.stockChannels[token]; exists {
 		close(ch)
@@ -130,23 +125,22 @@ func (aws *AngelOneWebSocket) Unsubscribe(token string) {
 			{"exchangeType": 1, "tokens": []string{token}},
 		},
 	}
-	data, _ := sonic.Marshal(request)
-	aws.mu.Lock()
-	defer aws.mu.Unlock()
-	aws.Conn.WriteMessage(websocket.TextMessage, data)
+
+	aws.safeWrite(websocket.TextMessage, request)
 }
 
-func (aws *AngelOneWebSocket) heartbeatLoop() {
+func (aws *AngelOneWebSocketImpl) heartbeatLoop() {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		aws.mu.Lock()
-		if aws.Conn == nil {
+		if aws.conn == nil {
 			aws.mu.Unlock()
 			return
 		}
-		err := aws.Conn.WriteMessage(websocket.TextMessage, []byte("ping"))
+
+		err := aws.safeWrite(websocket.TextMessage, []byte("ping"))
 		aws.mu.Unlock()
 
 		if err != nil {
@@ -155,12 +149,74 @@ func (aws *AngelOneWebSocket) heartbeatLoop() {
 	}
 }
 
-func (aws *AngelOneWebSocket) Disconnect() {
+func (aws *AngelOneWebSocketImpl) Disconnect() {
+	for token, ch := range aws.stockChannels {
+		close(ch)
+		delete(aws.stockChannels, token)
+	}
 	aws.mu.Lock()
 	defer aws.mu.Unlock()
-	if aws.Conn != nil {
-		aws.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		aws.Conn.Close()
-		aws.Conn = nil
+	if aws.conn != nil {
+		aws.safeWrite(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		aws.conn.Close()
+		aws.conn = nil
 	}
+}
+
+func (aws *AngelOneWebSocketImpl) StartWebsocket() error {
+	aws.mu.Lock()
+	defer aws.mu.Unlock()
+	if aws.conn != nil {
+		return nil
+	}
+
+	header := http.Header{}
+	header.Add("Authorization", "Bearer "+aws.jwt)
+	header.Add("x-api-key", aws.apiKey)
+	header.Add("x-client-code", aws.clientCode)
+	header.Add("x-feed-token", aws.feedToken)
+
+	url := "wss://smartapisocket.angelone.in/smart-stream"
+	conn, _, err := websocket.DefaultDialer.Dial(url, header)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to connect to Smart Stream")
+		return err
+	}
+
+	aws.conn = conn
+
+	go aws.readLoop()
+	go aws.heartbeatLoop()
+
+	return nil
+}
+
+func (aws *AngelOneWebSocketImpl) safeWrite(msgType int, data any) error {
+	var payload []byte
+	var err error
+
+	if b, ok := data.([]byte); ok {
+		payload = b
+	} else {
+		payload, err = sonic.Marshal(data)
+		if err != nil {
+			return err
+		}
+	}
+
+	aws.writeMu.Lock()
+	defer aws.writeMu.Unlock()
+
+	if aws.conn == nil {
+		return ErrConnectionClosed
+	}
+
+	return aws.conn.WriteMessage(msgType, payload)
+}
+
+func (aws *AngelOneWebSocketImpl) UpdateConfig(jwt, feedToken string) {
+	aws.mu.Lock()
+	defer aws.mu.Unlock()
+	aws.jwt = jwt
+	aws.feedToken = feedToken
 }
