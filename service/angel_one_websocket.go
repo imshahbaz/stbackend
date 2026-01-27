@@ -226,5 +226,9 @@ func (aws *AngelOneWebSocketImpl) UpdateConfig(jwt, feedToken string) {
 }
 
 func (aws *AngelOneWebSocketImpl) StopUpdateChannel() {
-	close(updateChan)
+	aws.mu.Lock()
+	defer aws.mu.Unlock()
+	if updateChan != nil {
+		close(updateChan)
+	}
 }
