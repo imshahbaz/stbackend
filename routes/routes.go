@@ -178,7 +178,7 @@ func initsvcs(isProduction bool) {
 	zerodhaSvc = service.NewZerodhaService(userSvc)
 	angelOneWebSvc = service.NewAngelOneWebSocket("", "", &configmanager.GetConfig().AngelOneConfig)
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
-	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc)
+	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
 
 	go loadInitialData()
 }

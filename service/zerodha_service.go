@@ -10,11 +10,12 @@ import (
 type ZerodhaService interface {
 	InitiateKiteConnect(ctx context.Context, accessToken string, userId int64) (*kiteconnect.Client, error)
 	GenerateAccessToken(requestToken string, userId int64) (string, error)
-	PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64) (kiteconnect.OrderResponse, error)
+	PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType string) (kiteconnect.OrderResponse, error)
 	PlaceMTFStopLossOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, triggerPrice float64) (string, error)
 	GetOrderDetails(kc *kiteconnect.Client, orderID string) (kiteconnect.Order, error)
 	UpdateMTFStopLossOrder(kc *kiteconnect.Client, orderID string, newPrice float64, newTriggerPrice float64) error
 	CancelOrder(kc *kiteconnect.Client, orderID string) (kiteconnect.OrderResponse, error)
+	ConvertSLToMarket(kc *kiteconnect.Client, orderID string, quantity int, price float64) (kiteconnect.OrderResponse, error)
 }
 
 type ZerodhaServiceImpl struct {
@@ -64,16 +65,17 @@ func (s *ZerodhaServiceImpl) InitiateKiteConnect(ctx context.Context, accessToke
 	return kc, nil
 }
 
-func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64) (kiteconnect.OrderResponse, error) {
+func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType string) (kiteconnect.OrderResponse, error) {
 	orderParams := kiteconnect.OrderParams{
 		Exchange:        kiteconnect.ExchangeNSE,
 		Tradingsymbol:   symbol,
-		TransactionType: kiteconnect.TransactionTypeBuy,
+		TransactionType: transactionType,
 		Quantity:        qty,
 		Price:           price,
 		Product:         kiteconnect.ProductMTF,
 		OrderType:       kiteconnect.OrderTypeMarket,
 		Validity:        kiteconnect.ValidityDay,
+		Tag:             "Shahbaz Trades",
 	}
 
 	return kc.PlaceOrder(kiteconnect.VarietyRegular, orderParams)
@@ -126,10 +128,20 @@ func (s *ZerodhaServiceImpl) UpdateMTFStopLossOrder(kc *kiteconnect.Client, orde
 }
 
 func (s *ZerodhaServiceImpl) CancelOrder(kc *kiteconnect.Client, orderID string) (kiteconnect.OrderResponse, error) {
-	orderResponse, err := kc.CancelOrder(kiteconnect.VarietyAMO, orderID, nil)
+	orderResponse, err := kc.CancelOrder(kiteconnect.VarietyRegular, orderID, nil)
 	if err != nil {
 		return kiteconnect.OrderResponse{}, fmt.Errorf("failed to cancel order %s: %w", orderID, err)
 	}
 
 	return orderResponse, nil
+}
+
+func (s *ZerodhaServiceImpl) ConvertSLToMarket(kc *kiteconnect.Client, orderID string, quantity int, price float64) (kiteconnect.OrderResponse, error) {
+	params := kiteconnect.OrderParams{
+		OrderType: kiteconnect.OrderTypeMarket,
+		Quantity:  quantity,
+		Price:     price,
+	}
+
+	return kc.ModifyOrder(kiteconnect.VarietyRegular, orderID, params)
 }

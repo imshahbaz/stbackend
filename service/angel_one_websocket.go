@@ -22,6 +22,7 @@ type AngelOneWebSocket interface {
 	Disconnect()
 	StartWebsocket() error
 	UpdateConfig(jwt, feedToken string)
+	StopUpdateChannel()
 }
 
 type AngelOneWebSocketImpl struct {
@@ -150,17 +151,20 @@ func (aws *AngelOneWebSocketImpl) heartbeatLoop() {
 }
 
 func (aws *AngelOneWebSocketImpl) Disconnect() {
-	for token, ch := range aws.stockChannels {
-		close(ch)
-		delete(aws.stockChannels, token)
-	}
 	aws.mu.Lock()
-	defer aws.mu.Unlock()
 	if aws.conn != nil {
 		aws.safeWrite(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		aws.conn.Close()
 		aws.conn = nil
 	}
+	aws.mu.Unlock()
+
+	aws.mu.Lock()
+	for token, ch := range aws.stockChannels {
+		close(ch)
+		delete(aws.stockChannels, token)
+	}
+	aws.mu.Unlock()
 }
 
 func (aws *AngelOneWebSocketImpl) StartWebsocket() error {
@@ -219,4 +223,8 @@ func (aws *AngelOneWebSocketImpl) UpdateConfig(jwt, feedToken string) {
 	defer aws.mu.Unlock()
 	aws.jwt = jwt
 	aws.feedToken = feedToken
+}
+
+func (aws *AngelOneWebSocketImpl) StopUpdateChannel() {
+	close(updateChan)
 }

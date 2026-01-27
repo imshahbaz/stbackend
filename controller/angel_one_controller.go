@@ -145,5 +145,6 @@ func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
 
 func (ctrl *AngelOneController) wsDisconnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
 	ctrl.angelOneWebSvc.Disconnect()
+	ctrl.angelOneWebSvc.StopUpdateChannel()
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket disconnected"}}, nil
 }
