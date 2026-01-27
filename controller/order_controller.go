@@ -185,7 +185,7 @@ func (ctrl *OrderController) UpdateOrderStatus(ctx context.Context, input *struc
 }
 
 func (ctrl *OrderController) StartTrading(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	ctrl.orderService.StartTrading(ctx)
+	ctrl.orderService.StartTradingWs(ctx)
 	return NewResponse(nil, "Trading started successfully"), nil
 }
 

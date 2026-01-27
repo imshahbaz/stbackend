@@ -56,6 +56,7 @@ var (
 	zerodhaSvc     service.ZerodhaService
 	orderSvc       service.OrderService
 	angelOneSvc    service.AngelOneService
+	angelOneWebSvc service.AngelOneWebSocket
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -99,7 +100,7 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 
 		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
 
-		controller.NewAngelOneController(angelOneSvc, isProduction).RegisterRoutes(humaApi)
+		controller.NewAngelOneController(angelOneSvc, isProduction, angelOneWebSvc).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -175,8 +176,9 @@ func initsvcs(isProduction bool) {
 	authSvc = service.NewAuthService(userSvc, otpSvc, isProduction)
 	newsSvc = service.NewNewsService(genAiClient, nseSvc)
 	zerodhaSvc = service.NewZerodhaService(userSvc)
-	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig)
-	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc)
+	angelOneWebSvc = service.NewAngelOneWebSocket("", "", &configmanager.GetConfig().AngelOneConfig)
+	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
+	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
 
 	go loadInitialData()
 }
@@ -226,10 +228,11 @@ func loadInitialData() {
 
 	go func() {
 		log.Info().Msg("Refreshing Angel One broker session...")
-		if err := angelOneSvc.RefreshBrokerSession(); err != nil {
+		if jwt, feedToken, err := angelOneSvc.RefreshBrokerSession(); err != nil {
 			log.Error().Err(err).Msg("Warning: Failed initial Angel One session refresh")
 		} else {
 			log.Info().Msg("Angel One broker session refreshed on startup...")
+			angelOneWebSvc.UpdateConfig(jwt, feedToken)
 		}
 	}()
 }

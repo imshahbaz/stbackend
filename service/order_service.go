@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ var (
 	mu                sync.Mutex
 	oneMinuteCron     *cron.Cron
 	fifteenMinuteCron *cron.Cron
+	updateChan        chan model.Order
 )
 
 type OrderService interface {
@@ -39,16 +41,18 @@ type OrderService interface {
 	UpdateOrderStatus(ctx context.Context)
 	StartTrading(ctx context.Context)
 	ResetTradingSystem(ctx context.Context) error
+	StartTradingWs(ctx context.Context)
 }
 
 type OrderServiceImpl struct {
 	repo       *repository.OrderRepo
 	zerodhaSvc ZerodhaService
 	angelSvc   AngelOneService
+	angelOneWs AngelOneWebSocket
 }
 
-func NewOrderService(repo *repository.OrderRepo, zerodhaSvc ZerodhaService, angelSvc AngelOneService) OrderService {
-	return &OrderServiceImpl{repo: repo, zerodhaSvc: zerodhaSvc, angelSvc: angelSvc}
+func NewOrderService(repo *repository.OrderRepo, zerodhaSvc ZerodhaService, angelSvc AngelOneService, angelOneWs AngelOneWebSocket) OrderService {
+	return &OrderServiceImpl{repo: repo, zerodhaSvc: zerodhaSvc, angelSvc: angelSvc, angelOneWs: angelOneWs}
 }
 
 func (s *OrderServiceImpl) Get(ctx context.Context, id string) (*model.OrderDto, error) {
@@ -205,7 +209,7 @@ func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
 			return nil
 		}
 
-		orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0)
+		orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0, kiteconnect.TransactionTypeBuy)
 		if err != nil {
 			return err
 		}
@@ -461,6 +465,38 @@ func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64) int8 {
 }
 
 func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client) int8 {
+	if util.IsTimePastClosingGrace() && ltp > order.BuyOrder.AveragePrice*1.004 {
+		log.Info().Str("symbol", order.Symbol).Msg("Market closing (3:25 PM). Squaring off...")
+
+		if order.StopLossOrder.OrderID == "" {
+			_, err := s.zerodhaSvc.PlaceMTFOrder(kc, order.Symbol, order.Quantity, 0, kiteconnect.TransactionTypeSell)
+			if err != nil {
+				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed square-off")
+				return 0
+			}
+		} else {
+			orderResp, err := s.zerodhaSvc.GetOrderDetails(kc, order.StopLossOrder.OrderID)
+			if err != nil {
+				return 0
+			}
+
+			if orderResp.Status == "COMPLETE" || orderResp.Status == "REJECTED" {
+				return -1
+			}
+
+			qtyLeft := int(orderResp.PendingQuantity)
+
+			if qtyLeft > 0 {
+				_, err = s.zerodhaSvc.ConvertSLToMarket(kc, order.StopLossOrder.OrderID, qtyLeft, 0)
+				if err != nil {
+					log.Error().Err(err).Msg("Conversion to Market failed")
+					return 0
+				}
+			}
+		}
+		return -1
+	}
+
 	if order.StopLossOrder.OrderID == "" {
 		if ltp >= buyPrice*1.008 {
 			sl := util.FixToTick(buyPrice * 1.004)
@@ -470,27 +506,27 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 				return 0
 			}
 			order.StopLossOrder.OrderID = orderId
-			objID, err := primitive.ObjectIDFromHex(order.ID)
-			if err != nil {
-				log.Error().Err(err).Str("symbol", order.Symbol).Int64("userId", order.UserID).Msg("Invalid ObjectID during update")
-				return 1
-			}
-			s.repo.PatchStruct(context.Background(), objID, *order)
+			order.StopLossOrder.AveragePrice = sl
+			pushToDb(order)
 			return 1
 		}
 		return 0
 	} else {
-		orderResp, err := s.zerodhaSvc.GetOrderDetails(kc, order.StopLossOrder.OrderID)
-		if err != nil {
-			log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get order details")
-			return 0
+		if order.StopLossOrder.AveragePrice == 0 {
+			orderResp, err := s.zerodhaSvc.GetOrderDetails(kc, order.StopLossOrder.OrderID)
+			if err != nil {
+				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get order details")
+				return 0
+			}
+			order.StopLossOrder.AveragePrice = orderResp.Price
+			order.StopLossOrder.OrderStatus = orderResp.Status
+			pushToDb(order)
+			if orderResp.Status == "COMPLETE" {
+				return -1
+			}
 		}
 
-		if orderResp.Status == "COMPLETE" {
-			return -1
-		}
-
-		oldSl := orderResp.Price
+		oldSl := order.StopLossOrder.AveragePrice
 		threshold := buyPrice * 0.01
 		gap := buyPrice * 0.008
 
@@ -498,9 +534,15 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 			newSl := util.FixToTick(ltp - gap)
 			err := s.zerodhaSvc.UpdateMTFStopLossOrder(kc, order.StopLossOrder.OrderID, newSl, newSl)
 			if err != nil {
+				if strings.Contains(err.Error(), "processed") {
+					return -1
+				}
 				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to update stop loss order")
 				return 0
 			}
+
+			order.StopLossOrder.AveragePrice = newSl
+			pushToDb(order)
 			return 1
 		}
 		return 0
@@ -524,4 +566,64 @@ func (s *OrderServiceImpl) ResetTradingSystem(ctx context.Context) error {
 
 	log.Info().Msg("System state cleared. Ready for re-initialization.")
 	return nil
+}
+
+func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
+	orders, err := s.GetTodaysOrders(ctx)
+	if err != nil || len(orders) == 0 {
+		return
+	}
+
+	s.startWorkers()
+
+	for i := range orders {
+		priceChan, err := s.angelOneWs.Subscribe(orders[i].Margin.Token)
+		if err != nil {
+			continue
+		}
+
+		go func(order *model.Order, priceChan chan float64) {
+			var prevLtp float64
+			for ltp := range priceChan {
+				if prevLtp == ltp {
+					continue
+				}
+				res := s.processOrder(order, ltp)
+				if res < 0 {
+					break
+				}
+				prevLtp = ltp
+			}
+		}(&orders[i], priceChan)
+	}
+}
+
+func (s *OrderServiceImpl) startWorkers() {
+	updateChan = make(chan model.Order, 500)
+
+	for i := range 5 {
+		go func(workerID int) {
+			log.Debug().Int("workerID", workerID).Msg("DB Worker started")
+
+			for order := range updateChan {
+				objID, err := primitive.ObjectIDFromHex(order.ID)
+				if err != nil {
+					log.Error().Err(err).Str("symbol", order.Symbol).Msg("Invalid ObjectID")
+					continue
+				}
+
+				_, err = s.repo.PatchStruct(context.Background(), objID, order)
+				if err != nil {
+					log.Error().Err(err).Str("orderId", order.ID).Msg("DB Patch failed")
+				}
+			}
+		}(i)
+	}
+}
+
+func pushToDb(order *model.Order) {
+	select {
+	case updateChan <- *order:
+	default:
+	}
 }
