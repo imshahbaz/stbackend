@@ -64,3 +64,11 @@ type AngelOneCandle struct {
 	Close  float64 `json:"close"`
 	Volume int64   `json:"volume"`
 }
+
+type ExchangeType int
+
+const (
+	NSE ExchangeType = 1
+	NFO ExchangeType = 2
+	BFO ExchangeType = 4
+)

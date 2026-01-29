@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/rs/zerolog/log"
 )
 
 type AngelOneController struct {
@@ -129,15 +130,21 @@ func (ctrl *AngelOneController) wsConnect(ctx context.Context, input *struct{}) 
 
 func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
 	Body struct {
-		Tokens []string `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
+		Tokens       []string           `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
+		ExchangeType model.ExchangeType `json:"exchangeType" doc:"Exchange type" required:"true"`
 	}
 }) (*model.ResponseWrapper, error) {
 
 	for _, token := range input.Body.Tokens {
-		_, err := ctrl.angelOneWebSvc.Subscribe(token)
+		ch, err := ctrl.angelOneWebSvc.Subscribe(token, input.Body.ExchangeType)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("Failed to subscribe to token: " + err.Error())
 		}
+		go func() {
+			for ltp := range ch {
+				log.Info().Msgf("LTP for %s: %f", token, ltp)
+			}
+		}()
 	}
 
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Subscription requests sent for " + strconv.Itoa(len(input.Body.Tokens)) + " tokens"}}, nil
