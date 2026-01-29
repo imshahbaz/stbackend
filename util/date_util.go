@@ -49,7 +49,7 @@ func NseCacheExpiryTime() time.Duration {
 }
 
 func ZerodhaTokenExpiry() time.Duration {
-	now := time.Now()
+	now := time.Now().In(IstLocation)
 	target := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
 	if now.After(target) {
 		target = target.AddDate(0, 0, 1)
