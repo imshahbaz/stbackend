@@ -57,6 +57,7 @@ var (
 	orderSvc       service.OrderService
 	angelOneSvc    service.AngelOneService
 	angelOneWebSvc service.AngelOneWebSocket
+	mstockSvc      service.MstockService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -101,6 +102,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewAngelOneController(angelOneSvc, isProduction, angelOneWebSvc).RegisterRoutes(humaApi)
+
+		controller.NewMstockController(mstockSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -179,6 +182,7 @@ func initsvcs(isProduction bool) {
 	angelOneWebSvc = service.NewAngelOneWebSocket("", "", &configmanager.GetConfig().AngelOneConfig)
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
+	mstockSvc = service.NewMstockService()
 
 	go loadInitialData()
 }

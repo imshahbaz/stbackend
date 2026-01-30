@@ -72,3 +72,13 @@ func IsTimePastClosingGrace() bool {
 	targetMinutes := 15*60 + 25
 	return currentMinutes >= targetMinutes
 }
+
+func GetDurationToMidnightIST() time.Duration {
+
+	now := time.Now().In(IstLocation)
+
+	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, IstLocation)
+	duration := midnight.Sub(now)
+
+	return duration
+}
