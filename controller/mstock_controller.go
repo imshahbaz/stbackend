@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"backend/middleware"
 	"backend/model"
 	"backend/service"
 	"context"
@@ -19,12 +20,16 @@ func NewMstockController(mstockSvc service.MstockService, isProduction bool) *Ms
 }
 
 func (ctrl *MstockController) RegisterRoutes(api huma.API) {
+	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "mstock-login",
 		Method:      http.MethodPost,
 		Path:        "/api/mstock/login",
 		Summary:     "Mstock Login",
 		Description: "Initiates the login process for Mstock.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Mstock"},
 	}, ctrl.login)
 
@@ -34,6 +39,8 @@ func (ctrl *MstockController) RegisterRoutes(api huma.API) {
 		Path:        "/api/mstock/verify",
 		Summary:     "Mstock Verify OTP",
 		Description: "Verifies the OTP for Mstock login.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Mstock"},
 	}, ctrl.verifyOtp)
 
@@ -43,18 +50,43 @@ func (ctrl *MstockController) RegisterRoutes(api huma.API) {
 		Path:        "/api/mstock/order",
 		Summary:     "Mstock Place Order",
 		Description: "Places an order via Mstock.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Mstock"},
 	}, ctrl.placeOrder)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-mstock-profile",
+		Method:      http.MethodGet,
+		Path:        "/api/mstock/me",
+		Summary:     "Get Mstock profile for the authenticated user",
+		Description: "Checks if the authenticated user has an active Mstock session.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Mstock"},
+	}, ctrl.auth)
 }
 
 func (ctrl *MstockController) login(ctx context.Context, input *struct{ Body model.MstockLoginInput }) (*model.ResponseWrapper, error) {
-	return ctrl.mstockSvc.Login(ctx, &input.Body)
+	user := ctx.Value("user").(model.UserDto)
+	return ctrl.mstockSvc.Login(ctx, user.UserID, &input.Body)
 }
 
 func (ctrl *MstockController) verifyOtp(ctx context.Context, input *struct{ Body model.MstockVerifyOtpInput }) (*model.ResponseWrapper, error) {
-	return ctrl.mstockSvc.VerifyOtp(ctx, &input.Body)
+	user := ctx.Value("user").(model.UserDto)
+	return ctrl.mstockSvc.VerifyOtp(ctx, user.UserID, &input.Body)
 }
 
-func (ctrl *MstockController) placeOrder(ctx context.Context, input *struct{ Body model.MstockOrderInput }) (*model.ResponseWrapper, error) {
-	return ctrl.mstockSvc.PlaceFnOrder(ctx, &input.Body)
+func (ctrl *MstockController) placeOrder(ctx context.Context, input *struct{ Body model.MstockOrderRequest }) (*model.ResponseWrapper, error) {
+	user := ctx.Value("user").(model.UserDto)
+	return ctrl.mstockSvc.PlaceFnOrder(ctx, user.UserID, &input.Body)
+}
+
+func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+	userDto, ok := ctx.Value("user").(model.UserDto)
+	if !ok {
+		return nil, huma.Error401Unauthorized("User context missing")
+	}
+
+	return ctrl.mstockSvc.GetProfile(ctx, userDto.UserID)
 }

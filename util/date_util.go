@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -81,4 +82,17 @@ func GetDurationToMidnightIST() time.Duration {
 	duration := midnight.Sub(now)
 
 	return duration
+}
+
+func ParseAllCapsDate(dateStr string) (time.Time, error) {
+	if len(dateStr) < 9 {
+		return time.Time{}, fmt.Errorf("invalid date length")
+	}
+
+	normalized := dateStr[:2] +
+		strings.ToUpper(dateStr[2:3]) +
+		strings.ToLower(dateStr[3:5]) +
+		dateStr[5:]
+
+	return time.Parse("02Jan2006", normalized)
 }

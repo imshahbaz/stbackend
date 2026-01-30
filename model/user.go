@@ -19,6 +19,7 @@ type User struct {
 	Name          string        `bson:"name" json:"name"`
 	Profile       string        `bson:"profile" json:"profile"`
 	ZerodhaConfig ZerodhaConfig `bson:"zerodhaConfig" json:"zerodhaConfig"`
+	MstockConfig  MstockConfig  `bson:"mstockConfig" json:"mstockConfig"`
 }
 
 func (u *User) ToDto() UserDto {
@@ -111,4 +112,10 @@ type GoogleUser struct {
 type ZerodhaConfig struct {
 	ApiKey    string `json:"apiKey" bson:"apiKey"`
 	ApiSecret string `json:"apiSecret" bson:"apiSecret"`
+}
+
+type MstockConfig struct {
+	ApiKey   string `json:"apiKey" bson:"apiKey"`
+	Username string `json:"username" bson:"username"`
+	Password string `json:"password" bson:"password"`
 }

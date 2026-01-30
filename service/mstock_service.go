@@ -14,20 +14,26 @@ import (
 )
 
 type MstockService interface {
-	Login(ctx context.Context, input *model.MstockLoginInput) (*model.ResponseWrapper, error)
-	VerifyOtp(ctx context.Context, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error)
-	PlaceFnOrder(ctx context.Context, input *model.MstockOrderInput) (*model.ResponseWrapper, error)
+	Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.ResponseWrapper, error)
+	VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error)
+	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error)
+	GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
 }
 
 type MstockServiceImpl struct {
+	angelOneWebSvc AngelOneWebSocket
+	userSvc        UserService
 }
 
-func NewMstockService() MstockService {
-	return &MstockServiceImpl{}
+func NewMstockService(angelOneWebSvc AngelOneWebSocket, userSvc UserService) MstockService {
+	return &MstockServiceImpl{
+		angelOneWebSvc: angelOneWebSvc,
+		userSvc:        userSvc,
+	}
 }
 
-func (s *MstockServiceImpl) Login(ctx context.Context, input *model.MstockLoginInput) (*model.ResponseWrapper, error) {
-	_, ok := s.getClient(1)
+func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.ResponseWrapper, error) {
+	_, ok := s.getClient(userId)
 	if ok {
 		return &model.ResponseWrapper{
 			Body: model.Response{
@@ -38,7 +44,8 @@ func (s *MstockServiceImpl) Login(ctx context.Context, input *model.MstockLoginI
 		}, nil
 	}
 
-	_, ok = cache.PendingLoginCache.Get(input.Username)
+	userIdStr := strconv.FormatInt(userId, 10)
+	_, ok = cache.PendingLoginCache.Get(userIdStr)
 	if ok {
 		return &model.ResponseWrapper{
 			Body: model.Response{
@@ -49,8 +56,9 @@ func (s *MstockServiceImpl) Login(ctx context.Context, input *model.MstockLoginI
 		}, nil
 	}
 
-	fnoClient := client.NewMstockClient(1, input.APIKey, input.Username)
-	cache.PendingLoginCache.Set("1", fnoClient, 5*time.Minute)
+	fnoClient := client.NewMstockClient(userId, input.APIKey, input.Username)
+	cache.PendingLoginCache.Set(userIdStr, fnoClient, 5*time.Minute)
+	cache.PendingLoginCache.Set("mstock:"+userIdStr, input, 5*time.Minute)
 	res, err := fnoClient.Login(input)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("E003")
@@ -58,8 +66,9 @@ func (s *MstockServiceImpl) Login(ctx context.Context, input *model.MstockLoginI
 	return res, nil
 }
 
-func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error) {
-	val, exists := cache.PendingLoginCache.Get("1")
+func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error) {
+	userIdStr := strconv.FormatInt(userId, 10)
+	val, exists := cache.PendingLoginCache.Get(userIdStr)
 	if !exists {
 		return &model.ResponseWrapper{
 			Body: model.Response{
@@ -70,6 +79,18 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, input *model.MstockVe
 		}, nil
 	}
 
+	val2, exists := cache.PendingLoginCache.Get("mstock:" + userIdStr)
+	if !exists {
+		return &model.ResponseWrapper{
+			Body: model.Response{
+				Success: false,
+				Message: "OTP not sent",
+				Data:    "E001",
+			},
+		}, nil
+	}
+
+	loginInput := val2.(*model.MstockLoginInput)
 	fnoClient := val.(*client.MstockClient)
 	res, err := fnoClient.Verify(input)
 
@@ -78,20 +99,36 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, input *model.MstockVe
 	}
 
 	if res.Body.Success {
-		cache.PendingLoginCache.Delete("1")
-		cache.MstockClientCache.Set("1", fnoClient, util.GetDurationToMidnightIST())
-		cache.GoSet("mstock:1", model.MstockRedisCache{
+		cache.PendingLoginCache.Delete(userIdStr)
+		cache.MstockClientCache.Set(userIdStr, fnoClient, util.GetDurationToMidnightIST())
+		cache.GoSet("mstock:"+userIdStr, model.MstockRedisCache{
 			AccessToken: fnoClient.AccessToken,
 			Username:    fnoClient.MstockUserName,
 			APIKey:      fnoClient.ApiKey,
 		}, util.GetDurationToMidnightIST())
+
+		user, err := s.userSvc.FindUser(ctx, 0, "", userId)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Error getting user")
+		}
+
+		user.MstockConfig = model.MstockConfig{
+			ApiKey:   fnoClient.ApiKey,
+			Username: fnoClient.MstockUserName,
+			Password: loginInput.Password,
+		}
+
+		err = s.userSvc.PatchUserData(ctx, userId, *user)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Error updating user")
+		}
 	}
 
 	return res, nil
 }
 
-func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, input *model.MstockOrderInput) (*model.ResponseWrapper, error) {
-	client, ok := s.getClient(1)
+func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error) {
+	client, ok := s.getClient(userId)
 	if !ok {
 		return &model.ResponseWrapper{
 			Body: model.Response{
@@ -102,12 +139,126 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, input *model.Mstoc
 		}, nil
 	}
 
-	resp, err := client.PlaceOrder(input)
+	action := "CE"
+	if input.Action == "PUT" {
+		action = "PE"
+	}
+
+	key := input.Name + input.Expiry + input.Strike + action
+	symbol, ok := cache.OptionCache.Get(key)
+	if !ok {
+		return &model.ResponseWrapper{
+			Body: model.Response{
+				Success: false,
+				Message: "Symbol not found",
+				Data:    "E004",
+			},
+		}, nil
+	}
+
+	option := symbol.(model.OptionChain)
+	qty, err := strconv.Atoi(option.LotSize)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("E005")
+	}
+
+	request := &model.MstockOrderInput{
+		Symbol:   option.MstockSymbol,
+		Exchange: option.ExchangeType,
+		Side:     "BUY",
+		Type:     "MARKET",
+		Qty:      strconv.Itoa(qty * input.Lots),
+		Product:  "NRML",
+		Validity: "DAY",
+		Price:    "0",
+	}
+
+	resp, err := client.PlaceOrder(request)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("E003")
 	}
 
+	if resp.Body.Success {
+		orderId := resp.Body.Data.(string)
+		go func(orderId string, input *model.MstockOrderInput, option *model.OptionChain, tradeRequest *model.MstockOrderRequest) {
+			time.Sleep(1 * time.Second)
+			detail, err := client.GetOrderDetails(orderId)
+			if err != nil || detail == nil {
+				return
+			}
+
+			exType := model.NFO
+			if option.ExchangeType == "BFO" {
+				exType = model.BFO
+			}
+
+			ch, err := s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
+			if err != nil {
+				return
+			}
+
+			avgPrice := detail.AveragePrice
+			targetPrice := util.FixToTickOptions(avgPrice + tradeRequest.Profit)
+			stopLossTime := time.Now().Add(5 * time.Minute)
+			for ltp := range ch {
+				if time.Now().After(stopLossTime) {
+					break
+				}
+				if ltp >= targetPrice {
+					client.PlaceOrder(&model.MstockOrderInput{
+						Symbol:   input.Symbol,
+						Exchange: input.Exchange,
+						Side:     "SELL",
+						Type:     "LIMIT",
+						Qty:      input.Qty,
+						Product:  input.Product,
+						Validity: input.Validity,
+						Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
+					})
+					break
+				}
+			}
+		}(orderId, request, &option, input)
+	}
+
 	return resp, nil
+}
+
+func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+	_, ok := s.getClient(userId)
+	if !ok {
+
+		user, err := s.userSvc.FindUser(ctx, 0, "", userId)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Error getting user")
+		}
+
+		if user.MstockConfig.ApiKey == "" || user.MstockConfig.Password == "" || user.MstockConfig.Username == "" {
+			return &model.ResponseWrapper{
+				Body: model.Response{
+					Success: false,
+					Message: "User not logged in",
+					Data:    "E001",
+				},
+			}, nil
+		}
+
+		return &model.ResponseWrapper{
+			Body: model.Response{
+				Success: false,
+				Message: "User not logged in",
+				Data:    "E002",
+			},
+		}, nil
+	}
+
+	return &model.ResponseWrapper{
+		Body: model.Response{
+			Success: true,
+			Message: "User logged in",
+			Data:    userId,
+		},
+	}, nil
 }
 
 func (s *MstockServiceImpl) getClient(userId int64) (*client.MstockClient, bool) {

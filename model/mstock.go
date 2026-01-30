@@ -27,3 +27,31 @@ type MstockRedisCache struct {
 	Username    string `json:"username"`
 	APIKey      string `json:"apiKey"`
 }
+
+type MstockOrderResponse struct {
+	OrderId         string  `json:"order_id"`
+	AveragePrice    float64 `json:"average_price"`
+	Quantity        int     `json:"quantity"`
+	FilledQuantity  int     `json:"filled_quantity"`
+	Status          string  `json:"status"`
+	PendingQuantity int     `json:"pending_quantity"`
+}
+
+type MinimalInstrument struct {
+	Name    string `json:"name"`
+	Symbol  string `json:"symbol"`
+	Token   string `json:"token"`
+	ExchSeg string `json:"exch_seg"`
+	Expiry  string `json:"expiry"`
+	LotSize string `json:"lotsize"`
+	Strike  string `json:"strike"`
+}
+
+type MstockOrderRequest struct {
+	Name   string  `json:"name"`
+	Strike string  `json:"strike"`
+	Expiry string  `json:"expiry"`
+	Lots   int     `json:"lots" validate:"required,gte=1,lte=100"`
+	Profit float64 `json:"profit" validate:"gte=0"`
+	Action string  `json:"action" validate:"required"`
+}

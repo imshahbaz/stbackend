@@ -3,6 +3,7 @@ package client
 import (
 	"backend/cache"
 	"backend/model"
+	"errors"
 	"fmt"
 	"time"
 
@@ -167,12 +168,14 @@ func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.Respons
 	}
 
 	if status, ok := finalResult["status"].(string); ok && status == "success" {
-		log.Info().Str("username", c.MstockUserName).Msg("MStock order placed successfully")
+		data, _ := finalResult["data"].(map[string]any)
+		orderId := data["order_id"].(string)
+		log.Info().Str("username", c.MstockUserName).Str("order_id", orderId).Msg("MStock order placed successfully")
 		return &model.ResponseWrapper{
 			Body: model.Response{
 				Success: true,
 				Message: "Order placed successfully",
-				Data:    "S002",
+				Data:    orderId,
 			},
 		}, nil
 	}
@@ -190,4 +193,44 @@ func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.Respons
 			Data:    "E002",
 		},
 	}, nil
+}
+
+func (c *MstockClient) GetOrderDetails(orderId string) (*model.MstockOrderResponse, error) {
+	resp, err := c.Client.R().
+		SetHeader("X-Mirae-Version", "1").
+		SetHeader("Authorization", fmt.Sprintf("token %s:%s", c.ApiKey, c.AccessToken)).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetFormData(map[string]string{
+			"order_no": orderId,
+		}).
+		Get("/order/details")
+
+	if err != nil {
+		log.Error().Err(err).Str("username", c.MstockUserName).Msg("MStock order details connection failed")
+		return nil, err
+	}
+
+	var finalResult map[string]any
+	rawBody := resp.Body()
+
+	var sliceResult []map[string]any
+	if err := sonic.Unmarshal(rawBody, &sliceResult); err == nil && len(sliceResult) > 0 {
+		finalResult = sliceResult[0]
+	} else {
+		if err := sonic.Unmarshal(rawBody, &finalResult); err != nil {
+			log.Error().Err(err).Str("username", c.MstockUserName).Msg("Failed to unmarshal MStock response")
+			return nil, err
+		}
+	}
+
+	if status, ok := finalResult["status"].(string); ok && status == "success" {
+		data, _ := finalResult["data"].([]model.MstockOrderResponse)
+
+		for _, order := range data {
+			if order.OrderId == orderId {
+				return &order, nil
+			}
+		}
+	}
+	return nil, errors.New("Order not found")
 }
