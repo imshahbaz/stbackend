@@ -17,8 +17,8 @@ import (
 var ErrConnectionClosed = errors.New("websocket connection is nil or closed")
 
 type AngelOneWebSocket interface {
-	Subscribe(token string) (chan float64, error)
-	Unsubscribe(token string)
+	Subscribe(token string, exchangeType model.ExchangeType) (chan float64, error)
+	Unsubscribe(token string, exchangeType model.ExchangeType)
 	Disconnect()
 	StartWebsocket() error
 	UpdateConfig(jwt, feedToken string)
@@ -81,7 +81,7 @@ func (aws *AngelOneWebSocketImpl) readLoop() {
 	}
 }
 
-func (aws *AngelOneWebSocketImpl) Subscribe(token string) (chan float64, error) {
+func (aws *AngelOneWebSocketImpl) Subscribe(token string, exchangeType model.ExchangeType) (chan float64, error) {
 	aws.mu.Lock()
 	ch, exists := aws.stockChannels[token]
 	if exists {
@@ -100,7 +100,7 @@ func (aws *AngelOneWebSocketImpl) Subscribe(token string) (chan float64, error) 
 			"mode": 1,
 			"tokenList": []map[string]any{
 				{
-					"exchangeType": 1,
+					"exchangeType": exchangeType,
 					"tokens":       []string{token},
 				},
 			},
@@ -110,7 +110,7 @@ func (aws *AngelOneWebSocketImpl) Subscribe(token string) (chan float64, error) 
 	return ch, aws.safeWrite(websocket.TextMessage, request)
 }
 
-func (aws *AngelOneWebSocketImpl) Unsubscribe(token string) {
+func (aws *AngelOneWebSocketImpl) Unsubscribe(token string, exchangeType model.ExchangeType) {
 	aws.mu.Lock()
 	if ch, exists := aws.stockChannels[token]; exists {
 		close(ch)
@@ -119,11 +119,11 @@ func (aws *AngelOneWebSocketImpl) Unsubscribe(token string) {
 	aws.mu.Unlock()
 
 	request := map[string]any{
-		"correlationId": "shahbaz_trail",
+		"correlationId": "shahbaz_trades",
 		"action":        2,
 		"mode":          1,
 		"tokenList": []map[string]any{
-			{"exchangeType": 1, "tokens": []string{token}},
+			{"exchangeType": exchangeType, "tokens": []string{token}},
 		},
 	}
 

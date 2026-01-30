@@ -577,7 +577,7 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 	s.startWorkers()
 
 	for i := range orders {
-		priceChan, err := s.angelOneWs.Subscribe(orders[i].Margin.Token)
+		priceChan, err := s.angelOneWs.Subscribe(orders[i].Margin.Token, model.NSE)
 		if err != nil {
 			continue
 		}
@@ -590,6 +590,7 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 				}
 				res := s.processOrder(order, ltp)
 				if res < 0 {
+					log.Info().Str("orderId", order.ID).Str("symbol", order.Symbol).Msg("Order Squared Off")
 					break
 				}
 				prevLtp = ltp

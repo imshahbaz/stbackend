@@ -3,6 +3,7 @@ package util
 import (
 	"math"
 	"math/rand/v2"
+	"strconv"
 )
 
 const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -32,4 +33,26 @@ func FixToTick(price float64) float64 {
 	}
 
 	return math.Round(price/tick) * tick
+}
+
+func FixToTickOptions(price float64) float64 {
+	tick := 0.05
+	return math.Round(price/tick) * tick
+}
+
+func NormalizeStrike(strikeStr string) string {
+	if strikeStr == "" {
+		return ""
+	}
+
+	f, err := strconv.ParseFloat(strikeStr, 64)
+	if err != nil {
+		return ""
+	}
+
+	if f > 1000000 {
+		f = f / 100
+	}
+
+	return strconv.FormatFloat(math.Round(f), 'f', -1, 64)
 }

@@ -39,6 +39,7 @@ var (
 	strategyRepo    *repository.StrategyRepository
 	priceActionRepo *repository.PriceActionRepo
 	orderRepo       *repository.OrderRepo
+	optRepo         *repository.OptionRepository
 )
 
 var (
@@ -57,6 +58,7 @@ var (
 	orderSvc       service.OrderService
 	angelOneSvc    service.AngelOneService
 	angelOneWebSvc service.AngelOneWebSocket
+	mstockSvc      service.MstockService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -101,6 +103,8 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewOrderController(orderSvc, isProduction).RegisterRoutes(humaApi)
 
 		controller.NewAngelOneController(angelOneSvc, isProduction, angelOneWebSvc).RegisterRoutes(humaApi)
+
+		controller.NewMstockController(mstockSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -161,13 +165,14 @@ func initRepos(db *mongo.Database) {
 	strategyRepo = repository.NewStrategyRepository(db)
 	priceActionRepo = repository.NewPriceActionRepo(db)
 	orderRepo = repository.NewOrderRepo(db)
+	optRepo = repository.NewOptionRepository(db)
 }
 
 func initsvcs(isProduction bool) {
 	emailSvc = service.NewEmailService(brevoClient, configmanager)
 	otpSvc = service.NewOtpService(emailSvc, configmanager)
 	userSvc = service.NewUserService(userRepo)
-	marginSvc = service.NewMarginService(marginRepo, configmanager)
+	marginSvc = service.NewMarginService(marginRepo, configmanager, optRepo)
 	strategySvc = service.NewStrategyService(strategyRepo)
 	nseSvc = service.NewNseService(yahooClient)
 	chartInkSvc = service.NewChartInkService(chartInkClient, marginSvc, nseSvc)
@@ -179,6 +184,7 @@ func initsvcs(isProduction bool) {
 	angelOneWebSvc = service.NewAngelOneWebSocket("", "", &configmanager.GetConfig().AngelOneConfig)
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
+	mstockSvc = service.NewMstockService(angelOneWebSvc, userSvc)
 
 	go loadInitialData()
 }
@@ -214,6 +220,15 @@ func loadInitialData() {
 			log.Info().Msgf("Warning: Failed initial margin load: %v", err)
 		} else {
 			log.Info().Msg("Margins loaded on startup...")
+		}
+	}()
+
+	go func() {
+		log.Info().Msg("Loading options...")
+		if err := marginSvc.ReloadAllOptions(context.Background()); err != nil {
+			log.Info().Msgf("Warning: Failed initial option load: %v", err)
+		} else {
+			log.Info().Msg("Options loaded on startup...")
 		}
 	}()
 
