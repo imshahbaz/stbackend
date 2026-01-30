@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/rs/zerolog/log"
 )
 
 type MstockService interface {
@@ -18,6 +19,7 @@ type MstockService interface {
 	VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error)
 	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error)
 	GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
+	RefreshAccessToken(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
 }
 
 type MstockServiceImpl struct {
@@ -100,6 +102,7 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 
 	if res.Body.Success {
 		cache.PendingLoginCache.Delete(userIdStr)
+		cache.PendingLoginCache.Delete("mstock:" + userIdStr)
 		cache.MstockClientCache.Set(userIdStr, fnoClient, util.GetDurationToMidnightIST())
 		cache.GoSet("mstock:"+userIdStr, model.MstockRedisCache{
 			AccessToken: fnoClient.AccessToken,
@@ -109,19 +112,23 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 
 		user, err := s.userSvc.FindUser(ctx, 0, "", userId)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("Error getting user")
-		}
+			log.Error().Err(err).Msg("Error getting user")
+		} else {
 
-		user.MstockConfig = model.MstockConfig{
-			ApiKey:   fnoClient.ApiKey,
-			Username: fnoClient.MstockUserName,
-			Password: loginInput.Password,
-		}
+			user.MstockConfig = model.MstockConfig{
+				ApiKey:   fnoClient.ApiKey,
+				Username: fnoClient.MstockUserName,
+				Password: loginInput.Password,
+			}
 
-		err = s.userSvc.PatchUserData(ctx, userId, *user)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("Error updating user")
+			err = s.userSvc.PatchUserData(ctx, userId, *user)
+			if err != nil {
+				log.Error().Err(err).Msg("Error updating user")
+			}
 		}
+	} else if res.Body.Data == "E002" {
+		cache.PendingLoginCache.Delete(userIdStr)
+		cache.PendingLoginCache.Delete("mstock:" + userIdStr)
 	}
 
 	return res, nil
@@ -278,4 +285,18 @@ func (s *MstockServiceImpl) getClient(userId int64) (*client.MstockClient, bool)
 	}
 
 	return nil, false
+}
+
+func (s *MstockServiceImpl) RefreshAccessToken(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+	user, err := s.userSvc.FindUser(ctx, 0, "", userId)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Error getting user")
+	}
+
+	return s.Login(ctx, userId, &model.MstockLoginInput{
+		APIKey:   user.MstockConfig.ApiKey,
+		Password: user.MstockConfig.Password,
+		Username: user.MstockConfig.Username,
+	})
+
 }

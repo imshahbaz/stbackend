@@ -65,6 +65,17 @@ func (ctrl *MstockController) RegisterRoutes(api huma.API) {
 		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Mstock"},
 	}, ctrl.auth)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mstock-refresh-token",
+		Method:      http.MethodPost,
+		Path:        "/api/mstock/refresh",
+		Summary:     "Refresh Mstock Access Token",
+		Description: "Uses stored user credentials to re-initiate m.Stock login.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Mstock"},
+	}, ctrl.refreshAccessToken)
 }
 
 func (ctrl *MstockController) login(ctx context.Context, input *struct{ Body model.MstockLoginInput }) (*model.ResponseWrapper, error) {
@@ -89,4 +100,13 @@ func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model
 	}
 
 	return ctrl.mstockSvc.GetProfile(ctx, userDto.UserID)
+}
+
+func (ctrl *MstockController) refreshAccessToken(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+	userDto, ok := ctx.Value("user").(model.UserDto)
+	if !ok {
+		return nil, huma.Error401Unauthorized("User context missing")
+	}
+
+	return ctrl.mstockSvc.RefreshAccessToken(ctx, userDto.UserID)
 }

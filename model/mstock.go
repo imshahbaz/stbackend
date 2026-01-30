@@ -7,7 +7,7 @@ type MstockLoginInput struct {
 }
 
 type MstockVerifyOtpInput struct {
-	Otp string `json:"otp" binding:"required,len=6" example:"123456"`
+	Otp string `json:"otp" binding:"required,min=3,max=6" example:"123456"`
 }
 
 type MstockOrderInput struct {
