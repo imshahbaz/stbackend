@@ -577,25 +577,45 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 	s.startWorkers()
 
 	for i := range orders {
-		priceChan, err := s.angelOneWs.Subscribe(orders[i].Margin.Token, model.NSE)
+		order := &orders[i]
+
+		err := s.angelOneWs.Subscribe(order.Margin.Token, model.NSE)
 		if err != nil {
 			continue
 		}
 
-		go func(order *model.Order, priceChan chan float64) {
+		go func(order *model.Order) {
+			tradingCtx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			timer := time.NewTimer(time.Hour)
+			defer timer.Stop()
+
 			var prevLtp float64
-			for ltp := range priceChan {
-				if prevLtp == ltp {
-					continue
+
+			for {
+				ltp := s.angelOneWs.GetLTP(order.Margin.Token)
+				if ltp == -2 {
+					return
 				}
-				res := s.processOrder(order, ltp)
-				if res < 0 {
-					log.Info().Str("orderId", order.ID).Str("symbol", order.Symbol).Msg("Order Squared Off")
-					break
+
+				if ltp > 0 && ltp != prevLtp {
+					res := s.processOrder(order, ltp)
+
+					if res < 0 {
+						log.Info().
+							Str("orderId", order.ID).
+							Str("symbol", order.Symbol).
+							Msg("Order Squared Off - Stopping Monitor")
+						return
+					}
+					prevLtp = ltp
 				}
-				prevLtp = ltp
+
+				if !util.PollWait(tradingCtx, timer) {
+					return
+				}
 			}
-		}(&orders[i], priceChan)
+		}(order)
 	}
 }
 
