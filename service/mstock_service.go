@@ -60,12 +60,13 @@ func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *mode
 	}
 
 	fnoClient := client.NewMstockClient(userId, input.APIKey, input.Username)
-	cache.PendingLoginCache.Set(userIdStr, fnoClient, 5*time.Minute)
-	cache.PendingLoginCache.Set("mstock:"+userIdStr, input, 5*time.Minute)
 	res, err := fnoClient.Login(input)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("E003")
 	}
+
+	cache.PendingLoginCache.Set(userIdStr, fnoClient, 2*time.Minute)
+	cache.PendingLoginCache.Set("mstock:"+userIdStr, input, 5*time.Minute)
 	return res, nil
 }
 
