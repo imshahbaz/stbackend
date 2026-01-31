@@ -76,6 +76,17 @@ func (ctrl *MstockController) RegisterRoutes(api huma.API) {
 		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"Mstock"},
 	}, ctrl.refreshAccessToken)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mstock-logout",
+		Method:      http.MethodPost,
+		Path:        "/api/mstock/logout",
+		Summary:     "Mstock Logout",
+		Description: "Logs out the user from Mstock by clearing session data.",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Mstock"},
+	}, ctrl.logout)
 }
 
 func (ctrl *MstockController) login(ctx context.Context, input *struct{ Body model.MstockLoginInput }) (*model.ResponseWrapper, error) {
@@ -109,4 +120,13 @@ func (ctrl *MstockController) refreshAccessToken(ctx context.Context, input *str
 	}
 
 	return ctrl.mstockSvc.RefreshAccessToken(ctx, userDto.UserID)
+}
+
+func (ctrl *MstockController) logout(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+	userDto, ok := ctx.Value("user").(model.UserDto)
+	if !ok {
+		return nil, huma.Error401Unauthorized("User context missing")
+	}
+
+	return ctrl.mstockSvc.Logout(ctx, userDto.UserID)
 }

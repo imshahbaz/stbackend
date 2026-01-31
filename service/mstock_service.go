@@ -20,6 +20,7 @@ type MstockService interface {
 	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error)
 	GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
 	RefreshAccessToken(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
+	Logout(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
 }
 
 type MstockServiceImpl struct {
@@ -113,7 +114,7 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 		user, err := s.userSvc.FindUser(ctx, 0, "", userId)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting user")
-		} else {
+		} else if user.MstockConfig == (model.MstockConfig{}) {
 
 			user.MstockConfig = model.MstockConfig{
 				ApiKey:   fnoClient.ApiKey,
@@ -124,6 +125,8 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 			err = s.userSvc.PatchUserData(ctx, userId, *user)
 			if err != nil {
 				log.Error().Err(err).Msg("Error updating user")
+			} else {
+				log.Info().Msg("User updated successfully")
 			}
 		}
 	} else if res.Body.Data == "E002" {
@@ -187,45 +190,8 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, inpu
 
 	if resp.Body.Success {
 		orderId := resp.Body.Data.(string)
-		go func(orderId string, input *model.MstockOrderInput, option *model.OptionChain, tradeRequest *model.MstockOrderRequest) {
-			time.Sleep(1 * time.Second)
-			detail, err := client.GetOrderDetails(orderId)
-			if err != nil || detail == nil {
-				return
-			}
-
-			exType := model.NFO
-			if option.ExchangeType == "BFO" {
-				exType = model.BFO
-			}
-
-			ch, err := s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
-			if err != nil {
-				return
-			}
-
-			avgPrice := detail.AveragePrice
-			targetPrice := util.FixToTickOptions(avgPrice + tradeRequest.Profit)
-			stopLossTime := time.Now().Add(5 * time.Minute)
-			for ltp := range ch {
-				if time.Now().After(stopLossTime) {
-					break
-				}
-				if ltp >= targetPrice {
-					client.PlaceOrder(&model.MstockOrderInput{
-						Symbol:   input.Symbol,
-						Exchange: input.Exchange,
-						Side:     "SELL",
-						Type:     "LIMIT",
-						Qty:      input.Qty,
-						Product:  input.Product,
-						Validity: input.Validity,
-						Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
-					})
-					break
-				}
-			}
-		}(orderId, request, &option, input)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		go s.monitorAndSell(orderId, request, &option, input, client, ctx, cancel)
 	}
 
 	return resp, nil
@@ -299,4 +265,85 @@ func (s *MstockServiceImpl) RefreshAccessToken(ctx context.Context, userId int64
 		Username: user.MstockConfig.Username,
 	})
 
+}
+
+func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOrderInput,
+	option *model.OptionChain, tradeRequest *model.MstockOrderRequest, client *client.MstockClient,
+	ctx context.Context, cancel context.CancelFunc) {
+	defer cancel()
+
+	time.Sleep(1 * time.Second)
+
+	var detail *model.MstockOrderResponse
+	var err error
+
+	for range 3 {
+		detail, err = client.GetOrderDetails(orderId)
+		if err == nil && detail != nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	if err != nil || detail == nil {
+		log.Error().Err(err).
+			Str("orderId", orderId).
+			Msg("Could not fetch order details after retries")
+		return
+	}
+
+	avgPrice := detail.AveragePrice
+	if avgPrice == 0 {
+		return
+	}
+
+	exType := model.NFO
+	if option.ExchangeType == "BFO" {
+		exType = model.BFO
+	}
+
+	ch, err := s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
+	if err != nil {
+		return
+	}
+
+	targetPrice := util.FixToTickOptions(avgPrice + tradeRequest.Profit)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ltp, ok := <-ch:
+			if !ok {
+				return
+			}
+			if ltp >= targetPrice {
+				client.PlaceOrder(&model.MstockOrderInput{
+					Symbol:   input.Symbol,
+					Exchange: input.Exchange,
+					Side:     "SELL",
+					Type:     "LIMIT",
+					Qty:      input.Qty,
+					Product:  input.Product,
+					Validity: input.Validity,
+					Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
+				})
+				return
+			}
+		}
+	}
+
+}
+
+func (s *MstockServiceImpl) Logout(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+	key := strconv.FormatInt(userId, 10)
+	cache.MstockClientCache.Delete(key)
+	cache.GoDelete("mstock:" + key)
+	return &model.ResponseWrapper{
+		Body: model.Response{
+			Success: true,
+			Message: "User logged out",
+			Data:    userId,
+		},
+	}, nil
 }
