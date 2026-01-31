@@ -20,6 +20,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var (
+	optionOutput []model.OptionOutput
+)
+
 type MarginService interface {
 	GetAllMargins() []model.Margin
 	GetMargin(symbol string) (*model.Margin, bool)
@@ -323,6 +327,7 @@ func (s *MarginServiceImpl) updateOptionLocalCache(optionChain []model.OptionCha
 	for _, m := range optionChain {
 		cache.OptionCache.Set(m.Symbol, m, -1)
 	}
+	optionOutput = nil
 }
 
 func (s *MarginServiceImpl) ReloadAllOptions(ctx context.Context) error {
@@ -336,6 +341,10 @@ func (s *MarginServiceImpl) ReloadAllOptions(ctx context.Context) error {
 }
 
 func (s *MarginServiceImpl) GetAllOptions() []model.OptionOutput {
+	if optionOutput != nil {
+		return optionOutput
+	}
+
 	items := cache.OptionCache.Items()
 
 	niftyExpSet := make(map[string]struct{})
@@ -390,5 +399,6 @@ func (s *MarginServiceImpl) GetAllOptions() []model.OptionOutput {
 		},
 	}
 
+	optionOutput = result
 	return result
 }
