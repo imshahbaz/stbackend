@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"backend/cache"
@@ -21,7 +22,7 @@ import (
 )
 
 var (
-	optionOutput []model.OptionOutput
+	optionOutput atomic.Value
 )
 
 type MarginService interface {
@@ -32,7 +33,7 @@ type MarginService interface {
 	SyncMTF(ctx context.Context, file io.Reader) error
 	SyncMarginToken(ctx context.Context) error
 	ReloadAllOptions(ctx context.Context) error
-	GetAllOptions() []model.OptionOutput
+	GetAllOptions() *[]model.OptionOutput
 }
 
 type MarginServiceImpl struct {
@@ -327,7 +328,8 @@ func (s *MarginServiceImpl) updateOptionLocalCache(optionChain []model.OptionCha
 	for _, m := range optionChain {
 		cache.OptionCache.Set(m.Symbol, m, -1)
 	}
-	optionOutput = nil
+	empty := &[]model.OptionOutput{}
+	optionOutput.Store(empty)
 }
 
 func (s *MarginServiceImpl) ReloadAllOptions(ctx context.Context) error {
@@ -340,9 +342,14 @@ func (s *MarginServiceImpl) ReloadAllOptions(ctx context.Context) error {
 	return nil
 }
 
-func (s *MarginServiceImpl) GetAllOptions() []model.OptionOutput {
-	if optionOutput != nil {
-		return optionOutput
+func (s *MarginServiceImpl) GetAllOptions() *[]model.OptionOutput {
+	val := optionOutput.Load()
+	if val != nil {
+		if res, ok := val.(*[]model.OptionOutput); ok {
+			if res != nil && len(*res) > 0 {
+				return res
+			}
+		}
 	}
 
 	items := cache.OptionCache.Items()
@@ -381,7 +388,7 @@ func (s *MarginServiceImpl) GetAllOptions() []model.OptionOutput {
 		return res
 	}
 
-	result := []model.OptionOutput{
+	result := &[]model.OptionOutput{
 		{
 			Name:   "NIFTY",
 			Expiry: setToSortedSlice(niftyExpSet),
@@ -399,6 +406,6 @@ func (s *MarginServiceImpl) GetAllOptions() []model.OptionOutput {
 		},
 	}
 
-	optionOutput = result
+	optionOutput.Store(result)
 	return result
 }
