@@ -192,7 +192,7 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, inpu
 	if resp.Body.Success {
 		orderId := resp.Body.Data.(string)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		go s.monitorAndSell(orderId, request, &option, input, client, ctx, cancel)
+		go s.monitorAndSell(orderId, request, &option, input, client, ctx, cancel, false)
 	}
 
 	return resp, nil
@@ -270,7 +270,7 @@ func (s *MstockServiceImpl) RefreshAccessToken(ctx context.Context, userId int64
 
 func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOrderInput,
 	option *model.OptionChain, tradeRequest *model.MstockOrderRequest, client *client.MstockClient,
-	ctx context.Context, cancel context.CancelFunc) {
+	ctx context.Context, cancel context.CancelFunc, isTrailing bool) {
 	defer cancel()
 
 	time.Sleep(1 * time.Second)
@@ -291,47 +291,60 @@ func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOr
 		return
 	}
 
-	exType := model.NFO
-	if option.ExchangeType == "BFO" {
-		exType = model.BFO
-	}
-
-	err = s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
-	if err != nil {
-		return
-	}
-
 	targetPrice := util.FixToTickOptions(detail.AveragePrice + tradeRequest.Profit)
 
-	timer := time.NewTimer(time.Hour)
-	defer timer.Stop()
+	if isTrailing {
+		exType := model.NFO
+		if option.ExchangeType == "BFO" {
+			exType = model.BFO
+		}
 
-	for {
-		ltp := s.angelOneWebSvc.GetLTP(option.AngelOneToken)
-
-		if ltp == -2 {
-			log.Warn().Str("orderId", orderId).Msg("Monitor stopping: WebSocket connection lost")
+		err = s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
+		if err != nil {
 			return
 		}
 
-		if ltp > 0 && ltp >= targetPrice {
-			client.PlaceOrder(&model.MstockOrderInput{
-				Symbol:   input.Symbol,
-				Exchange: input.Exchange,
-				Side:     "SELL",
-				Type:     "LIMIT",
-				Qty:      input.Qty,
-				Product:  input.Product,
-				Validity: input.Validity,
-				Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
-			})
-			return
-		}
+		timer := time.NewTimer(time.Hour)
+		defer timer.Stop()
 
-		if !util.PollWait(ctx, timer) {
-			log.Info().Str("orderId", orderId).Msg("Monitor cancelled via context")
-			return
+		for {
+			ltp := s.angelOneWebSvc.GetLTP(option.AngelOneToken)
+
+			if ltp == -2 {
+				log.Warn().Str("orderId", orderId).Msg("Monitor stopping: WebSocket connection lost")
+				return
+			}
+
+			if ltp > 0 && ltp >= targetPrice {
+				client.PlaceOrder(&model.MstockOrderInput{
+					Symbol:   input.Symbol,
+					Exchange: input.Exchange,
+					Side:     "SELL",
+					Type:     "LIMIT",
+					Qty:      input.Qty,
+					Product:  input.Product,
+					Validity: input.Validity,
+					Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
+				})
+				return
+			}
+
+			if !util.PollWait(ctx, timer) {
+				log.Info().Str("orderId", orderId).Msg("Monitor cancelled via context")
+				return
+			}
 		}
+	} else {
+		client.PlaceOrder(&model.MstockOrderInput{
+			Symbol:   input.Symbol,
+			Exchange: input.Exchange,
+			Side:     "SELL",
+			Type:     "LIMIT",
+			Qty:      input.Qty,
+			Product:  input.Product,
+			Validity: input.Validity,
+			Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
+		})
 	}
 
 }
