@@ -286,15 +286,8 @@ func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOr
 		time.Sleep(1 * time.Second)
 	}
 
-	if err != nil || detail == nil {
-		log.Error().Err(err).
-			Str("orderId", orderId).
-			Msg("Could not fetch order details after retries")
-		return
-	}
-
-	avgPrice := detail.AveragePrice
-	if avgPrice == 0 {
+	if err != nil || detail == nil || detail.AveragePrice == 0 {
+		log.Error().Err(err).Str("orderId", orderId).Msg("Could not fetch valid order details")
 		return
 	}
 
@@ -303,34 +296,41 @@ func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOr
 		exType = model.BFO
 	}
 
-	ch, err := s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
+	err = s.angelOneWebSvc.Subscribe(option.AngelOneToken, exType)
 	if err != nil {
 		return
 	}
 
-	targetPrice := util.FixToTickOptions(avgPrice + tradeRequest.Profit)
+	targetPrice := util.FixToTickOptions(detail.AveragePrice + tradeRequest.Profit)
+
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
+		ltp := s.angelOneWebSvc.GetLTP(option.AngelOneToken)
+
+		if ltp == -2 {
+			log.Warn().Str("orderId", orderId).Msg("Monitor stopping: WebSocket connection lost")
 			return
-		case ltp, ok := <-ch:
-			if !ok {
-				return
-			}
-			if ltp >= targetPrice {
-				client.PlaceOrder(&model.MstockOrderInput{
-					Symbol:   input.Symbol,
-					Exchange: input.Exchange,
-					Side:     "SELL",
-					Type:     "LIMIT",
-					Qty:      input.Qty,
-					Product:  input.Product,
-					Validity: input.Validity,
-					Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
-				})
-				return
-			}
+		}
+
+		if ltp > 0 && ltp >= targetPrice {
+			client.PlaceOrder(&model.MstockOrderInput{
+				Symbol:   input.Symbol,
+				Exchange: input.Exchange,
+				Side:     "SELL",
+				Type:     "LIMIT",
+				Qty:      input.Qty,
+				Product:  input.Product,
+				Validity: input.Validity,
+				Price:    strconv.FormatFloat(targetPrice, 'f', 2, 64),
+			})
+			return
+		}
+
+		if !util.PollWait(ctx, timer) {
+			log.Info().Str("orderId", orderId).Msg("Monitor cancelled via context")
+			return
 		}
 	}
 

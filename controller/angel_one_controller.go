@@ -3,9 +3,11 @@ package controller
 import (
 	"backend/model"
 	"backend/service"
+	"backend/util"
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/rs/zerolog/log"
@@ -136,15 +138,35 @@ func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
 }) (*model.ResponseWrapper, error) {
 
 	for _, token := range input.Body.Tokens {
-		ch, err := ctrl.angelOneWebSvc.Subscribe(token, input.Body.ExchangeType)
+		err := ctrl.angelOneWebSvc.Subscribe(token, input.Body.ExchangeType)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("Failed to subscribe to token: " + err.Error())
 		}
-		go func() {
-			for ltp := range ch {
-				log.Info().Msgf("LTP for %s: %f", token, ltp)
+
+		mCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		go func(token string) {
+			defer cancel()
+			timer := time.NewTimer(time.Hour)
+			defer timer.Stop()
+			for {
+				ltp := ctrl.angelOneWebSvc.GetLTP(token)
+
+				if ltp == -2 {
+					log.Warn().Msg("Monitor stopping: WebSocket connection lost")
+					return
+				}
+
+				if ltp > 0 {
+					log.Info().Msgf("LTP for %s: %f", token, ltp)
+				}
+
+				if !util.PollWait(mCtx, timer) {
+					log.Info().Msg("Monitor cancelled via context")
+					return
+				}
 			}
-		}()
+		}(token)
+
 	}
 
 	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Subscription requests sent for " + strconv.Itoa(len(input.Body.Tokens)) + " tokens"}}, nil

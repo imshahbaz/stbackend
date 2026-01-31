@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -17,34 +18,35 @@ import (
 var ErrConnectionClosed = errors.New("websocket connection is nil or closed")
 
 type AngelOneWebSocket interface {
-	Subscribe(token string, exchangeType model.ExchangeType) (chan float64, error)
+	Subscribe(token string, exchangeType model.ExchangeType) error
 	Unsubscribe(token string, exchangeType model.ExchangeType)
 	Disconnect()
 	StartWebsocket() error
 	UpdateConfig(jwt, feedToken string)
 	StopUpdateChannel()
+	GetLTP(token string) float64
 }
 
 type AngelOneWebSocketImpl struct {
-	conn          *websocket.Conn
-	mu            sync.RWMutex
-	writeMu       sync.Mutex
-	stockChannels map[string]chan float64
-	jwt           string
-	apiKey        string
-	clientCode    string
-	feedToken     string
-	config        *model.AngelOneConfig
+	conn       *websocket.Conn
+	mu         sync.RWMutex
+	writeMu    sync.Mutex
+	ltpCache   sync.Map
+	jwt        string
+	apiKey     string
+	clientCode string
+	feedToken  string
+	config     *model.AngelOneConfig
+	connected  atomic.Bool
 }
 
 func NewAngelOneWebSocket(jwt, feedToken string, config *model.AngelOneConfig) AngelOneWebSocket {
 	return &AngelOneWebSocketImpl{
-		stockChannels: make(map[string]chan float64),
-		jwt:           jwt,
-		apiKey:        config.ApiKey,
-		clientCode:    config.ClientID,
-		feedToken:     feedToken,
-		config:        config,
+		jwt:        jwt,
+		apiKey:     config.ApiKey,
+		clientCode: config.ClientID,
+		feedToken:  feedToken,
+		config:     config,
 	}
 }
 
@@ -66,32 +68,17 @@ func (aws *AngelOneWebSocketImpl) readLoop() {
 			token := strings.TrimRight(string(message[2:27]), "\x00")
 			priceInt := binary.LittleEndian.Uint32(message[43:47])
 			ltp := float64(priceInt) / 100.0
-
-			aws.mu.RLock()
-			ch, exists := aws.stockChannels[token]
-			aws.mu.RUnlock()
-
-			if exists {
-				select {
-				case ch <- ltp:
-				default:
-				}
-			}
+			aws.ltpCache.Store(token, ltp)
 		}
 	}
 }
 
-func (aws *AngelOneWebSocketImpl) Subscribe(token string, exchangeType model.ExchangeType) (chan float64, error) {
-	aws.mu.Lock()
-	ch, exists := aws.stockChannels[token]
-	if exists {
-		aws.mu.Unlock()
-		return ch, nil
+func (aws *AngelOneWebSocketImpl) Subscribe(token string, exchangeType model.ExchangeType) error {
+	if _, ok := aws.ltpCache.Load(token); ok {
+		return nil
 	}
 
-	ch = make(chan float64, 100)
-	aws.stockChannels[token] = ch
-	aws.mu.Unlock()
+	aws.ltpCache.Store(token, -1.0)
 
 	request := map[string]any{
 		"correlationId": "shahbaz_trades",
@@ -107,17 +94,10 @@ func (aws *AngelOneWebSocketImpl) Subscribe(token string, exchangeType model.Exc
 		},
 	}
 
-	return ch, aws.safeWrite(websocket.TextMessage, request)
+	return aws.safeWrite(websocket.TextMessage, request)
 }
 
 func (aws *AngelOneWebSocketImpl) Unsubscribe(token string, exchangeType model.ExchangeType) {
-	aws.mu.Lock()
-	if ch, exists := aws.stockChannels[token]; exists {
-		close(ch)
-		delete(aws.stockChannels, token)
-	}
-	aws.mu.Unlock()
-
 	request := map[string]any{
 		"correlationId": "shahbaz_trades",
 		"action":        2,
@@ -128,6 +108,7 @@ func (aws *AngelOneWebSocketImpl) Unsubscribe(token string, exchangeType model.E
 	}
 
 	aws.safeWrite(websocket.TextMessage, request)
+	aws.ltpCache.Delete(token)
 }
 
 func (aws *AngelOneWebSocketImpl) heartbeatLoop() {
@@ -151,6 +132,7 @@ func (aws *AngelOneWebSocketImpl) heartbeatLoop() {
 }
 
 func (aws *AngelOneWebSocketImpl) Disconnect() {
+	aws.connected.Store(false)
 	aws.mu.Lock()
 	if aws.conn != nil {
 		aws.safeWrite(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -159,12 +141,7 @@ func (aws *AngelOneWebSocketImpl) Disconnect() {
 	}
 	aws.mu.Unlock()
 
-	aws.mu.Lock()
-	for token, ch := range aws.stockChannels {
-		close(ch)
-		delete(aws.stockChannels, token)
-	}
-	aws.mu.Unlock()
+	aws.ltpCache = sync.Map{}
 }
 
 func (aws *AngelOneWebSocketImpl) StartWebsocket() error {
@@ -192,6 +169,7 @@ func (aws *AngelOneWebSocketImpl) StartWebsocket() error {
 	go aws.readLoop()
 	go aws.heartbeatLoop()
 
+	aws.connected.Store(true)
 	return nil
 }
 
@@ -231,4 +209,16 @@ func (aws *AngelOneWebSocketImpl) StopUpdateChannel() {
 	if updateChan != nil {
 		close(updateChan)
 	}
+}
+
+func (aws *AngelOneWebSocketImpl) GetLTP(token string) float64 {
+	if !aws.connected.Load() {
+		return -2
+	}
+
+	val, ok := aws.ltpCache.Load(token)
+	if !ok {
+		return -1
+	}
+	return val.(float64)
 }

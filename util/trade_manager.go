@@ -2,7 +2,9 @@ package util
 
 import (
 	"backend/model"
+	"context"
 	"sync"
+	"time"
 )
 
 type TradeManager struct {
@@ -43,4 +45,16 @@ func (m *TradeManager) ReplaceAll(newTrades map[string]*model.Order) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.activeTrades = newTrades
+}
+
+func PollWait(ctx context.Context, timer *time.Timer) bool {
+	waitDuration := 200 * time.Millisecond
+	timer.Reset(waitDuration)
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
