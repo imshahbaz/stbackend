@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -167,164 +168,6 @@ func (s *MarginServiceImpl) syncMargins(ctx context.Context, margins []model.Mar
 	return nil
 }
 
-func (s *MarginServiceImpl) SyncMarginToken(ctx context.Context) error {
-	marginItems := cache.MarginCache.Items()
-	if len(marginItems) == 0 {
-		return nil
-	}
-
-	targetMargins := make(map[string]model.Margin, len(marginItems))
-	for symbol, item := range marginItems {
-		if m, ok := item.Object.(model.Margin); ok {
-			targetMargins[symbol] = m
-		}
-	}
-
-	client := resty.New().SetTimeout(5 * time.Minute)
-	url := "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-
-	resp, err := client.R().
-		SetContext(ctx).
-		SetDoNotParseResponse(true).
-		Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to fetch instrument list: %w", err)
-	}
-	defer resp.RawBody().Close()
-
-	body, err := io.ReadAll(resp.RawBody())
-	if err != nil {
-		return fmt.Errorf("failed to read full response body: %w", err)
-	}
-
-	log.Info().Int("bytes_received", len(body)).Msg("Download complete")
-
-	var allInstruments []model.MinimalInstrument
-	if err := sonic.Unmarshal(body, &allInstruments); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	log.Info().Int("count", len(allInstruments)).Msg("Total instruments decoded")
-
-	updatedMargins := make([]model.Margin, 0, len(targetMargins))
-	optionMap := make(map[string]*model.OptionChain, 100)
-	names := []string{"NIFTY", "BANKNIFTY", "SENSEX"}
-	now := util.ToIST(time.Now())
-	cutoff := now.AddDate(0, 1, 0)
-	for i := range allInstruments {
-		inst := &allInstruments[i]
-
-		if slices.Contains(names, inst.Name) && inst.Expiry != "" {
-
-			expiry, err := util.ParseAllCapsDate(inst.Expiry)
-			if err != nil {
-				continue
-			}
-
-			if expiry.After(cutoff) || expiry.Before(now) {
-				continue
-			}
-
-			strike := util.NormalizeStrike(inst.Strike)
-			if strike == "" || strike == "-1" || strike == "0" {
-				continue
-			}
-
-			option := model.OptionChain{
-				Symbol:        inst.Name + inst.Expiry + strike + inst.Symbol[len(inst.Symbol)-2:],
-				Expiry:        inst.Expiry,
-				Strike:        strike,
-				LotSize:       inst.LotSize,
-				ExchangeType:  inst.ExchSeg,
-				AngelOneToken: inst.Token,
-			}
-
-			finalOpt := option
-			optionMap[option.Symbol] = &finalOpt
-			continue
-		}
-
-		if inst.ExchSeg != "NSE" || !strings.HasSuffix(inst.Symbol, "-EQ") {
-			continue
-		}
-
-		if margin, exists := targetMargins[inst.Name]; exists {
-			margin.Token = inst.Token
-			updatedMargins = append(updatedMargins, margin)
-			delete(targetMargins, inst.Name)
-		}
-	}
-
-	go func(optionMap map[string]*model.OptionChain, client *resty.Client, names []string) {
-		if len(optionMap) == 0 {
-			return
-		}
-		url := "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster"
-		resp, err := client.R().
-			SetContext(context.Background()).
-			SetDoNotParseResponse(true).
-			Get(url)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to fetch instrument list")
-			return
-		}
-		defer resp.RawBody().Close()
-
-		var allInstruments []model.MinimalInstrument
-		decoder := sonic.ConfigDefault.NewDecoder(resp.RawBody())
-		if err := decoder.Decode(&allInstruments); err != nil {
-			log.Error().Err(err).Msg("failed to decode instrument list")
-			return
-		}
-
-		for i := range allInstruments {
-			inst := &allInstruments[i]
-
-			if slices.Contains(names, inst.Symbol) && inst.Strike != "" {
-				key := inst.Symbol + strings.ToUpper(inst.Expiry) + inst.Strike + inst.Name[len(inst.Name)-2:]
-				if option, exists := optionMap[key]; exists {
-					option.MstockSymbol = inst.Name
-				}
-
-			}
-		}
-
-		ids := make([]any, len(optionMap))
-		optionChain := make([]model.OptionChain, 0, len(optionMap))
-		for id, option := range optionMap {
-			ids = append(ids, id)
-			optionChain = append(optionChain, *option)
-		}
-
-		if err := s.optRepo.GenericRepo.SaveAll(context.Background(), optionChain, "Symbol"); err != nil {
-			log.Error().Err(err).Msg("failed to save option chain")
-		}
-
-		deletedCount, err := s.optRepo.GenericRepo.DeleteByIdNotIn(context.Background(), ids)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to delete option chain")
-		}
-
-		s.updateOptionLocalCache(optionChain)
-		log.Info().Msgf("Option chain synced. Symbols updated: %d. Deleted stale: %d", len(optionChain), deletedCount)
-
-	}(optionMap, client, names)
-
-	if len(updatedMargins) == 0 {
-		log.Info().Msg("No matching margin tokens found to update")
-		return nil
-	}
-
-	if err := s.repo.GenericRepo.SaveAll(ctx, updatedMargins, "Symbol"); err != nil {
-		return fmt.Errorf("failed to save updated margins: %w", err)
-	}
-
-	s.updateLocalCache(updatedMargins)
-
-	log.Info().Msgf("Margin tokens synced. Symbols updated: %d", len(updatedMargins))
-	return nil
-}
-
 func (s *MarginServiceImpl) updateOptionLocalCache(optionChain []model.OptionChain) {
 	cache.OptionCache.Flush()
 	for _, m := range optionChain {
@@ -412,4 +255,160 @@ func (s *MarginServiceImpl) GetAllOptions() *[]model.OptionOutput {
 		optionOutput.Store(result)
 	})
 	return optionOutput.Load().(*[]model.OptionOutput)
+}
+
+func (s *MarginServiceImpl) SyncMarginToken(ctx context.Context) error {
+	marginItems := cache.MarginCache.Items()
+	if len(marginItems) == 0 {
+		return nil
+	}
+
+	targetMargins := make(map[string]model.Margin, len(marginItems))
+	for symbol, item := range marginItems {
+		if m, ok := item.Object.(model.Margin); ok {
+			targetMargins[symbol] = m
+		}
+	}
+
+	client := resty.New().SetTimeout(5 * time.Minute)
+	url := "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+
+	resp, err := client.R().
+		SetContext(ctx).
+		SetDoNotParseResponse(true).
+		Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch instrument list: %w", err)
+	}
+	defer resp.RawBody().Close()
+
+	var allInstruments []model.MinimalInstrument
+	decoder := sonic.ConfigDefault.NewDecoder(resp.RawBody())
+	if err := decoder.Decode(&allInstruments); err != nil {
+		return fmt.Errorf("failed to decode JSON stream: %w", err)
+	}
+
+	updatedMargins := make([]model.Margin, 0, len(targetMargins))
+	optionMap := make(map[string]*model.OptionChain, 2000)
+	names := []string{"NIFTY", "BANKNIFTY", "SENSEX"}
+	now := util.ToIST(time.Now())
+	cutoff := now.AddDate(0, 1, 0)
+
+	for i := range allInstruments {
+		inst := &allInstruments[i]
+
+		if slices.Contains(names, inst.Name) && inst.Expiry != "" {
+			expiry, err := util.ParseAllCapsDate(inst.Expiry)
+			if err != nil {
+				continue
+			}
+
+			if expiry.After(cutoff) || expiry.Before(now) {
+				continue
+			}
+
+			strike := util.NormalizeStrike(inst.Strike)
+			if strike == "" || strike == "-1" || strike == "0" {
+				continue
+			}
+
+			option := model.OptionChain{
+				Symbol:        inst.Name + inst.Expiry + strike + inst.Symbol[len(inst.Symbol)-2:],
+				Expiry:        inst.Expiry,
+				Strike:        strike,
+				LotSize:       inst.LotSize,
+				ExchangeType:  inst.ExchSeg,
+				AngelOneToken: inst.Token,
+			}
+			optionMap[option.Symbol] = &option
+			continue
+		}
+
+		if inst.ExchSeg == "NSE" && strings.HasSuffix(inst.Symbol, "-EQ") {
+			if margin, exists := targetMargins[inst.Name]; exists {
+				margin.Token = inst.Token
+				updatedMargins = append(updatedMargins, margin)
+				delete(targetMargins, inst.Name)
+			}
+		}
+	}
+
+	allInstruments = nil
+	runtime.GC()
+
+	go s.syncMstockSymbols(optionMap, names)
+
+	if len(updatedMargins) > 0 {
+		if err := s.repo.GenericRepo.SaveAll(ctx, updatedMargins, "Symbol"); err != nil {
+			return fmt.Errorf("failed to save margins: %w", err)
+		}
+		s.updateLocalCache(updatedMargins)
+	}
+
+	log.Info().
+		Int("synced_symbols", len(updatedMargins)).
+		Msg("AngelOne token sync complete")
+
+	return nil
+}
+
+func (s *MarginServiceImpl) syncMstockSymbols(optionMap map[string]*model.OptionChain, names []string) {
+	if len(optionMap) == 0 {
+		return
+	}
+
+	url := "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster"
+	client := resty.New().SetTimeout(5 * time.Minute)
+	resp, err := client.R().
+		SetDoNotParseResponse(true).
+		Get(url)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to fetch mstock list")
+		return
+	}
+	defer resp.RawBody().Close()
+
+	var mstockInsts []model.MinimalInstrument
+	decoder := sonic.ConfigDefault.NewDecoder(resp.RawBody())
+	if err := decoder.Decode(&mstockInsts); err != nil {
+		log.Error().Err(err).Msg("failed to decode mstock stream")
+		return
+	}
+
+	for i := range mstockInsts {
+		inst := &mstockInsts[i]
+		if slices.Contains(names, inst.Symbol) && inst.Strike != "" {
+			key := inst.Symbol + strings.ToUpper(inst.Expiry) + inst.Strike + inst.Name[len(inst.Name)-2:]
+			if opt, exists := optionMap[key]; exists {
+				opt.MstockSymbol = inst.Name
+			}
+		}
+	}
+
+	mstockInsts = nil
+	runtime.GC()
+
+	ids := make([]any, 0, len(optionMap))
+	optionChain := make([]model.OptionChain, 0, len(optionMap))
+	for id, opt := range optionMap {
+		ids = append(ids, id)
+		optionChain = append(optionChain, *opt)
+	}
+
+	ctx := context.Background()
+	if err := s.optRepo.GenericRepo.SaveAll(ctx, optionChain, "Symbol"); err != nil {
+		log.Error().Err(err).Msg("failed to save options")
+	}
+
+	var count int64
+	if count, err = s.optRepo.GenericRepo.DeleteByIdNotIn(ctx, ids); err != nil {
+		log.Error().Err(err).Msg("failed to delete stale options")
+	}
+
+	s.updateOptionLocalCache(optionChain)
+
+	log.Info().
+		Int("synced_symbols", len(optionChain)).
+		Int64("deleted_stale", count).
+		Msg("MStock option chain sync complete")
 }
