@@ -199,38 +199,33 @@ func (c *MstockClient) GetOrderDetails(orderId string) (*model.MstockOrderRespon
 	resp, err := c.Client.R().
 		SetHeader("X-Mirae-Version", "1").
 		SetHeader("Authorization", fmt.Sprintf("token %s:%s", c.ApiKey, c.AccessToken)).
-		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetFormData(map[string]string{
 			"order_no": orderId,
 		}).
-		Get("/order/details")
+		Post("/order/details")
 
 	if err != nil {
-		log.Error().Err(err).Str("username", c.MstockUserName).Msg("MStock order details connection failed")
 		return nil, err
 	}
 
-	var finalResult map[string]any
-	rawBody := resp.Body()
+	var wrapper struct {
+		Status string                      `json:"status"`
+		Data   []model.MstockOrderResponse `json:"data"`
+	}
 
-	var sliceResult []map[string]any
-	if err := sonic.Unmarshal(rawBody, &sliceResult); err == nil && len(sliceResult) > 0 {
-		finalResult = sliceResult[0]
-	} else {
-		if err := sonic.Unmarshal(rawBody, &finalResult); err != nil {
-			log.Error().Err(err).Str("username", c.MstockUserName).Msg("Failed to unmarshal MStock response")
-			return nil, err
+	if err := sonic.Unmarshal(resp.Body(), &wrapper); err != nil {
+		return nil, err
+	}
+
+	if wrapper.Status != "success" || len(wrapper.Data) == 0 {
+		return nil, errors.New("order not found or API failure")
+	}
+
+	for _, o := range wrapper.Data {
+		if o.OrderId == orderId {
+			return &o, nil
 		}
 	}
 
-	if status, ok := finalResult["status"].(string); ok && status == "success" {
-		data, _ := finalResult["data"].([]model.MstockOrderResponse)
-
-		for _, order := range data {
-			if order.OrderId == orderId {
-				return &order, nil
-			}
-		}
-	}
-	return nil, errors.New("Order not found")
+	return nil, errors.New("specific order_id not found in response list")
 }
