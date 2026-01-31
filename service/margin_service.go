@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 
 var (
 	optionOutput atomic.Value
+	once         sync.Once
 )
 
 type MarginService interface {
@@ -352,60 +354,62 @@ func (s *MarginServiceImpl) GetAllOptions() *[]model.OptionOutput {
 		}
 	}
 
-	items := cache.OptionCache.Items()
+	once.Do(func() {
+		items := cache.OptionCache.Items()
 
-	niftyExpSet := make(map[string]struct{})
-	bnExpSet := make(map[string]struct{})
-	sensexExpSet := make(map[string]struct{})
+		niftyExpSet := make(map[string]struct{})
+		bnExpSet := make(map[string]struct{})
+		sensexExpSet := make(map[string]struct{})
 
-	niftyStrkSet := make(map[string]struct{})
-	bnStrkSet := make(map[string]struct{})
-	sensexStrkSet := make(map[string]struct{})
+		niftyStrkSet := make(map[string]struct{})
+		bnStrkSet := make(map[string]struct{})
+		sensexStrkSet := make(map[string]struct{})
 
-	for _, item := range items {
-		if option, ok := item.Object.(model.OptionChain); ok {
-			symbol := option.Symbol
+		for _, item := range items {
+			if option, ok := item.Object.(model.OptionChain); ok {
+				symbol := option.Symbol
 
-			if strings.HasPrefix(symbol, "NIFTY") {
-				niftyExpSet[option.Expiry] = struct{}{}
-				niftyStrkSet[option.Strike] = struct{}{}
-			} else if strings.HasPrefix(symbol, "BANKNIFTY") {
-				bnExpSet[option.Expiry] = struct{}{}
-				bnStrkSet[option.Strike] = struct{}{}
-			} else if strings.HasPrefix(symbol, "SENSEX") {
-				sensexExpSet[option.Expiry] = struct{}{}
-				sensexStrkSet[option.Strike] = struct{}{}
+				if strings.HasPrefix(symbol, "BANKNIFTY") {
+					bnExpSet[option.Expiry] = struct{}{}
+					bnStrkSet[option.Strike] = struct{}{}
+				} else if strings.HasPrefix(symbol, "NIFTY") {
+					niftyExpSet[option.Expiry] = struct{}{}
+					niftyStrkSet[option.Strike] = struct{}{}
+				} else if strings.HasPrefix(symbol, "SENSEX") {
+					sensexExpSet[option.Expiry] = struct{}{}
+					sensexStrkSet[option.Strike] = struct{}{}
+				}
 			}
 		}
-	}
 
-	setToSortedSlice := func(m map[string]struct{}) []string {
-		res := make([]string, 0, len(m))
-		for k := range m {
-			res = append(res, k)
+		setToSortedSlice := func(m map[string]struct{}) []string {
+			res := make([]string, 0, len(m))
+			for k := range m {
+				res = append(res, k)
+			}
+			slices.Sort(res)
+			return res
 		}
-		slices.Sort(res)
-		return res
-	}
 
-	result := &[]model.OptionOutput{
-		{
-			Name:   "NIFTY",
-			Expiry: setToSortedSlice(niftyExpSet),
-			Strike: setToSortedSlice(niftyStrkSet),
-		},
-		{
-			Name:   "BANKNIFTY",
-			Expiry: setToSortedSlice(bnExpSet),
-			Strike: setToSortedSlice(bnStrkSet),
-		},
-		{
-			Name:   "SENSEX",
-			Expiry: setToSortedSlice(sensexExpSet),
-			Strike: setToSortedSlice(sensexStrkSet),
-		},
-	}
+		result := &[]model.OptionOutput{
+			{
+				Name:   "NIFTY",
+				Expiry: setToSortedSlice(niftyExpSet),
+				Strike: setToSortedSlice(niftyStrkSet),
+			},
+			{
+				Name:   "BANKNIFTY",
+				Expiry: setToSortedSlice(bnExpSet),
+				Strike: setToSortedSlice(bnStrkSet),
+			},
+			{
+				Name:   "SENSEX",
+				Expiry: setToSortedSlice(sensexExpSet),
+				Strike: setToSortedSlice(sensexStrkSet),
+			},
+		}
 
-	optionOutput.Store(result)
-	return result
+		optionOutput.Store(result)
+	})
+	return optionOutput.Load().(*[]model.OptionOutput)
 }
