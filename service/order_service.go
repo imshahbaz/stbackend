@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"backend/cache"
@@ -14,7 +12,6 @@ import (
 	"backend/repository"
 	"backend/util"
 
-	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 	"go.mongodb.org/mongo-driver/bson"
@@ -22,10 +19,7 @@ import (
 )
 
 var (
-	mu                sync.Mutex
-	oneMinuteCron     *cron.Cron
-	fifteenMinuteCron *cron.Cron
-	updateChan        chan model.Order
+	updateChan chan model.Order
 )
 
 type OrderService interface {
@@ -39,8 +33,6 @@ type OrderService interface {
 	Update(ctx context.Context, id string, dto model.OrderDto) error
 	Delete(ctx context.Context, id string) error
 	UpdateOrderStatus(ctx context.Context)
-	StartTrading(ctx context.Context)
-	ResetTradingSystem(ctx context.Context) error
 	StartTradingWs(ctx context.Context)
 }
 
@@ -333,98 +325,6 @@ func (s *OrderServiceImpl) UpdateOrderStatus(ctx context.Context) {
 	})
 }
 
-func (s *OrderServiceImpl) StartTrading(ctx context.Context) {
-
-	orders, err := s.GetTodaysOrders(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to fetch today's orders")
-		return
-	}
-
-	if len(orders) == 0 {
-		log.Info().Msg("No orders found for today")
-		return
-	}
-
-	mu.Lock()
-	if oneMinuteCron != nil {
-		oneMinuteCron.Stop()
-		oneMinuteCron = nil
-	}
-
-	if fifteenMinuteCron != nil {
-		fifteenMinuteCron.Stop()
-		fifteenMinuteCron = nil
-	}
-	mu.Unlock()
-
-	firstSlTradeManager := util.NewTradeManager()
-	trailingSlTradeManager := util.NewTradeManager()
-
-	newMap := make(map[string]*model.Order, len(orders))
-
-	for i := range orders {
-		newMap[orders[i].ID] = &orders[i]
-	}
-
-	firstSlTradeManager.ReplaceAll(newMap)
-
-	oneMinuteCron, err = util.ScheduleTask(util.OneMinSpec, func() {
-		orders := firstSlTradeManager.GetActiveList()
-		if len(orders) == 0 {
-			return
-		}
-
-		tokens := s.extractTokens(orders)
-
-		ltpMap, err := s.angelSvc.GetMultipleLTP(tokens)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to fetch LTP")
-			return
-		}
-
-		for _, order := range orders {
-			if ltp, ok := ltpMap[order.Margin.Token]; ok {
-				go func(o *model.Order, ltp float64) {
-					res := s.processOrder(o, ltp)
-					if res < 0 {
-						firstSlTradeManager.RemoveTrade(o.ID)
-					} else if res == 1 {
-						firstSlTradeManager.RemoveTrade(o.ID)
-						trailingSlTradeManager.AddTrade(o)
-					}
-				}(order, ltp)
-			}
-		}
-	})
-
-	fifteenMinuteCron, err = util.ScheduleTask(util.FifteenMinSpec, func() {
-		orders := trailingSlTradeManager.GetActiveList()
-		if len(orders) == 0 {
-			return
-		}
-
-		tokens := s.extractTokens(orders)
-
-		ltpMap, err := s.angelSvc.GetMultipleLTP(tokens)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to fetch LTP")
-			return
-		}
-
-		for _, order := range orders {
-			if ltp, ok := ltpMap[order.Margin.Token]; ok {
-				go func(o *model.Order, ltp float64) {
-					res := s.processOrder(o, ltp)
-					if res < 0 {
-						trailingSlTradeManager.RemoveTrade(o.ID)
-					}
-				}(order, ltp)
-			}
-		}
-	})
-}
-
 func (s *OrderServiceImpl) extractTokens(orders []*model.Order) []string {
 	tokens := make([]string, len(orders))
 	for i, o := range orders {
@@ -433,7 +333,13 @@ func (s *OrderServiceImpl) extractTokens(orders []*model.Order) []string {
 	return tokens
 }
 
-func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64) int8 {
+func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64, peakPrice float64) int8 {
+	buyPrice := order.BuyOrder.AveragePrice
+	if buyPrice == 0 {
+		log.Error().Str("symbol", order.Symbol).Msg("Buy price not found")
+		return -1
+	}
+
 	var kc *kiteconnect.Client
 	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(order.UserID, 10))
 	if !ok {
@@ -455,18 +361,13 @@ func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64) int8 {
 		kc = val.(*kiteconnect.Client)
 	}
 
-	buyPrice := order.BuyOrder.AveragePrice
-	if buyPrice == 0 {
-		log.Error().Str("symbol", order.Symbol).Msg("Buy price not found")
-		return -1
-	}
-
-	return s.addStopLoss(order, ltp, buyPrice, kc)
+	return s.addStopLoss(order, ltp, buyPrice, kc, peakPrice)
 }
 
-func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client) int8 {
-	if util.IsTimePastClosingGrace() && ltp > order.BuyOrder.AveragePrice*1.004 {
-		log.Info().Str("symbol", order.Symbol).Msg("Market closing (3:25 PM). Squaring off...")
+func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client, peakPrice float64) int8 {
+	if ltp > order.BuyOrder.AveragePrice*1.004 && (ltp <= peakPrice*0.994 || util.IsTimePastClosingGrace()) {
+		log.Info().Str("symbol", order.Symbol).
+			Msg("Stock price dropped more than 0.6% or Market is closing (3:25 PM). Squaring off...")
 
 		if order.StopLossOrder.OrderID == "" {
 			_, err := s.zerodhaSvc.PlaceMTFOrder(kc, order.Symbol, order.Quantity, 0, kiteconnect.TransactionTypeSell)
@@ -490,6 +391,15 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 				_, err = s.zerodhaSvc.ConvertSLToMarket(kc, order.StopLossOrder.OrderID, qtyLeft, 0)
 				if err != nil {
 					log.Error().Err(err).Msg("Conversion to Market failed")
+					if kErr, ok := err.(kiteconnect.Error); ok {
+						log.Error().
+							Err(err).
+							Int("code", kErr.Code).
+							Str("type", kErr.ErrorType).
+							Str("message", kErr.Message).
+							Any("Data", kErr.Data).
+							Msg("Failed to update stop loss order")
+					}
 					return 0
 				}
 			}
@@ -497,75 +407,20 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 		return -1
 	}
 
-	if order.StopLossOrder.OrderID == "" {
-		if ltp >= buyPrice*1.008 {
-			sl := util.FixToTick(buyPrice * 1.004)
-			orderId, err := s.zerodhaSvc.PlaceMTFStopLossOrder(kc, order.Symbol, order.Quantity, sl, sl)
-			if err != nil {
-				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to place stop loss order")
-				return 0
-			}
-			order.StopLossOrder.OrderID = orderId
-			order.StopLossOrder.AveragePrice = sl
-			pushToDb(order)
-			return 1
+	if order.StopLossOrder.OrderID == "" && ltp >= buyPrice*1.006 {
+		sl := util.FixToTick(buyPrice * 1.004)
+		orderId, err := s.zerodhaSvc.PlaceMTFStopLossOrder(kc, order.Symbol, order.Quantity, sl, sl)
+		if err != nil {
+			log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to place stop loss order")
+			return 0
 		}
-		return 0
-	} else {
-		if order.StopLossOrder.AveragePrice == 0 {
-			orderResp, err := s.zerodhaSvc.GetOrderDetails(kc, order.StopLossOrder.OrderID)
-			if err != nil {
-				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to get order details")
-				return 0
-			}
-			order.StopLossOrder.AveragePrice = orderResp.Price
-			order.StopLossOrder.OrderStatus = orderResp.Status
-			pushToDb(order)
-			if orderResp.Status == "COMPLETE" {
-				return -1
-			}
-		}
-
-		oldSl := order.StopLossOrder.AveragePrice
-		threshold := buyPrice * 0.01
-		gap := buyPrice * 0.008
-
-		if ltp >= oldSl+threshold {
-			newSl := util.FixToTick(ltp - gap)
-			err := s.zerodhaSvc.UpdateMTFStopLossOrder(kc, order.StopLossOrder.OrderID, newSl, newSl)
-			if err != nil {
-				if strings.Contains(err.Error(), "processed") {
-					return -1
-				}
-				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed to update stop loss order")
-				return 0
-			}
-
-			order.StopLossOrder.AveragePrice = newSl
-			pushToDb(order)
-			return 1
-		}
-		return 0
-	}
-}
-
-func (s *OrderServiceImpl) ResetTradingSystem(ctx context.Context) error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	log.Info().Msg("Manual System Reset Triggered via Controller")
-
-	if oneMinuteCron != nil {
-		oneMinuteCron.Stop()
-		oneMinuteCron = nil
-	}
-	if fifteenMinuteCron != nil {
-		fifteenMinuteCron.Stop()
-		fifteenMinuteCron = nil
+		order.StopLossOrder.OrderID = orderId
+		order.StopLossOrder.AveragePrice = sl
+		pushToDb(order)
+		return 1
 	}
 
-	log.Info().Msg("System state cleared. Ready for re-initialization.")
-	return nil
+	return 0
 }
 
 func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
@@ -591,6 +446,7 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 			defer timer.Stop()
 
 			var prevLtp float64
+			peakPrice := order.BuyOrder.AveragePrice
 
 			for {
 				ltp := s.angelOneWs.GetLTP(order.Margin.Token)
@@ -599,7 +455,7 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 				}
 
 				if ltp > 0 && ltp != prevLtp {
-					res := s.processOrder(order, ltp)
+					res := s.processOrder(order, ltp, peakPrice)
 
 					if res < 0 {
 						log.Info().
@@ -609,6 +465,9 @@ func (s *OrderServiceImpl) StartTradingWs(ctx context.Context) {
 						return
 					}
 					prevLtp = ltp
+					if ltp > peakPrice {
+						peakPrice = ltp
+					}
 				}
 
 				if !util.PollWait(tradingCtx, timer) {
