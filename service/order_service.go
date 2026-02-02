@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"sync"
 	"time"
 
 	"backend/cache"
@@ -20,7 +19,6 @@ import (
 )
 
 var (
-	mu         sync.Mutex
 	updateChan chan model.Order
 )
 
