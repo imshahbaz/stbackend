@@ -113,14 +113,6 @@ func (ctrl *OrderController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Order"},
 	}, ctrl.StartTrading)
 
-	huma.Register(api, huma.Operation{
-		OperationID: "reset-system",
-		Method:      http.MethodPost,
-		Path:        "/api/order/reset-system",
-		Summary:     "Reset trading system",
-		Description: "Stops all active trading crons and clears the system state",
-		Tags:        []string{"Order"},
-	}, ctrl.ResetTradingSystem)
 }
 
 func (ctrl *OrderController) Get(ctx context.Context, input *model.GetOrderInput) (*model.DefaultResponse, error) {
@@ -187,11 +179,4 @@ func (ctrl *OrderController) UpdateOrderStatus(ctx context.Context, input *struc
 func (ctrl *OrderController) StartTrading(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
 	ctrl.orderService.StartTradingWs(ctx)
 	return NewResponse(nil, "Trading started successfully"), nil
-}
-
-func (ctrl *OrderController) ResetTradingSystem(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	if err := ctrl.orderService.ResetTradingSystem(ctx); err != nil {
-		return NewErrorResponse("Failed to reset system: " + err.Error()), nil
-	}
-	return NewResponse(nil, "System reset successfully"), nil
 }
