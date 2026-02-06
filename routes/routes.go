@@ -193,7 +193,7 @@ func initsvcs(isProduction bool) {
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
 	mstockSvc = service.NewMstockService(angelOneWebSvc, userSvc)
-	strategyTradingSvc = service.NewStrategyTradingService(chartInkSvc, strategySvc, orderSvc, strategyOrderRepo, angelOneWebSvc, zerodhaSvc)
+	strategyTradingSvc = service.NewStrategyTradingService(chartInkSvc, strategySvc, strategyOrderRepo, angelOneWebSvc, zerodhaSvc)
 	strategyOrderSvc = service.NewStrategyOrderService(strategyOrderRepo)
 
 	go loadInitialData()
