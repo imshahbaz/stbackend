@@ -40,6 +40,33 @@ func (ctrl *ChartInkController) RegisterRoutes(api huma.API) {
 		Description: "Triggers a scan and maps results with current margin and leverage data",
 		Tags:        []string{"ChartInk"},
 	}, ctrl.fetchWithMargin)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "fetch-chartink-backtest",
+		Method:      http.MethodGet,
+		Path:        "/api/chartink/backtest",
+		Summary:     "Fetch ChartInk Backtest data",
+		Description: "Fetches historical backtest signals for the given strategy",
+		Tags:        []string{"ChartInk"},
+	}, ctrl.fetchBacktestData)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "fetch-chartink-backtest-with-margin",
+		Method:      http.MethodGet,
+		Path:        "/api/chartink/backtestWithMargin",
+		Summary:     "Fetch ChartInk Backtest data with Margin info",
+		Description: "Fetches historical backtest signals and maps each stock with margin data",
+		Tags:        []string{"ChartInk"},
+	}, ctrl.fetchBacktestWithMargin)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "fetch-chartink-backtest-today-with-margin",
+		Method:      http.MethodGet,
+		Path:        "/api/chartink/backtestTodayWithMargin",
+		Summary:     "Fetch ChartInk Backtest data for today with Margin info",
+		Description: "Fetches backtest signals for the current day and maps each stock with margin data",
+		Tags:        []string{"ChartInk"},
+	}, ctrl.fetchBacktestTodayWithMargin)
 }
 
 func (ctrl *ChartInkController) fetchData(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
@@ -70,8 +97,50 @@ func (ctrl *ChartInkController) fetchWithMargin(ctx context.Context, input *mode
 	return NewResponse(data, "ChartInk data with margin details fetched"), nil
 }
 
+func (ctrl *ChartInkController) fetchBacktestData(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+	strategyDto, exists := ctrl.findStrategy(input.Strategy)
+	if !exists {
+		return NewErrorResponse("Strategy not found"), nil
+	}
+
+	data, err := ctrl.chartInkService.FetchBacktestData(strategyDto)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+
+	return NewResponse(data, "ChartInk backtest data fetched"), nil
+}
+
+func (ctrl *ChartInkController) fetchBacktestWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+	strategyDto, exists := ctrl.findStrategy(input.Strategy)
+	if !exists {
+		return NewErrorResponse("Strategy not found"), nil
+	}
+
+	data, err := ctrl.chartInkService.FetchBacktestWithMargin(strategyDto)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+
+	return NewResponse(data, "ChartInk backtest data with margin details fetched"), nil
+}
+
+func (ctrl *ChartInkController) fetchBacktestTodayWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+	strategyDto, exists := ctrl.findStrategy(input.Strategy)
+	if !exists {
+		return NewErrorResponse("Strategy not found"), nil
+	}
+
+	data, err := ctrl.chartInkService.FetchBacktestTodayWithMargin(strategyDto)
+	if err != nil {
+		return NewErrorResponse(err.Error()), nil
+	}
+
+	return NewResponse(data, "ChartInk today's backtest data with margin details fetched"), nil
+}
+
 func (ctrl *ChartInkController) findStrategy(name string) (model.StrategyDto, bool) {
-	strategies := ctrl.strategyService.GetAllStrategies()
+	strategies := ctrl.strategyService.GetAllStrategiesAdmin()
 	for _, s := range strategies {
 		if s.Name == name {
 			return s, true

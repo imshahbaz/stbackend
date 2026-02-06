@@ -201,7 +201,7 @@ func (s *OrderServiceImpl) InitiateMtfOrders(ctx context.Context) {
 			return nil
 		}
 
-		orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0, kiteconnect.TransactionTypeBuy)
+		orderResponse, err := s.zerodhaSvc.PlaceMTFOrder(kc, ord.Symbol, ord.Quantity, 0, kiteconnect.TransactionTypeBuy, kiteconnect.OrderTypeMarket)
 		if err != nil {
 			return err
 		}
@@ -370,7 +370,7 @@ func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64
 			Msg("Stock price dropped more than 0.6% or Market is closing (3:25 PM). Squaring off...")
 
 		if order.StopLossOrder.OrderID == "" {
-			_, err := s.zerodhaSvc.PlaceMTFOrder(kc, order.Symbol, order.Quantity, 0, kiteconnect.TransactionTypeSell)
+			_, err := s.zerodhaSvc.PlaceMTFOrder(kc, order.Symbol, order.Quantity, 0, kiteconnect.TransactionTypeSell, kiteconnect.OrderTypeMarket)
 			if err != nil {
 				log.Error().Err(err).Str("symbol", order.Symbol).Msg("Failed square-off")
 				return 0
