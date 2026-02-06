@@ -4,6 +4,7 @@ import (
 	localCache "backend/cache"
 	"backend/client"
 	"backend/model"
+	"backend/util"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -209,10 +210,10 @@ func (s *ChartInkServiceImpl) FetchBacktestData(strategy model.StrategyDto) ([]m
 		meta := backtestResp.MetaData[0]
 		for i, tradeTime := range meta.TradeTimes {
 			ts := tradeTime
-			if ts > 10000000000 { // Check if it's in milliseconds
+			if ts > 10000000000 {
 				ts = ts / 1000
 			}
-			marketTime := time.Unix(ts, 0).Format("2006-01-02 15:04:05")
+			marketTime := time.Unix(ts, 0).In(util.IstLocation).Format("2006-01-02 15:04:05")
 
 			stocks := make([]string, 0)
 			if i < len(backtestResp.AggregatedStockList) {
@@ -269,7 +270,7 @@ func (s *ChartInkServiceImpl) FetchBacktestTodayWithMargin(strategy model.Strate
 		return nil, err
 	}
 
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().In(util.IstLocation).Format("2006-01-02")
 	result := make([]model.ChartinkBacktestSignalWithMargin, 0)
 	for _, signal := range signals {
 		if len(signal.MarketTime) >= 10 && signal.MarketTime[:10] == today {
