@@ -49,3 +49,11 @@ type UpdateOrderInput struct {
 	ID   string `path:"id" required:"true" doc:"Order ID"`
 	Body OrderDto
 }
+
+type StrategyOrder struct {
+	ID           string    `json:"id" bson:"_id,omitempty"`
+	UserID       int64     `json:"userId" bson:"userId"`
+	Date         time.Time `json:"date" bson:"date"`
+	StrategyName string    `json:"strategyName" bson:"strategyName"`
+	Amount       float64   `json:"amount" bson:"amount"`
+}

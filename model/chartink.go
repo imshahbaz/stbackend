@@ -27,6 +27,6 @@ type ChartinkBacktestSignal struct {
 }
 
 type ChartinkBacktestSignalWithMargin struct {
-	MarketTime string           `json:"marketTime"`
-	Stocks     []StockMarginDto `json:"stocks"`
+	MarketTime string   `json:"marketTime"`
+	Stocks     []Margin `json:"stocks"`
 }

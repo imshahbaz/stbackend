@@ -157,6 +157,12 @@ func (s *ChartInkServiceImpl) sortResultByMargin(result []model.StockMarginDto) 
 	})
 }
 
+func (s *ChartInkServiceImpl) sortMarginByMargin(result []model.Margin) {
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Margin > result[j].Margin
+	})
+}
+
 func (s *ChartInkServiceImpl) addDeliveryPercentage(result *[]model.StockMarginDto) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -241,19 +247,15 @@ func (s *ChartInkServiceImpl) FetchBacktestWithMargin(strategy model.StrategyDto
 
 	result := make([]model.ChartinkBacktestSignalWithMargin, 0)
 	for _, signal := range signals {
-		enrichedStocks := make([]model.StockMarginDto, 0)
+		enrichedStocks := make([]model.Margin, 0)
 		for _, symbol := range signal.Stocks {
 			if m, exists := s.marginService.GetMargin(symbol); exists {
-				enrichedStocks = append(enrichedStocks, model.StockMarginDto{
-					Name:   m.Name,
-					Symbol: symbol,
-					Margin: m.Margin,
-				})
+				enrichedStocks = append(enrichedStocks, *m)
 			}
 		}
 
 		if len(enrichedStocks) > 0 {
-			s.sortResultByMargin(enrichedStocks)
+			s.sortMarginByMargin(enrichedStocks)
 			result = append(result, model.ChartinkBacktestSignalWithMargin{
 				MarketTime: signal.MarketTime,
 				Stocks:     enrichedStocks,
