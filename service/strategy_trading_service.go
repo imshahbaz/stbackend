@@ -76,7 +76,7 @@ func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strate
 
 	log.Info().Int("orderCount", len(existingOrders)).Str("strategy", strategyName).Msg("Starting strategy trading")
 
-	s.startManualPoller(strategy)
+	go s.startManualPoller(strategy)
 
 	for _, order := range existingOrders {
 		kc, err := s.getKiteClientForUser(ctx, order.UserID)
