@@ -16,7 +16,7 @@ import (
 )
 
 type StrategyTradingService interface {
-	ExecuteStrategy(strategyName string) error
+	ContinuousTrade() error
 }
 
 type StrategyTradingServiceImpl struct {
@@ -46,7 +46,8 @@ func NewStrategyTradingService(
 	}
 }
 
-func (s *StrategyTradingServiceImpl) ExecuteStrategy(strategyName string) error {
+func (s *StrategyTradingServiceImpl) ContinuousTrade() error {
+	strategyName := "RSI15MIN"
 	existingOrders, err := s.strategyOrderRepo.FindTodayOrdersByStrategy(context.Background(), strategyName)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch today's strategy orders")

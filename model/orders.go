@@ -57,3 +57,47 @@ type StrategyOrder struct {
 	StrategyName string    `json:"strategyName" bson:"strategyName"`
 	Amount       float64   `json:"amount" bson:"amount"`
 }
+
+type StrategyOrderDto struct {
+	ID           string  `json:"id"`
+	UserID       int64   `json:"userId"`                   // This will be set by the controller from ctx
+	Date         string  `json:"date" validate:"required"` // Format: YYYY-MM-DD
+	StrategyName string  `json:"strategyName" validate:"required"`
+	Amount       float64 `json:"amount" validate:"required"`
+}
+
+type CreateStrategyOrderInput struct {
+	Body StrategyOrderDto
+}
+
+type GetStrategyOrderInput struct {
+	ID string `path:"id" required:"true" doc:"Strategy Order ID"`
+}
+
+type GetAllStrategyOrdersInput struct {
+	StrategyName string `query:"strategyName" doc:"Filter by strategy name"`
+}
+
+func (s *StrategyOrder) ToDto() StrategyOrderDto {
+	return StrategyOrderDto{
+		ID:           s.ID,
+		UserID:       s.UserID,
+		Date:         s.Date.Format("2006-01-02"),
+		StrategyName: s.StrategyName,
+		Amount:       s.Amount,
+	}
+}
+
+func (d *StrategyOrderDto) ToEntity() (StrategyOrder, error) {
+	t, err := time.Parse("2006-01-02", d.Date)
+	if err != nil {
+		return StrategyOrder{}, err
+	}
+	return StrategyOrder{
+		ID:           d.ID,
+		UserID:       d.UserID,
+		Date:         t,
+		StrategyName: d.StrategyName,
+		Amount:       d.Amount,
+	}, nil
+}

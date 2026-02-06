@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"backend/middleware"
 	"backend/model"
 	"backend/service"
 
@@ -16,37 +15,28 @@ type StrategyTradingController struct {
 	isProduction           bool
 }
 
-func NewStrategyTradingController(sts service.StrategyTradingService, isProduction bool) *StrategyTradingController {
+func NewStrategyTradingController(sts service.StrategyTradingService) *StrategyTradingController {
 	return &StrategyTradingController{
 		strategyTradingService: sts,
-		isProduction:           isProduction,
 	}
-}
-
-type StrategyTradingInput struct {
-	StrategyName string `json:"strategyName" validate:"required"`
 }
 
 func (ctrl *StrategyTradingController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
-	adminMw := middleware.HumaAdminOnly(api)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "execute-strategy",
+		OperationID: "continuous-trading",
 		Method:      http.MethodPost,
-		Path:        "/api/strategy-trading/execute",
-		Summary:     "Execute a trading strategy",
-		Description: "Triggers the automated trading execution for a specific strategy",
-		Middlewares: huma.Middlewares{authMw, adminMw},
-		Security:    []map[string][]string{{"bearer": {}}},
+		Path:        "/api/strategy-trading/continuous",
+		Summary:     "Start continuous trading",
+		Description: "Triggers the automated continuous trading execution",
 		Tags:        []string{"Strategy Trading"},
-	}, ctrl.executeStrategy)
+	}, ctrl.continuousTrade)
 }
 
-func (ctrl *StrategyTradingController) executeStrategy(ctx context.Context, input *struct{ Body StrategyTradingInput }) (*model.DefaultResponse, error) {
-	err := ctrl.strategyTradingService.ExecuteStrategy(input.Body.StrategyName)
+func (ctrl *StrategyTradingController) continuousTrade(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	err := ctrl.strategyTradingService.ContinuousTrade()
 	if err != nil {
 		return NewErrorResponse(err.Error()), nil
 	}
-	return NewResponse(nil, "Strategy execution triggered"), nil
+	return NewResponse(nil, "Continuous trading triggered"), nil
 }
