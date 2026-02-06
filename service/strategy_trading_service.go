@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 )
@@ -77,7 +76,7 @@ func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strate
 
 	log.Info().Int("orderCount", len(existingOrders)).Str("strategy", strategyName).Msg("Starting strategy trading")
 
-	s.startPoller(strategy)
+	s.startManualPoller(strategy)
 
 	for _, order := range existingOrders {
 		kc, err := s.getKiteClientForUser(ctx, order.UserID)
@@ -251,35 +250,6 @@ func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, ta
 	}
 }
 
-func (s *StrategyTradingServiceImpl) startPoller(strategy model.StrategyDto) {
-	var c *cron.Cron
-	task := func() {
-		now := time.Now().In(util.IstLocation)
-		if now.Hour() >= marketCloseHour && now.Minute() > marketSquareOffMin {
-			log.Info().Str("strategy", strategy.Name).Msg("Market closed. Stopping strategy poller.")
-			if c != nil {
-				c.Stop()
-			}
-			return
-		}
-
-		log.Info().Str("strategy", strategy.Name).Msg("Fetching strategy signals")
-		signals, err := s.chartInkService.FetchBacktestTodayWithMargin(strategy)
-		if err != nil {
-			log.Error().Err(err).Str("strategy", strategy.Name).Msg("Signal fetch failed")
-			return
-		}
-
-		cache.PollerCache.Set(strategy.Name, signals, 2*time.Minute)
-	}
-
-	var err error
-	c, err = util.ScheduleTask(util.FifteenMinSpec, task)
-	if err != nil {
-		log.Error().Err(err).Str("strategy", strategy.Name).Msg("Failed to schedule strategy poller")
-	}
-}
-
 func (s *StrategyTradingServiceImpl) getCachedSignals(strategyName string) ([]model.ChartinkBacktestSignalWithMargin, bool) {
 	val, found := cache.PollerCache.Get(strategyName)
 	if !found {
@@ -287,4 +257,52 @@ func (s *StrategyTradingServiceImpl) getCachedSignals(strategyName string) ([]mo
 	}
 	signals, ok := val.([]model.ChartinkBacktestSignalWithMargin)
 	return signals, ok
+}
+
+func (s *StrategyTradingServiceImpl) startManualPoller(strategy model.StrategyDto) {
+	targets := map[string]bool{
+		"09:35": true, "09:50": true,
+		"10:05": true, "10:20": true, "10:35": true, "10:50": true,
+		"11:05": true, "11:20": true, "11:35": true, "11:50": true,
+		"12:05": true, "12:20": true, "12:35": true, "12:50": true,
+		"13:05": true, "13:20": true, "13:35": true, "13:50": true,
+		"14:05": true, "14:20": true, "14:35": true, "14:50": true,
+		"15:05": true,
+	}
+
+	go func() {
+		ctx := context.Background()
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		log.Info().Str("strategy", strategy.Name).Msg("Manual Watchdog Poller started")
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Str("strategy", strategy.Name).Msg("Watchdog Poller stopped via context")
+				return
+			case <-ticker.C:
+				now := time.Now().In(util.IstLocation)
+
+				if now.Hour() == 15 && now.Minute() > 30 {
+					log.Info().Msg("Market closed. Watchdog exiting.")
+					return
+				}
+
+				currentTime := now.Format("15:04")
+				if targets[currentTime] {
+					log.Info().Str("time", currentTime).Msg("Target match! Fetching signals from Chartink...")
+
+					signals, err := s.chartInkService.FetchBacktestTodayWithMargin(strategy)
+					if err != nil {
+						log.Error().Err(err).Msg("Manual fetch failed")
+						continue
+					}
+
+					cache.PollerCache.Set(strategy.Name, signals, 3*time.Minute)
+				}
+			}
+		}
+	}()
 }
