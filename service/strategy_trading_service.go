@@ -59,6 +59,13 @@ func (s *StrategyTradingServiceImpl) ExecuteStrategy(strategyName string) error 
 		return nil
 	}
 
+	strategy, ok := s.strategyService.GetStrategyByName(strategyName)
+	if !ok {
+		log.Error().Msg("Failed to fetch strategy")
+		return nil
+	}
+
+	s.startPoller(strategy)
 	for _, order := range existingOrders {
 		var kc *kiteconnect.Client
 		val, ok := cache.KiteClientCache.Get(strconv.FormatInt(order.UserID, 10))
@@ -188,7 +195,9 @@ func (s *StrategyTradingServiceImpl) startPoller(strategy model.StrategyDto) {
 		now := time.Now().In(util.IstLocation)
 		if now.Hour() == 15 && now.Minute() > 30 {
 			log.Info().Msg("Market closed. Skipping cron task.")
-			c.Stop()
+			if c != nil {
+				c.Stop()
+			}
 			return
 		}
 
