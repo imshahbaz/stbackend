@@ -45,11 +45,21 @@ func (r *GenericRepo[T]) Get(ctx context.Context, id any) (*T, error) {
 
 // GetAll retrieves all documents matching a filter
 func (r *GenericRepo[T]) GetAll(ctx context.Context, filter bson.M) ([]T, error) {
+	return r.GetAllSorted(ctx, filter, nil)
+}
+
+// GetAllSorted retrieves all documents matching a filter with sort options
+func (r *GenericRepo[T]) GetAllSorted(ctx context.Context, filter bson.M, sort bson.M) ([]T, error) {
 	if filter == nil {
 		filter = bson.M{}
 	}
 
-	cur, err := r.Collection.Find(ctx, filter)
+	findOptions := options.Find()
+	if sort != nil {
+		findOptions.SetSort(sort)
+	}
+
+	cur, err := r.Collection.Find(ctx, filter, findOptions)
 	if err != nil {
 		return nil, err
 	}

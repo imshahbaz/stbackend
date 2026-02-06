@@ -10,7 +10,7 @@ import (
 type ZerodhaService interface {
 	InitiateKiteConnect(ctx context.Context, accessToken string, userId int64) (*kiteconnect.Client, error)
 	GenerateAccessToken(requestToken string, userId int64) (string, error)
-	PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType string) (kiteconnect.OrderResponse, error)
+	PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType, orderType string) (kiteconnect.OrderResponse, error)
 	PlaceMTFStopLossOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, triggerPrice float64) (string, error)
 	GetOrderDetails(kc *kiteconnect.Client, orderID string) (kiteconnect.Order, error)
 	UpdateMTFStopLossOrder(kc *kiteconnect.Client, orderID string, newPrice float64, newTriggerPrice float64) error
@@ -65,7 +65,7 @@ func (s *ZerodhaServiceImpl) InitiateKiteConnect(ctx context.Context, accessToke
 	return kc, nil
 }
 
-func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType string) (kiteconnect.OrderResponse, error) {
+func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string, qty int, price float64, transactionType, orderType string) (kiteconnect.OrderResponse, error) {
 	orderParams := kiteconnect.OrderParams{
 		Exchange:        kiteconnect.ExchangeNSE,
 		Tradingsymbol:   symbol,
@@ -73,7 +73,7 @@ func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string
 		Quantity:        qty,
 		Price:           price,
 		Product:         kiteconnect.ProductMTF,
-		OrderType:       kiteconnect.OrderTypeMarket,
+		OrderType:       orderType,
 		Validity:        kiteconnect.ValidityDay,
 		Tag:             "Shahbaz Trades",
 	}

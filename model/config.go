@@ -45,6 +45,9 @@ type ClientConfigs struct {
 		Email      bool `json:"email" bson:"email"`
 		TrueCaller bool `json:"truecaller" bson:"truecaller"`
 	} `json:"auth" bson:"auth"`
+	Components struct {
+		HeatMap bool `json:"heatMap" bson:"heatMap"`
+	} `json:"components" bson:"components"`
 }
 
 type AngelOneConfig struct {

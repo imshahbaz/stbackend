@@ -34,31 +34,34 @@ var (
 )
 
 var (
-	userRepo        *repository.UserRepository
-	marginRepo      *repository.MarginRepository
-	strategyRepo    *repository.StrategyRepository
-	priceActionRepo *repository.PriceActionRepo
-	orderRepo       *repository.OrderRepo
-	optRepo         *repository.OptionRepository
+	userRepo          *repository.UserRepository
+	marginRepo        *repository.MarginRepository
+	strategyRepo      *repository.StrategyRepository
+	priceActionRepo   *repository.PriceActionRepo
+	orderRepo         *repository.OrderRepo
+	optRepo           *repository.OptionRepository
+	strategyOrderRepo *repository.StrategyOrderRepository
 )
 
 var (
-	emailSvc       service.EmailService
-	otpSvc         service.OtpService
-	userSvc        service.UserService
-	marginSvc      service.MarginService
-	strategySvc    service.StrategyService
-	chartInkSvc    service.ChartInkService
-	nseSvc         service.NseService
-	priceActionSvc service.PriceActionService
-	oauthSvc       service.OAuthService
-	authSvc        service.AuthService
-	newsSvc        service.NewsService
-	zerodhaSvc     service.ZerodhaService
-	orderSvc       service.OrderService
-	angelOneSvc    service.AngelOneService
-	angelOneWebSvc service.AngelOneWebSocket
-	mstockSvc      service.MstockService
+	emailSvc           service.EmailService
+	otpSvc             service.OtpService
+	userSvc            service.UserService
+	marginSvc          service.MarginService
+	strategySvc        service.StrategyService
+	chartInkSvc        service.ChartInkService
+	nseSvc             service.NseService
+	priceActionSvc     service.PriceActionService
+	oauthSvc           service.OAuthService
+	authSvc            service.AuthService
+	newsSvc            service.NewsService
+	zerodhaSvc         service.ZerodhaService
+	orderSvc           service.OrderService
+	angelOneSvc        service.AngelOneService
+	angelOneWebSvc     service.AngelOneWebSocket
+	mstockSvc          service.MstockService
+	strategyTradingSvc service.StrategyTradingService
+	strategyOrderSvc   service.StrategyOrderService
 )
 
 func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
@@ -105,6 +108,10 @@ func SetupRouter(db *mongo.Database, cfg *config.SystemConfigs) *gin.Engine {
 		controller.NewAngelOneController(angelOneSvc, isProduction, angelOneWebSvc).RegisterRoutes(humaApi)
 
 		controller.NewMstockController(mstockSvc, isProduction).RegisterRoutes(humaApi)
+
+		controller.NewStrategyTradingController(strategyTradingSvc).RegisterRoutes(humaApi)
+
+		controller.NewStrategyOrderController(strategyOrderSvc, isProduction).RegisterRoutes(humaApi)
 	}
 
 	return r
@@ -166,6 +173,7 @@ func initRepos(db *mongo.Database) {
 	priceActionRepo = repository.NewPriceActionRepo(db)
 	orderRepo = repository.NewOrderRepo(db)
 	optRepo = repository.NewOptionRepository(db)
+	strategyOrderRepo = repository.NewStrategyOrderRepository(db)
 }
 
 func initsvcs(isProduction bool) {
@@ -185,6 +193,8 @@ func initsvcs(isProduction bool) {
 	angelOneSvc = service.NewAngelOneService(&configmanager.GetConfig().AngelOneConfig, angelOneWebSvc)
 	orderSvc = service.NewOrderService(orderRepo, zerodhaSvc, angelOneSvc, angelOneWebSvc)
 	mstockSvc = service.NewMstockService(angelOneWebSvc, userSvc)
+	strategyTradingSvc = service.NewStrategyTradingService(chartInkSvc, strategySvc, orderSvc, strategyOrderRepo, angelOneWebSvc, zerodhaSvc)
+	strategyOrderSvc = service.NewStrategyOrderService(strategyOrderRepo)
 
 	go loadInitialData()
 }

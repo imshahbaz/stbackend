@@ -16,6 +16,7 @@ var KiteClientCache = cache.New(10*time.Hour, 1*time.Hour)
 var PendingLoginCache = cache.New(5*time.Minute, 10*time.Minute)
 var MstockClientCache = cache.New(5*time.Minute, 10*time.Minute)
 var OptionCache = cache.New(cache.NoExpiration, 0)
+var PollerCache = cache.New(2*time.Minute, 5*time.Minute)
 
 func getKeyAndExpiry(reqId string, cacheType model.UserCacheType) (string, time.Duration) {
 	stringType := string(cacheType) + "_"
