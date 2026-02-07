@@ -40,7 +40,6 @@ type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
-	FetchDeliveryData(ctx context.Context, symbol string) (float32, error)
 	GetDeliveryDataMap(ctx context.Context) (map[string]float64, error)
 }
 
@@ -228,26 +227,6 @@ func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
 		"sec-fetch-mode":  "cors",
 		"sec-fetch-site":  "same-origin",
 	}
-}
-
-func (s *NseServiceImpl) FetchDeliveryData(ctx context.Context, symbol string) (float32, error) {
-	var resp model.NseDeliveryData
-	err := s.executeNseRequest("https://www.nseindia.com/report-detail/eq_security", deliveryPercentageUrl,
-		map[string]string{
-			"from":   time.Now().AddDate(0, 0, -7).Format(nseDateFormat),
-			"to":     time.Now().Format(nseDateFormat),
-			"symbol": symbol,
-			"type":   "priceVolumeDeliverable",
-			"series": "ALL",
-		}, &resp)
-
-	if err != nil {
-		log.Err(err).Msg("Error calling nse delivery api")
-		return 0, nil
-	}
-
-	data := resp.Data
-	return data[len(data)-1].DeliveryPercent, nil
 }
 
 func (s *NseServiceImpl) GetDeliveryDataMap(ctx context.Context) (map[string]float64, error) {
