@@ -87,7 +87,18 @@ func (s *ChartInkServiceImpl) FetchWithMargin(strategy model.StrategyDto) ([]mod
 	}
 
 	if strategy.Name == "BULLISH MARUBOZU" {
-		s.addDeliveryPercentage(&result)
+		delMap, err := s.nseSvc.GetDeliveryDataMap(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		filteredData := make([]model.StockMarginDto, 0, len(result))
+		for i := range result {
+			if delMap[result[i].Symbol] > 50 {
+				result[i].DeliveryPercent = float32(delMap[result[i].Symbol])
+				filteredData = append(filteredData, result[i])
+			}
+		}
+		result = filteredData
 	}
 
 	s.sortResultByMargin(result)
@@ -161,40 +172,6 @@ func (s *ChartInkServiceImpl) sortMarginByMargin(result []model.Margin) {
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Margin > result[j].Margin
 	})
-}
-
-func (s *ChartInkServiceImpl) addDeliveryPercentage(result *[]model.StockMarginDto) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	originalData := *result
-	filteredData := make([]model.StockMarginDto, 0, len(originalData))
-
-	semaphore := make(chan struct{}, 2)
-
-	for i := range originalData {
-		wg.Add(1)
-
-		semaphore <- struct{}{}
-
-		go func(idx int) {
-			defer wg.Done()
-			defer func() { <-semaphore }()
-
-			dto := originalData[idx]
-			percent, err := s.nseSvc.FetchDeliveryData(context.Background(), dto.Symbol)
-
-			if err == nil && percent >= 50 {
-				dto.DeliveryPercent = percent
-				mu.Lock()
-				filteredData = append(filteredData, dto)
-				mu.Unlock()
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	*result = filteredData
 }
 
 func (s *ChartInkServiceImpl) FetchBacktestData(strategy model.StrategyDto) ([]model.ChartinkBacktestSignal, error) {

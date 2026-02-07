@@ -1,11 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http/cookiejar"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +41,7 @@ type NseService interface {
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
 	FetchDeliveryData(ctx context.Context, symbol string) (float32, error)
+	GetDeliveryDataMap(ctx context.Context) (map[string]float64, error)
 }
 
 type NseServiceImpl struct {
@@ -244,4 +248,70 @@ func (s *NseServiceImpl) FetchDeliveryData(ctx context.Context, symbol string) (
 
 	data := resp.Data
 	return data[len(data)-1].DeliveryPercent, nil
+}
+
+func (s *NseServiceImpl) GetDeliveryDataMap(ctx context.Context) (map[string]float64, error) {
+	var resp *resty.Response
+	var err error
+
+	dateObj := time.Now().In(time.FixedZone("IST", 5.5*3600))
+	success := false
+
+	for i := 0; i < 5; i++ {
+		formattedDate := dateObj.Format("02012006")
+		url := fmt.Sprintf("https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_%s.csv", formattedDate)
+
+		resp, err = s.client.R().
+			SetContext(ctx).
+			SetHeaders(map[string]string{
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+				"Referer":    "https://www.nseindia.com/all-reports",
+				"Accept":     "text/csv",
+			}).
+			Get(url)
+
+		if err == nil && resp.StatusCode() == 200 {
+			success = true
+			log.Info().Str("date", formattedDate).Msg("Successfully fetched NSE Bhavcopy")
+			break
+		}
+
+		log.Debug().Str("date", formattedDate).Int("status", resp.StatusCode()).Msg("File not found, trying previous day")
+		dateObj = dateObj.AddDate(0, 0, -1)
+	}
+
+	if !success {
+		return nil, fmt.Errorf("could not find a valid NSE bhavcopy in the last 5 days")
+	}
+
+	reader := csv.NewReader(bytes.NewReader(resp.Body()))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSV rows: %w", err)
+	}
+
+	deliveryMap := make(map[string]float64)
+
+	for i, row := range records {
+		if i == 0 || len(row) < 15 {
+			continue
+		}
+
+		series := strings.TrimSpace(row[1])
+		if series != "EQ" {
+			continue
+		}
+
+		symbol := strings.TrimSpace(row[0])
+		delivPer, err := strconv.ParseFloat(strings.TrimSpace(row[14]), 64)
+		if err != nil {
+			continue
+		}
+
+		if delivPer > 50 {
+			deliveryMap[symbol] = delivPer
+		}
+	}
+
+	return deliveryMap, nil
 }
