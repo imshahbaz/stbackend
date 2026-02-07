@@ -230,16 +230,18 @@ func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, ta
 		}
 
 		ltp := s.angelWS.GetLTP(targetStock.Token)
-		if ltp == -2 { // Sentinel value for error/disconnection
+		if ltp == -2 {
 			log.Error().Str("symbol", targetStock.Symbol).Msg("Lost LTP feed for stock")
 			return false
 		}
 
-		if ltp >= targetPrice && ltp != prevLtp {
-			det, err := s.zerodhaService.GetOrderDetails(kc, sOd.OrderID)
-			if err == nil && det.PendingQuantity == 0 {
-				log.Info().Str("symbol", targetStock.Symbol).Msg("Exit order filled")
-				return true
+		if ltp != prevLtp {
+			if ltp >= targetPrice {
+				det, err := s.zerodhaService.GetOrderDetails(kc, sOd.OrderID)
+				if err == nil && det.PendingQuantity == 0 {
+					log.Info().Str("symbol", targetStock.Symbol).Msg("Exit order filled")
+					return true
+				}
 			}
 			prevLtp = ltp
 		}
