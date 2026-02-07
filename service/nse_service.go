@@ -1,11 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http/cookiejar"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,7 +40,7 @@ type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
-	FetchDeliveryData(ctx context.Context, symbol string) (float32, error)
+	GetDeliveryDataMap(ctx context.Context) (map[string]float64, error)
 }
 
 type NseServiceImpl struct {
@@ -226,22 +229,84 @@ func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
 	}
 }
 
-func (s *NseServiceImpl) FetchDeliveryData(ctx context.Context, symbol string) (float32, error) {
-	var resp model.NseDeliveryData
-	err := s.executeNseRequest("https://www.nseindia.com/report-detail/eq_security", deliveryPercentageUrl,
-		map[string]string{
-			"from":   time.Now().AddDate(0, 0, -7).Format(nseDateFormat),
-			"to":     time.Now().Format(nseDateFormat),
-			"symbol": symbol,
-			"type":   "priceVolumeDeliverable",
-			"series": "ALL",
-		}, &resp)
+func (s *NseServiceImpl) GetDeliveryDataMap(ctx context.Context) (map[string]float64, error) {
+	cacheKey := "nse_delivery_data_map"
+	val, err, _ := sfGroup.Do(cacheKey, func() (any, error) {
+		var deliveryMap map[string]float64
+
+		if err := s.WarmUp(); err != nil {
+			return nil, err
+		}
+
+		dateObj := time.Now().In(util.IstLocation)
+		success := false
+		var resp *resty.Response
+		var fetchErr error
+
+		for range 5 {
+			formattedDate := dateObj.Format("02012006")
+			url := fmt.Sprintf("https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_%s.csv", formattedDate)
+
+			resp, fetchErr = s.client.R().
+				SetContext(ctx).
+				SetHeaders(map[string]string{
+					"User-Agent": userAgent,
+					"Referer":    "https://www.nseindia.com/all-reports",
+					"Accept":     "text/csv",
+				}).
+				Get(url)
+
+			if fetchErr == nil && resp.StatusCode() == 200 {
+				success = true
+				log.Info().Str("date", formattedDate).Msg("Successfully fetched NSE Bhavcopy")
+				break
+			}
+
+			log.Debug().Str("date", formattedDate).Int("status", resp.StatusCode()).Msg("File not found, trying previous day")
+			dateObj = dateObj.AddDate(0, 0, -1)
+		}
+
+		if !success {
+			return nil, fmt.Errorf("could not find a valid NSE bhavcopy in the last 5 days")
+		}
+
+		reader := csv.NewReader(bytes.NewReader(resp.Body()))
+		records, err := reader.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse CSV rows: %w", err)
+		}
+
+		deliveryMap = make(map[string]float64)
+		for i, row := range records {
+			if i == 0 || len(row) < 15 {
+				continue
+			}
+
+			if strings.TrimSpace(row[1]) != "EQ" {
+				continue
+			}
+
+			symbol := strings.TrimSpace(row[0])
+			delivPer, err := strconv.ParseFloat(strings.TrimSpace(row[14]), 64)
+			if err != nil {
+				continue
+			}
+
+			if delivPer > 50 {
+				deliveryMap[symbol] = delivPer
+			}
+		}
+
+		time.AfterFunc(10*time.Second, func() {
+			sfGroup.Forget(cacheKey)
+		})
+
+		return deliveryMap, nil
+	})
 
 	if err != nil {
-		log.Err(err).Msg("Error calling nse delivery api")
-		return 0, nil
+		return nil, err
 	}
 
-	data := resp.Data
-	return data[len(data)-1].DeliveryPercent, nil
+	return val.(map[string]float64), nil
 }
