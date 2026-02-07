@@ -230,67 +230,83 @@ func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
 }
 
 func (s *NseServiceImpl) GetDeliveryDataMap(ctx context.Context) (map[string]float64, error) {
-	var resp *resty.Response
-	var err error
+	cacheKey := "nse_delivery_data_map"
+	val, err, _ := sfGroup.Do(cacheKey, func() (any, error) {
+		var deliveryMap map[string]float64
 
-	dateObj := time.Now().In(time.FixedZone("IST", 5.5*3600))
-	success := false
-
-	for i := 0; i < 5; i++ {
-		formattedDate := dateObj.Format("02012006")
-		url := fmt.Sprintf("https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_%s.csv", formattedDate)
-
-		resp, err = s.client.R().
-			SetContext(ctx).
-			SetHeaders(map[string]string{
-				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-				"Referer":    "https://www.nseindia.com/all-reports",
-				"Accept":     "text/csv",
-			}).
-			Get(url)
-
-		if err == nil && resp.StatusCode() == 200 {
-			success = true
-			log.Info().Str("date", formattedDate).Msg("Successfully fetched NSE Bhavcopy")
-			break
+		if err := s.WarmUp(); err != nil {
+			return nil, err
 		}
 
-		log.Debug().Str("date", formattedDate).Int("status", resp.StatusCode()).Msg("File not found, trying previous day")
-		dateObj = dateObj.AddDate(0, 0, -1)
-	}
+		dateObj := time.Now().In(util.IstLocation)
+		success := false
+		var resp *resty.Response
+		var fetchErr error
 
-	if !success {
-		return nil, fmt.Errorf("could not find a valid NSE bhavcopy in the last 5 days")
-	}
+		for range 5 {
+			formattedDate := dateObj.Format("02012006")
+			url := fmt.Sprintf("https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_%s.csv", formattedDate)
 
-	reader := csv.NewReader(bytes.NewReader(resp.Body()))
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CSV rows: %w", err)
-	}
+			resp, fetchErr = s.client.R().
+				SetContext(ctx).
+				SetHeaders(map[string]string{
+					"User-Agent": userAgent,
+					"Referer":    "https://www.nseindia.com/all-reports",
+					"Accept":     "text/csv",
+				}).
+				Get(url)
 
-	deliveryMap := make(map[string]float64)
+			if fetchErr == nil && resp.StatusCode() == 200 {
+				success = true
+				log.Info().Str("date", formattedDate).Msg("Successfully fetched NSE Bhavcopy")
+				break
+			}
 
-	for i, row := range records {
-		if i == 0 || len(row) < 15 {
-			continue
+			log.Debug().Str("date", formattedDate).Int("status", resp.StatusCode()).Msg("File not found, trying previous day")
+			dateObj = dateObj.AddDate(0, 0, -1)
 		}
 
-		series := strings.TrimSpace(row[1])
-		if series != "EQ" {
-			continue
+		if !success {
+			return nil, fmt.Errorf("could not find a valid NSE bhavcopy in the last 5 days")
 		}
 
-		symbol := strings.TrimSpace(row[0])
-		delivPer, err := strconv.ParseFloat(strings.TrimSpace(row[14]), 64)
+		reader := csv.NewReader(bytes.NewReader(resp.Body()))
+		records, err := reader.ReadAll()
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("failed to parse CSV rows: %w", err)
 		}
 
-		if delivPer > 50 {
-			deliveryMap[symbol] = delivPer
+		deliveryMap = make(map[string]float64)
+		for i, row := range records {
+			if i == 0 || len(row) < 15 {
+				continue
+			}
+
+			if strings.TrimSpace(row[1]) != "EQ" {
+				continue
+			}
+
+			symbol := strings.TrimSpace(row[0])
+			delivPer, err := strconv.ParseFloat(strings.TrimSpace(row[14]), 64)
+			if err != nil {
+				continue
+			}
+
+			if delivPer > 50 {
+				deliveryMap[symbol] = delivPer
+			}
 		}
+
+		time.AfterFunc(10*time.Second, func() {
+			sfGroup.Forget(cacheKey)
+		})
+
+		return deliveryMap, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	return deliveryMap, nil
+	return val.(map[string]float64), nil
 }
