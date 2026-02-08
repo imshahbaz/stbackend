@@ -35,9 +35,9 @@ type ConfigServiceImpl struct {
 	clientConfigId string
 }
 
-func NewConfigService(db *mongo.Database, isProduction bool) ConfigService {
+func NewConfigService(db *mongo.Database, isProduction IsProduction) ConfigService {
 	collection := db.Collection("configs")
-	m, c, m1, c1 := initMongoConfigs(isProduction, collection)
+	m, c, m1, c1 := initMongoConfigs(bool(isProduction), collection)
 
 	return &ConfigServiceImpl{
 		collection:     collection,

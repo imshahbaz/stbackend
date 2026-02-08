@@ -23,16 +23,16 @@ import (
 
 type UserController struct {
 	userSvc      service.UserService
-	isProduction bool
+	isProduction service.IsProduction
 	otpSvc       service.OtpService
 }
 
-func NewUserController(s service.UserService, isProduction bool, otpSvc service.OtpService) *UserController {
+func NewUserController(s service.UserService, isProduction service.IsProduction, otpSvc service.OtpService) *UserController {
 	return &UserController{userSvc: s, isProduction: isProduction, otpSvc: otpSvc}
 }
 
 func (ctrl *UserController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 
 	huma.Register(api, huma.Operation{
 		OperationID: "update-username",

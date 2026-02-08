@@ -15,10 +15,10 @@ import (
 
 type StrategyOrderController struct {
 	service      service.StrategyOrderService
-	isProduction bool
+	isProduction service.IsProduction
 }
 
-func NewStrategyOrderController(s service.StrategyOrderService, isProduction bool) *StrategyOrderController {
+func NewStrategyOrderController(s service.StrategyOrderService, isProduction service.IsProduction) *StrategyOrderController {
 	return &StrategyOrderController{
 		service:      s,
 		isProduction: isProduction,
@@ -26,7 +26,7 @@ func NewStrategyOrderController(s service.StrategyOrderService, isProduction boo
 }
 
 func (ctrl *StrategyOrderController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 	adminMw := middleware.HumaAdminOnly(api)
 
 	// Admin routes

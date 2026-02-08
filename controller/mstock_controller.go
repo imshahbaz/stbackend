@@ -12,15 +12,15 @@ import (
 
 type MstockController struct {
 	mstockSvc    service.MstockService
-	isProduction bool
+	isProduction service.IsProduction
 }
 
-func NewMstockController(mstockSvc service.MstockService, isProduction bool) *MstockController {
+func NewMstockController(mstockSvc service.MstockService, isProduction service.IsProduction) *MstockController {
 	return &MstockController{mstockSvc: mstockSvc, isProduction: isProduction}
 }
 
 func (ctrl *MstockController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 
 	huma.Register(api, huma.Operation{
 		OperationID: "mstock-login",

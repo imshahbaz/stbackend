@@ -13,10 +13,10 @@ import (
 
 type OrderController struct {
 	orderService service.OrderService
-	isProduction bool
+	isProduction service.IsProduction
 }
 
-func NewOrderController(os service.OrderService, isProduction bool) *OrderController {
+func NewOrderController(os service.OrderService, isProduction service.IsProduction) *OrderController {
 	return &OrderController{
 		orderService: os,
 		isProduction: isProduction,
@@ -24,7 +24,7 @@ func NewOrderController(os service.OrderService, isProduction bool) *OrderContro
 }
 
 func (ctrl *OrderController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 
 	huma.Register(api, huma.Operation{
 		OperationID: "get-order-by-id",

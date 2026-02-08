@@ -16,16 +16,16 @@ import (
 
 type ZerodhaController struct {
 	zerodhaSvc   service.ZerodhaService
-	isProduction bool
+	isProduction service.IsProduction
 	userSvc      service.UserService
 }
 
-func NewZerodhaController(zerodhaSvc service.ZerodhaService, isProduction bool, userSvc service.UserService) *ZerodhaController {
+func NewZerodhaController(zerodhaSvc service.ZerodhaService, isProduction service.IsProduction, userSvc service.UserService) *ZerodhaController {
 	return &ZerodhaController{zerodhaSvc: zerodhaSvc, isProduction: isProduction, userSvc: userSvc}
 }
 
 func (ctrl *ZerodhaController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 
 	huma.Register(api, huma.Operation{
 		OperationID: "zerodha-callback",
