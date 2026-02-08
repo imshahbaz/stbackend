@@ -15,7 +15,9 @@ import (
 	"backend/model"
 	"backend/repository"
 	"backend/service"
+	"context"
 	"github.com/google/wire"
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
 )
@@ -24,9 +26,9 @@ import (
 
 func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 	isProduction := provideIsProduction(sysCfg)
-	database := provideMongoDatabase(sysCfg)
+	database, cleanup := provideMongoDatabase(sysCfg)
 	configService := service.NewConfigService(database, isProduction)
-	configManager := provideConfigManager(configService)
+	configManager, cleanup2 := provideConfigManager(configService)
 	healthController := controller.NewHealthController()
 	brevoClient := provideBrevoClient()
 	emailService := service.NewEmailService(brevoClient, configManager)
@@ -63,7 +65,7 @@ func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 	zerodhaController := controller.NewZerodhaController(zerodhaService, isProduction, userService)
 	orderRepo := repository.NewOrderRepo(database)
 	angelOneConfig := provideAngelOneConfig(configManager)
-	angelOneWebSocket := provideAngelOneWebSocket(angelOneConfig)
+	angelOneWebSocket, cleanup3 := provideAngelOneWebSocket(angelOneConfig)
 	angelOneService := service.NewAngelOneService(angelOneConfig, angelOneWebSocket)
 	orderService := service.NewOrderService(orderRepo, zerodhaService, angelOneService, angelOneWebSocket)
 	orderController := controller.NewOrderController(orderService, isProduction)
@@ -77,6 +79,9 @@ func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 	strategyOrderController := controller.NewStrategyOrderController(strategyOrderService, isProduction)
 	app := SetupRouterWrapper(isProduction, configManager, healthController, emailController, marginController, strategyController, chartInkController, authController, userController, nseController, configController, priceActionController, newsController, zerodhaController, orderController, angelOneController, mstockController, strategyTradingController, strategyOrderController, marginService, strategyService, angelOneService, angelOneWebSocket)
 	return app, func() {
+		cleanup3()
+		cleanup2()
+		cleanup()
 	}, nil
 }
 
@@ -86,16 +91,30 @@ func provideIsProduction(sysCfg *config.SystemConfigs) service.IsProduction {
 	return service.IsProduction(sysCfg.Config.Environment == "production")
 }
 
-func provideMongoDatabase(sysCfg *config.SystemConfigs) *mongo.Database {
-	_, db := database.InitMongoClient(sysCfg)
-	return db
+func provideMongoDatabase(sysCfg *config.SystemConfigs) (*mongo.Database, func()) {
+	client, db := database.InitMongoClient(sysCfg)
+	cleanup := func() {
+		if err := client.Disconnect(context.Background()); err != nil {
+			log.Error().Err(err).Msg("Failed to disconnect MongoDB")
+		} else {
+			log.Info().Msg("MongoDB disconnected successfully")
+		}
+	}
+	return db, cleanup
 }
 
-func provideConfigManager(cfgSvc service.ConfigService) *config.ConfigManager {
+func provideConfigManager(cfgSvc service.ConfigService) (*config.ConfigManager, func()) {
 	cm := cfgSvc.GetConfigManager()
 	auth.SecretKey = []byte(cm.GetConfig().JwtSecret)
 	database.InitRedis(cm.GetConfig().RedisUrl)
-	return cm
+	cleanup := func() {
+		if database.RedisHelper != nil {
+			database.RedisHelper.
+				Close()
+			log.Info().Msg("Valkey/Redis connection closed")
+		}
+	}
+	return cm, cleanup
 }
 
 func provideAngelOneConfig(cm *config.ConfigManager) *model.AngelOneConfig {
@@ -116,8 +135,13 @@ func provideGenAiClient(cm *config.ConfigManager) *client.GenAiClient {
 	return client.NewGenAiClient(cm.GetConfig().GoogleAuth)
 }
 
-func provideAngelOneWebSocket(conf *model.AngelOneConfig) service.AngelOneWebSocket {
-	return service.NewAngelOneWebSocket("", "", conf)
+func provideAngelOneWebSocket(conf *model.AngelOneConfig) (service.AngelOneWebSocket, func()) {
+	ws := service.NewAngelOneWebSocket("", "", conf)
+	cleanup := func() {
+		ws.Disconnect()
+		log.Info().Msg("Angel One WebSocket disconnected")
+	}
+	return ws, cleanup
 }
 
 var RepositorySet = wire.NewSet(repository.NewUserRepository, repository.NewMarginRepository, repository.NewStrategyRepository, repository.NewPriceActionRepo, repository.NewOrderRepo, repository.NewOptionRepository, repository.NewStrategyOrderRepository)

@@ -14,8 +14,10 @@ import (
 	"backend/model"
 	"backend/repository"
 	"backend/service"
+	"context"
 
 	"github.com/google/wire"
+	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
 )
@@ -24,16 +26,29 @@ func provideIsProduction(sysCfg *config.SystemConfigs) service.IsProduction {
 	return service.IsProduction(sysCfg.Config.Environment == "production")
 }
 
-func provideMongoDatabase(sysCfg *config.SystemConfigs) *mongo.Database {
-	_, db := database.InitMongoClient(sysCfg)
-	return db
+func provideMongoDatabase(sysCfg *config.SystemConfigs) (*mongo.Database, func()) {
+	client, db := database.InitMongoClient(sysCfg)
+	cleanup := func() {
+		if err := client.Disconnect(context.Background()); err != nil {
+			log.Error().Err(err).Msg("Failed to disconnect MongoDB")
+		} else {
+			log.Info().Msg("MongoDB disconnected successfully")
+		}
+	}
+	return db, cleanup
 }
 
-func provideConfigManager(cfgSvc service.ConfigService) *config.ConfigManager {
+func provideConfigManager(cfgSvc service.ConfigService) (*config.ConfigManager, func()) {
 	cm := cfgSvc.GetConfigManager()
 	auth.SecretKey = []byte(cm.GetConfig().JwtSecret)
 	database.InitRedis(cm.GetConfig().RedisUrl)
-	return cm
+	cleanup := func() {
+		if database.RedisHelper != nil {
+			database.RedisHelper.Close()
+			log.Info().Msg("Valkey/Redis connection closed")
+		}
+	}
+	return cm, cleanup
 }
 
 func provideAngelOneConfig(cm *config.ConfigManager) *model.AngelOneConfig {
@@ -51,8 +66,13 @@ func provideGenAiClient(cm *config.ConfigManager) *client.GenAiClient {
 	return client.NewGenAiClient(cm.GetConfig().GoogleAuth)
 }
 
-func provideAngelOneWebSocket(conf *model.AngelOneConfig) service.AngelOneWebSocket {
-	return service.NewAngelOneWebSocket("", "", conf)
+func provideAngelOneWebSocket(conf *model.AngelOneConfig) (service.AngelOneWebSocket, func()) {
+	ws := service.NewAngelOneWebSocket("", "", conf)
+	cleanup := func() {
+		ws.Disconnect()
+		log.Info().Msg("Angel One WebSocket disconnected")
+	}
+	return ws, cleanup
 }
 
 var RepositorySet = wire.NewSet(
