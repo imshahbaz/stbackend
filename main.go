@@ -2,8 +2,7 @@ package main
 
 import (
 	"backend/config"
-	"backend/database"
-	"backend/routes"
+	"backend/di"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -20,9 +19,13 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	_, db := database.InitMongoClient(sysConfigs)
+	app, cleanup, err := di.InitializeApp(sysConfigs)
+	if err != nil {
+		log.Fatal().Msgf("Error initializing application: %v", err)
+	}
+	defer cleanup()
 
-	router := routes.SetupRouter(db, sysConfigs)
+	app.Start()
 
 	port := sysConfigs.Config.Port
 	if port == "" {
@@ -30,7 +33,7 @@ func main() {
 	}
 
 	log.Info().Msgf("Server starting on port %s", port)
-	if err := router.Run("0.0.0.0:" + port); err != nil {
+	if err := app.Router.Run("0.0.0.0:" + port); err != nil {
 		log.Fatal().Msgf("Server failed to start: %v", err)
 	}
 }

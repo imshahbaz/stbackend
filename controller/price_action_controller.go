@@ -15,10 +15,10 @@ import (
 
 type PriceActionController struct {
 	paService    service.PriceActionService
-	isProduction bool
+	isProduction service.IsProduction
 }
 
-func NewPriceActionController(s service.PriceActionService, isProd bool) *PriceActionController {
+func NewPriceActionController(s service.PriceActionService, isProd service.IsProduction) *PriceActionController {
 	return &PriceActionController{paService: s, isProduction: isProd}
 }
 
@@ -55,7 +55,7 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"PriceAction"},
 	}, ctrl.GetOBMitigation)
 
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 	adminMw := middleware.HumaAdminOnly(api)
 
 	huma.Register(api, huma.Operation{

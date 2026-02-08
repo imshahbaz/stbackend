@@ -21,13 +21,13 @@ type AuthController struct {
 	userSvc      service.UserService
 	cfgManager   *config.ConfigManager
 	otpSvc       service.OtpService
-	isProduction bool
+	isProduction service.IsProduction
 	oauthSvc     service.OAuthService
 	authSvc      service.AuthService
 }
 
 func NewAuthController(s service.UserService, cfgManager *config.ConfigManager,
-	otpSvc service.OtpService, isProduction bool,
+	otpSvc service.OtpService, isProduction service.IsProduction,
 	oauthSvc service.OAuthService, authSvc service.AuthService) *AuthController {
 	return &AuthController{
 		userSvc:      s,
@@ -65,7 +65,7 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Auth"},
 	}, ctrl.VerifyOtp)
 
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 
 	huma.Register(api, huma.Operation{
 		OperationID: "logout",

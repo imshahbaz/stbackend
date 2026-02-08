@@ -15,11 +15,11 @@ import (
 
 type AngelOneController struct {
 	angelOneSvc    service.AngelOneService
-	isProduction   bool
+	isProduction   service.IsProduction
 	angelOneWebSvc service.AngelOneWebSocket
 }
 
-func NewAngelOneController(angelOneSvc service.AngelOneService, isProduction bool, angelOneWebSvc service.AngelOneWebSocket) *AngelOneController {
+func NewAngelOneController(angelOneSvc service.AngelOneService, isProduction service.IsProduction, angelOneWebSvc service.AngelOneWebSocket) *AngelOneController {
 	return &AngelOneController{angelOneSvc: angelOneSvc, isProduction: isProduction, angelOneWebSvc: angelOneWebSvc}
 }
 
