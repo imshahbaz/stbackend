@@ -185,7 +185,12 @@ func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskNa
 					continue
 				}
 
-				_, err = s.repo.PatchStruct(context.Background(), objID, list[i])
+				updateData := bson.M{
+					"buyOrder":      list[i].BuyOrder,
+					"stopLossOrder": list[i].StopLossOrder,
+				}
+
+				_, err = s.repo.UpdateFields(context.Background(), objID, updateData)
 				if err != nil {
 					log.Error().Err(err).Str("symbol", list[i].Symbol).Int64("userId", uid).Msg("Failed to update order in database")
 				}
@@ -271,15 +276,15 @@ func (s *OrderServiceImpl) Update(ctx context.Context, id string, dto model.Orde
 
 	margin := val.(model.Margin)
 
-	updateData := model.Order{
-		UserID:   dto.UserID,
-		Symbol:   dto.Symbol,
-		Quantity: dto.Quantity,
-		Date:     orderDate,
-		Margin:   margin,
+	updateData := bson.M{
+		"userId":   dto.UserID,
+		"symbol":   dto.Symbol,
+		"quantity": dto.Quantity,
+		"date":     orderDate,
+		"margin":   margin,
 	}
 
-	_, err = s.repo.PatchStruct(ctx, objID, updateData)
+	_, err = s.repo.UpdateFields(ctx, objID, updateData)
 	return err
 }
 
@@ -492,7 +497,11 @@ func (s *OrderServiceImpl) startWorkers() {
 					continue
 				}
 
-				_, err = s.repo.PatchStruct(context.Background(), objID, order)
+				updateData := bson.M{
+					"buyOrder":      order.BuyOrder,
+					"stopLossOrder": order.StopLossOrder,
+				}
+				_, err = s.repo.UpdateFields(context.Background(), objID, updateData)
 				if err != nil {
 					log.Error().Err(err).Str("orderId", order.ID).Msg("DB Patch failed")
 				}

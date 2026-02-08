@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -122,65 +121,10 @@ func (r *GenericRepo[T]) Update(ctx context.Context, id any, doc T) error {
 	return err
 }
 
-// PatchStruct updates only non-zero or non-nil pointer fields of `data`
-// for the document with the given `id`. Skips _id automatically.
+// UpdateFields updates specific fields of the document with the given `id`.
 // Returns the updated document.
-func (r *GenericRepo[T]) PatchStruct(ctx context.Context, id any, data T) (*T, error) {
-	val := reflect.ValueOf(data)
-
-	// Dereference pointer if needed
-	if val.Kind() == reflect.Pointer {
-		if val.IsNil() {
-			return nil, fmt.Errorf("data is a nil pointer")
-		}
-		val = val.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
-	}
-
-	updateData := bson.M{}
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		fieldType := typ.Field(i)
-
-		// Skip unexported fields
-		if !field.CanInterface() {
-			continue
-		}
-
-		// Get bson tag or fallback to field name
-		tag := fieldType.Tag.Get("bson")
-		if tag == "-" {
-			continue
-		}
-		cleanTag := splitBsonTag(tag)
-		if cleanTag == "" {
-			cleanTag = fieldType.Name
-		}
-
-		// Skip _id
-		if strings.EqualFold(cleanTag, "_id") || strings.EqualFold(fieldType.Name, "ID") {
-			continue
-		}
-
-		// Pointer fields: include non-nil
-		if field.Kind() == reflect.Pointer {
-			if !field.IsNil() {
-				updateData[cleanTag] = field.Elem().Interface()
-			}
-		} else {
-			// Value fields: include non-zero
-			if !field.IsZero() {
-				updateData[cleanTag] = field.Interface()
-			}
-		}
-	}
-
-	if len(updateData) == 0 {
+func (r *GenericRepo[T]) UpdateFields(ctx context.Context, id any, fields bson.M) (*T, error) {
+	if len(fields) == 0 {
 		return nil, fmt.Errorf("no fields to update")
 	}
 
@@ -190,7 +134,7 @@ func (r *GenericRepo[T]) PatchStruct(ctx context.Context, id any, data T) (*T, e
 	err := r.Collection.FindOneAndUpdate(
 		ctx,
 		bson.M{"_id": id},
-		bson.M{"$set": updateData},
+		bson.M{"$set": fields},
 		opts,
 	).Decode(&updated)
 
@@ -202,12 +146,6 @@ func (r *GenericRepo[T]) PatchStruct(ctx context.Context, id any, data T) (*T, e
 	}
 
 	return &updated, nil
-}
-
-// Helper function: returns the first part of a bson tag
-func splitBsonTag(tag string) string {
-	parts := strings.Split(tag, ",")
-	return parts[0]
 }
 
 //

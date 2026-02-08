@@ -84,7 +84,14 @@ func (s *StrategyOrderServiceImpl) Update(ctx context.Context, dto model.Strateg
 		return model.StrategyOrderDto{}, err
 	}
 
-	updated, err := s.repo.Generic.PatchStruct(ctx, objID, entity)
+	updateData := bson.M{
+		"userId":       entity.UserID,
+		"date":         entity.Date,
+		"strategyName": entity.StrategyName,
+		"amount":       entity.Amount,
+	}
+
+	updated, err := s.repo.Generic.UpdateFields(ctx, objID, updateData)
 	if err != nil {
 		return model.StrategyOrderDto{}, err
 	}

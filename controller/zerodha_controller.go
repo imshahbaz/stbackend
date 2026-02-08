@@ -100,12 +100,13 @@ func (ctrl *ZerodhaController) config(ctx context.Context, input *struct{ Body m
 		return nil, huma.Error401Unauthorized("User context missing")
 	}
 
-	user, err := ctrl.userSvc.FindUser(ctx, 0, "", userDto.UserID)
+	err := ctrl.userSvc.PatchUserData(ctx, userDto.UserID, model.User{
+		ZerodhaConfig: input.Body,
+	})
+
 	if err != nil {
-		return nil, huma.Error500InternalServerError("Error getting user")
+		return nil, huma.Error500InternalServerError("Error updating Zerodha configuration")
 	}
 
-	user.ZerodhaConfig = input.Body
-	ctrl.userSvc.PatchUserData(ctx, user.UserID, *user)
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Zerodha config updated successfully", Data: user.UserID}}, nil
+	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Zerodha configuration updated successfully", Data: userDto.UserID}}, nil
 }
