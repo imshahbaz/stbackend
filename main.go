@@ -3,6 +3,12 @@ package main
 import (
 	"backend/config"
 	"backend/di"
+	"context"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -23,7 +29,6 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("Error initializing application: %v", err)
 	}
-	defer cleanup()
 
 	app.Start()
 
@@ -32,10 +37,31 @@ func main() {
 		port = "8080"
 	}
 
-	log.Info().Msgf("Server starting on port %s", port)
-	if err := app.Router.Run("0.0.0.0:" + port); err != nil {
-		log.Fatal().Msgf("Server failed to start: %v", err)
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: app.Router,
 	}
+
+	go func() {
+		log.Info().Msgf("Server starting on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Msgf("Server failed to start: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Info().Msg("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal().Msgf("Server forced to shutdown: %v", err)
+	}
+
+	cleanup()
+
+	log.Info().Msg("Server exiting")
 }
 
 func init() {

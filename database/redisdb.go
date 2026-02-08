@@ -113,3 +113,7 @@ func (v *valkeyUtil) Exists(key string) bool {
 	count, err := v.client.Do(context.Background(), cmd).AsInt64()
 	return err == nil && count > 0
 }
+
+func (v *valkeyUtil) Close() {
+	v.client.Close()
+}
