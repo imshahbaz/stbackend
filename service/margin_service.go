@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -357,51 +358,60 @@ func (s *MarginServiceImpl) syncMstockSymbols(optionMap map[string]*model.Option
 		return
 	}
 
+	nameLookup := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		nameLookup[name] = struct{}{}
+	}
+
 	url := "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster"
 	client := resty.New().SetTimeout(5 * time.Minute)
-	resp, err := client.R().
-		SetDoNotParseResponse(true).
-		Get(url)
+
+	resp, err := client.R().SetDoNotParseResponse(true).Get(url)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to fetch mstock list")
 		return
 	}
 	defer resp.RawBody().Close()
 
-	var mstockInsts []model.MinimalInstrument
-	decoder := sonic.ConfigDefault.NewDecoder(resp.RawBody())
-	if err := decoder.Decode(&mstockInsts); err != nil {
-		log.Error().Err(err).Msg("failed to decode mstock stream")
+	decoder := json.NewDecoder(resp.RawBody())
+
+	if _, err := decoder.Token(); err != nil {
+		log.Error().Err(err).Msg("failed to read start of array")
 		return
 	}
 
-	for i := range mstockInsts {
-		inst := &mstockInsts[i]
-		if slices.Contains(names, inst.Symbol) && inst.Strike != "" {
-			key := inst.Symbol + strings.ToUpper(inst.Expiry) + inst.Strike + inst.Name[len(inst.Name)-2:]
+	for decoder.More() {
+		var inst model.MinimalInstrument
+		if err := decoder.Decode(&inst); err != nil {
+			log.Error().Err(err).Msg("failed to decode instrument")
+			break
+		}
+
+		_, isRequested := nameLookup[inst.Symbol]
+		if isRequested && inst.Strike != "" {
+			suffix := inst.Name[len(inst.Name)-2:]
+			key := inst.Symbol + strings.ToUpper(inst.Expiry) + inst.Strike + suffix
+
 			if opt, exists := optionMap[key]; exists {
 				opt.MstockSymbol = inst.Name
 			}
 		}
 	}
 
-	mstockInsts = nil
-	runtime.GC()
-
-	ids := make([]any, 0, len(optionMap))
+	ctx := context.Background()
 	optionChain := make([]model.OptionChain, 0, len(optionMap))
+	ids := make([]any, 0, len(optionMap))
+
 	for id, opt := range optionMap {
 		ids = append(ids, id)
 		optionChain = append(optionChain, *opt)
 	}
 
-	ctx := context.Background()
 	if err := s.optRepo.GenericRepo.SaveAll(ctx, optionChain, "Symbol"); err != nil {
 		log.Error().Err(err).Msg("failed to save options")
 	}
-
-	var count int64
-	if count, err = s.optRepo.GenericRepo.DeleteByIdNotIn(ctx, ids); err != nil {
+	count, err := s.optRepo.GenericRepo.DeleteByIdNotIn(ctx, ids)
+	if err != nil {
 		log.Error().Err(err).Msg("failed to delete stale options")
 	}
 
@@ -410,5 +420,5 @@ func (s *MarginServiceImpl) syncMstockSymbols(optionMap map[string]*model.Option
 	log.Info().
 		Int("synced_symbols", len(optionChain)).
 		Int64("deleted_stale", count).
-		Msg("MStock option chain sync complete")
+		Msg("MStock option chain sync complete with streaming")
 }
