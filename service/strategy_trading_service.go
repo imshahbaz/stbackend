@@ -303,6 +303,7 @@ func (s *StrategyTradingServiceImpl) startManualPoller(strategy model.StrategyDt
 					}
 
 					cache.PollerCache.Set(strategy.Name, signals, 3*time.Minute)
+					log.Info().Interface("signals", signals).Msg("Complete signals list")
 				}
 			}
 		}
