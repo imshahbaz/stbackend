@@ -10,12 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// BulkUpdateItem represents a single update in a bulk operation
-type BulkUpdateItem struct {
-	ID     any
-	Fields bson.M
-}
-
 // GenericRepo is a generic MongoDB repository for any type T
 type GenericRepo[T any] struct {
 	Collection *mongo.Collection
