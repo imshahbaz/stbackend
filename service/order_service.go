@@ -14,8 +14,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var (
@@ -48,7 +47,7 @@ func NewOrderService(repo *repository.OrderRepo, zerodhaSvc ZerodhaService, ange
 }
 
 func (s *OrderServiceImpl) Get(ctx context.Context, id string) (*model.OrderDto, error) {
-	objID, err := primitive.ObjectIDFromHex(id)
+	objID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +178,7 @@ func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskNa
 					continue
 				}
 
-				objID, err := primitive.ObjectIDFromHex(list[i].ID)
+				objID, err := bson.ObjectIDFromHex(list[i].ID)
 				if err != nil {
 					log.Error().Err(err).Str("symbol", list[i].Symbol).Int64("userId", uid).Msg("Invalid ObjectID during update")
 					continue
@@ -252,7 +251,7 @@ func (s *OrderServiceImpl) Create(ctx context.Context, dto model.OrderDto) error
 }
 
 func (s *OrderServiceImpl) Update(ctx context.Context, id string, dto model.OrderDto) error {
-	objID, err := primitive.ObjectIDFromHex(id)
+	objID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
@@ -289,7 +288,7 @@ func (s *OrderServiceImpl) Update(ctx context.Context, id string, dto model.Orde
 }
 
 func (s *OrderServiceImpl) Delete(ctx context.Context, id string) error {
-	objID, err := primitive.ObjectIDFromHex(id)
+	objID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
@@ -491,7 +490,7 @@ func (s *OrderServiceImpl) startWorkers() {
 			log.Debug().Int("workerID", workerID).Msg("DB Worker started")
 
 			for order := range updateChan {
-				objID, err := primitive.ObjectIDFromHex(order.ID)
+				objID, err := bson.ObjectIDFromHex(order.ID)
 				if err != nil {
 					log.Error().Err(err).Str("symbol", order.Symbol).Msg("Invalid ObjectID")
 					continue

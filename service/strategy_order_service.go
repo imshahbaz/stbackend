@@ -5,8 +5,7 @@ import (
 	"backend/repository"
 	"context"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type StrategyOrderService interface {
@@ -40,7 +39,7 @@ func (s *StrategyOrderServiceImpl) Create(ctx context.Context, dto model.Strateg
 }
 
 func (s *StrategyOrderServiceImpl) Get(ctx context.Context, id string) (model.StrategyOrderDto, error) {
-	objID, err := primitive.ObjectIDFromHex(id)
+	objID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return model.StrategyOrderDto{}, err
 	}
@@ -74,7 +73,7 @@ func (s *StrategyOrderServiceImpl) GetAll(ctx context.Context, strategyName stri
 }
 
 func (s *StrategyOrderServiceImpl) Update(ctx context.Context, dto model.StrategyOrderDto) (model.StrategyOrderDto, error) {
-	objID, err := primitive.ObjectIDFromHex(dto.ID)
+	objID, err := bson.ObjectIDFromHex(dto.ID)
 	if err != nil {
 		return model.StrategyOrderDto{}, err
 	}
@@ -99,7 +98,7 @@ func (s *StrategyOrderServiceImpl) Update(ctx context.Context, dto model.Strateg
 }
 
 func (s *StrategyOrderServiceImpl) Delete(ctx context.Context, id string) error {
-	objID, err := primitive.ObjectIDFromHex(id)
+	objID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
