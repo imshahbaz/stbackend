@@ -5,10 +5,16 @@ import (
 	"fmt"
 	"reflect"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
+
+// BulkUpdateItem represents a single update in a bulk operation
+type BulkUpdateItem struct {
+	ID     any
+	Fields bson.M
+}
 
 // GenericRepo is a generic MongoDB repository for any type T
 type GenericRepo[T any] struct {
@@ -146,6 +152,46 @@ func (r *GenericRepo[T]) UpdateFields(ctx context.Context, id any, fields bson.M
 	}
 
 	return &updated, nil
+}
+
+// UpdateManyFields updates specific fields for all documents matching the filter.
+func (r *GenericRepo[T]) UpdateManyFields(ctx context.Context, filter bson.M, fields bson.M) (int64, error) {
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("no fields to update")
+	}
+
+	res, err := r.Collection.UpdateMany(ctx, filter, bson.M{"$set": fields})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.ModifiedCount, nil
+}
+
+// BulkUpdateFields updates specific fields for multiple documents in a single batch.
+func (r *GenericRepo[T]) BulkUpdateFields(ctx context.Context, updates []BulkUpdateItem) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	models := make([]mongo.WriteModel, 0, len(updates))
+	for _, update := range updates {
+		if len(update.Fields) == 0 {
+			continue
+		}
+		model := mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"_id": update.ID}).
+			SetUpdate(bson.M{"$set": update.Fields})
+		models = append(models, model)
+	}
+
+	if len(models) == 0 {
+		return nil
+	}
+
+	opts := options.BulkWrite().SetOrdered(false)
+	_, err := r.Collection.BulkWrite(ctx, models, opts)
+	return err
 }
 
 //

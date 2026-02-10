@@ -18,7 +18,7 @@ import (
 	"context"
 	"github.com/google/wire"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/oauth2"
 )
 
