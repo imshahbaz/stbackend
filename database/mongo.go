@@ -21,7 +21,10 @@ func InitMongoClient(sysConfigs *config.SystemConfigs) (*mongo.Client, *mongo.Da
 	clientOptions := options.Client().
 		ApplyURI(uri).
 		SetConnectTimeout(5 * time.Second).
-		SetServerSelectionTimeout(5 * time.Second)
+		SetServerSelectionTimeout(5 * time.Second).
+		SetBSONOptions(&options.BSONOptions{
+			ObjectIDAsHexString: true,
+		})
 
 	// mongo.Connect doesn't block for connection by default, it just initializes the client.
 	// We'll skip the manual Ping here to speed up startup. The first actual query
