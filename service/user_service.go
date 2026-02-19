@@ -22,6 +22,7 @@ type UserService interface {
 	FindUser(ctx context.Context, mobile int64, email string, userId int64) (*model.User, error)
 	AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error)
 	PatchUserData(ctx context.Context, userId int64, user model.User) error
+	UpdateFcmToken(ctx context.Context, userId int64, fcmToken string) (*model.User, error)
 }
 
 type UserServiceImpl struct {
@@ -156,4 +157,8 @@ func (s *UserServiceImpl) PatchUserData(ctx context.Context, userId int64, user 
 
 	_, err := s.repo.GenericRepo.UpdateFields(ctx, userId, updateData)
 	return err
+}
+
+func (s *UserServiceImpl) UpdateFcmToken(ctx context.Context, userId int64, fcmToken string) (*model.User, error) {
+	return s.repo.GenericRepo.UpdateFields(ctx, userId, bson.M{"fcmToken": fcmToken})
 }

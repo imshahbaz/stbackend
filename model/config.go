@@ -13,6 +13,11 @@ type MongoEnvConfig struct {
 	RedisUrl       string                `json:"redisUrl" bson:"redisUrl"`
 	GoogleAuth     GoogleAuthCredentials `json:"googleAuth" bson:"googleAuth"`
 	AngelOneConfig AngelOneConfig        `json:"angelOneConfig" bson:"angelOneConfig"`
+	FcmConfig      FcmConfig             `json:"fcmConfig" bson:"fcmConfig"`
+}
+
+type FcmConfig struct {
+	ServiceAccount map[string]any `json:"serviceAccount" bson:"serviceAccount"`
 }
 
 type EnvConfig struct {

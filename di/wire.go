@@ -104,6 +104,7 @@ var ServiceSet = wire.NewSet(
 	service.NewMstockService,
 	service.NewStrategyTradingService,
 	service.NewStrategyOrderService,
+	service.NewFcmService,
 )
 
 var ControllerSet = wire.NewSet(

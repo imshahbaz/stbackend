@@ -21,6 +21,7 @@ type App struct {
 	StrategySvc    service.StrategyService
 	AngelOneSvc    service.AngelOneService
 	AngelOneWebSvc service.AngelOneWebSocket
+	FcmSvc         service.FcmService
 }
 
 func (a *App) Start() {
@@ -60,6 +61,14 @@ func (a *App) Start() {
 			a.AngelOneWebSvc.UpdateConfig(jwt, feedToken)
 		}
 	}()
+
+	go func() {
+		if a.FcmSvc != nil {
+			log.Info().Msg("FCM client initialized on app startup")
+		} else {
+			log.Warn().Msg("FCM client was not initialized - please check configuration")
+		}
+	}()
 }
 
 func SetupRouterWrapper(
@@ -86,6 +95,7 @@ func SetupRouterWrapper(
 	strategySvc service.StrategyService,
 	angelOneSvc service.AngelOneService,
 	angelOneWebSvc service.AngelOneWebSocket,
+	fcmSvc service.FcmService,
 ) *App {
 	r := gin.New()
 	r.Use(middleware.RecoveryMiddleware)
@@ -139,5 +149,6 @@ func SetupRouterWrapper(
 		StrategySvc:    strategySvc,
 		AngelOneSvc:    angelOneSvc,
 		AngelOneWebSvc: angelOneWebSvc,
+		FcmSvc:         fcmSvc,
 	}
 }

@@ -77,6 +77,17 @@ func (ctrl *UserController) RegisterRoutes(api huma.API) {
 		Security:    []map[string][]string{{"bearer": {}}},
 		Tags:        []string{"User"},
 	}, ctrl.verifyUpdateOtp)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-fcm-token",
+		Method:      http.MethodPatch,
+		Path:        "/api/user/fcm-token",
+		Summary:     "Update FCM Token",
+		Description: "Updates the FCM token for the authenticated user",
+		Middlewares: huma.Middlewares{authMw},
+		Security:    []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"User"},
+	}, ctrl.UpdateFcmToken)
 }
 
 func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.UpdateUsernameRequest) (*model.DefaultResponse, error) {
@@ -201,4 +212,24 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 	cache.DeleteUserCache(req.Email, model.CredUpdate)
 	cache.GoDelete("auth_" + strconv.FormatInt(authUser.UserID, 10))
 	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Credential added successfully"}}, nil
+}
+
+func (ctrl *UserController) UpdateFcmToken(ctx context.Context, input *model.UpdateFcmTokenInput) (*model.DefaultResponse, error) {
+	req := input.Body
+
+	val := ctx.Value("user")
+	if val == nil {
+		return nil, huma.Error401Unauthorized("User session not found")
+	}
+
+	userDto := val.(model.UserDto)
+
+	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if _, err := ctrl.userSvc.UpdateFcmToken(ctxt, userDto.UserID, req.Token); err != nil {
+		return NewErrorResponse("Internal server error"), nil
+	}
+
+	return NewResponse(req.Token, "FCM token synchronized"), nil
 }
