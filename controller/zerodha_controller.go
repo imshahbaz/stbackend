@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
+	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 )
 
 type ZerodhaController struct {
@@ -86,8 +87,27 @@ func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*mode
 		return nil, huma.Error404NotFound("E001")
 	}
 
-	ok = database.RedisHelper.Exists("zerodha_token_" + strconv.FormatInt(user.UserID, 10))
+	var token string
+	ok, err = database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(user.UserID, 10), &token)
+	if !ok || err != nil {
+		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
+	}
+
+	var kc *kiteconnect.Client
+	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(user.UserID, 10))
 	if !ok {
+
+		kc, err = ctrl.zerodhaSvc.InitiateKiteConnect(context.Background(), token, user.UserID)
+		if err != nil {
+			return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
+		}
+		cache.KiteClientCache.Set(strconv.FormatInt(user.UserID, 10), kc, util.ZerodhaTokenExpiry())
+	} else {
+		kc = val.(*kiteconnect.Client)
+	}
+
+	_, err = kc.GetUserProfile()
+	if err != nil {
 		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
 	}
 
