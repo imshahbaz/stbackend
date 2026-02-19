@@ -20,6 +20,7 @@ type User struct {
 	Profile       string        `bson:"profile" json:"profile"`
 	ZerodhaConfig ZerodhaConfig `bson:"zerodhaConfig" json:"zerodhaConfig"`
 	MstockConfig  MstockConfig  `bson:"mstockConfig" json:"mstockConfig"`
+	FcmToken      string        `bson:"fcmToken" json:"fcmToken"`
 }
 
 func (u *User) ToDto() UserDto {
@@ -97,6 +98,14 @@ type UpdateUsernameRequest struct {
 
 type UpdateThemeInput struct {
 	Body UpdateThemeRequest
+}
+
+type UpdateFcmTokenRequest struct {
+	Token string `json:"token" doc:"The FCM token to update"`
+}
+
+type UpdateFcmTokenInput struct {
+	Body UpdateFcmTokenRequest
 }
 
 type GoogleUser struct {

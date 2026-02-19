@@ -77,7 +77,14 @@ func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 	strategyTradingController := controller.NewStrategyTradingController(strategyTradingService)
 	strategyOrderService := service.NewStrategyOrderService(strategyOrderRepository)
 	strategyOrderController := controller.NewStrategyOrderController(strategyOrderService, isProduction)
-	app := SetupRouterWrapper(isProduction, configManager, healthController, emailController, marginController, strategyController, chartInkController, authController, userController, nseController, configController, priceActionController, newsController, zerodhaController, orderController, angelOneController, mstockController, strategyTradingController, strategyOrderController, marginService, strategyService, angelOneService, angelOneWebSocket)
+	fcmService, err := service.NewFcmService(configManager)
+	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	app := SetupRouterWrapper(isProduction, configManager, healthController, emailController, marginController, strategyController, chartInkController, authController, userController, nseController, configController, priceActionController, newsController, zerodhaController, orderController, angelOneController, mstockController, strategyTradingController, strategyOrderController, marginService, strategyService, angelOneService, angelOneWebSocket, fcmService)
 	return app, func() {
 		cleanup3()
 		cleanup2()
@@ -146,6 +153,6 @@ func provideAngelOneWebSocket(conf *model.AngelOneConfig) (service.AngelOneWebSo
 
 var RepositorySet = wire.NewSet(repository.NewUserRepository, repository.NewMarginRepository, repository.NewStrategyRepository, repository.NewPriceActionRepo, repository.NewOrderRepo, repository.NewOptionRepository, repository.NewStrategyOrderRepository)
 
-var ServiceSet = wire.NewSet(service.NewConfigService, service.NewEmailService, service.NewOtpService, service.NewUserService, service.NewMarginService, service.NewStrategyService, service.NewNseService, service.NewChartInkService, service.NewPriceActionService, service.NewOAuthService, service.NewAuthService, service.NewNewsService, service.NewZerodhaService, service.NewAngelOneService, service.NewOrderService, service.NewMstockService, service.NewStrategyTradingService, service.NewStrategyOrderService)
+var ServiceSet = wire.NewSet(service.NewConfigService, service.NewEmailService, service.NewOtpService, service.NewUserService, service.NewMarginService, service.NewStrategyService, service.NewNseService, service.NewChartInkService, service.NewPriceActionService, service.NewOAuthService, service.NewAuthService, service.NewNewsService, service.NewZerodhaService, service.NewAngelOneService, service.NewOrderService, service.NewMstockService, service.NewStrategyTradingService, service.NewStrategyOrderService, service.NewFcmService)
 
 var ControllerSet = wire.NewSet(controller.NewHealthController, controller.NewEmailController, controller.NewMarginController, controller.NewStrategyController, controller.NewChartInkController, controller.NewAuthController, controller.NewUserController, controller.NewNseController, controller.NewConfigController, controller.NewPriceActionController, controller.NewNewsController, controller.NewZerodhaController, controller.NewOrderController, controller.NewAngelOneController, controller.NewMstockController, controller.NewStrategyTradingController, controller.NewStrategyOrderController)
