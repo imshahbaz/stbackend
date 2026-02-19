@@ -73,10 +73,6 @@ func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 	mstockService := service.NewMstockService(angelOneWebSocket, userService)
 	mstockController := controller.NewMstockController(mstockService, isProduction)
 	strategyOrderRepository := repository.NewStrategyOrderRepository(database)
-	strategyTradingService := service.NewStrategyTradingService(chartInkService, strategyService, strategyOrderRepository, angelOneWebSocket, zerodhaService)
-	strategyTradingController := controller.NewStrategyTradingController(strategyTradingService)
-	strategyOrderService := service.NewStrategyOrderService(strategyOrderRepository)
-	strategyOrderController := controller.NewStrategyOrderController(strategyOrderService, isProduction)
 	fcmService, err := service.NewFcmService(configManager)
 	if err != nil {
 		cleanup3()
@@ -84,6 +80,10 @@ func InitializeApp(sysCfg *config.SystemConfigs) (*App, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
+	strategyTradingService := service.NewStrategyTradingService(chartInkService, strategyService, strategyOrderRepository, angelOneWebSocket, zerodhaService, userService, fcmService)
+	strategyTradingController := controller.NewStrategyTradingController(strategyTradingService)
+	strategyOrderService := service.NewStrategyOrderService(strategyOrderRepository)
+	strategyOrderController := controller.NewStrategyOrderController(strategyOrderService, isProduction)
 	app := SetupRouterWrapper(isProduction, configManager, healthController, emailController, marginController, strategyController, chartInkController, authController, userController, nseController, configController, priceActionController, newsController, zerodhaController, orderController, angelOneController, mstockController, strategyTradingController, strategyOrderController, marginService, strategyService, angelOneService, angelOneWebSocket, fcmService)
 	return app, func() {
 		cleanup3()

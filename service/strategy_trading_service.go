@@ -34,6 +34,8 @@ type StrategyTradingServiceImpl struct {
 	strategyOrderRepo *repository.StrategyOrderRepository
 	angelWS           AngelOneWebSocket
 	zerodhaService    ZerodhaService
+	userService       UserService
+	fcmService        FcmService
 }
 
 func NewStrategyTradingService(
@@ -42,14 +44,31 @@ func NewStrategyTradingService(
 	sor *repository.StrategyOrderRepository,
 	angelWS AngelOneWebSocket,
 	zs ZerodhaService,
+	us UserService,
+	fcm FcmService,
 ) StrategyTradingService {
-	return &StrategyTradingServiceImpl{
+	s := &StrategyTradingServiceImpl{
 		chartInkService:   ci,
 		strategyService:   ss,
 		strategyOrderRepo: sor,
 		angelWS:           angelWS,
 		zerodhaService:    zs,
+		userService:       us,
+		fcmService:        fcm,
 	}
+
+	util.StartNotificationWorker(
+		func(ctx context.Context, userId int64) (string, error) {
+			user, err := us.FindUser(ctx, 0, "", userId)
+			if err != nil {
+				return "", err
+			}
+			return user.FcmToken, nil
+		},
+		fcm.SendNotification,
+	)
+
+	return s
 }
 
 func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strategyName string) error {
@@ -150,7 +169,7 @@ func (s *StrategyTradingServiceImpl) tradeLoop(order model.StrategyOrder, kc *ki
 				continue
 			}
 
-			success := s.punchSingleTrade(kc, targetStock, qty)
+			success := s.punchSingleTrade(kc, targetStock, qty, order.UserID)
 			if !success {
 				log.Warn().Int64("userId", order.UserID).Str("symbol", targetStock.Symbol).Msg("Punch trade failed or market exited. Ending loop for user.")
 				return
@@ -190,7 +209,7 @@ func (s *StrategyTradingServiceImpl) findTargetStock(now time.Time, signals []mo
 	return model.Margin{}, 0
 }
 
-func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, targetStock model.Margin, qty int) bool {
+func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, targetStock model.Margin, qty int, userId int64) bool {
 	tradingCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -221,6 +240,13 @@ func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, ta
 		return false
 	}
 
+	util.NotifChan <- util.NotificationRequest{
+		UserID: userId,
+		Title:  "Order Placed",
+		Body:   fmt.Sprintf("%s | Entry: %.2f | Target: %.2f", targetStock.Symbol, od.AveragePrice, targetPrice),
+		Data:   map[string]string{},
+	}
+
 	var prevLtp float64
 	for {
 		now := time.Now().In(util.IstLocation)
@@ -240,6 +266,12 @@ func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, ta
 				det, err := s.zerodhaService.GetOrderDetails(kc, sOd.OrderID)
 				if err == nil && det.PendingQuantity == 0 {
 					log.Info().Str("symbol", targetStock.Symbol).Msg("Exit order filled")
+					util.NotifChan <- util.NotificationRequest{
+						UserID: userId,
+						Title:  "Target Achieved!",
+						Body:   fmt.Sprintf("%s | Target: %.2f", targetStock.Symbol, targetPrice),
+						Data:   map[string]string{},
+					}
 					return true
 				}
 			}
