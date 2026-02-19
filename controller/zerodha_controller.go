@@ -87,15 +87,14 @@ func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*mode
 		return nil, huma.Error404NotFound("E001")
 	}
 
-	var token string
-	ok, err = database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(user.UserID, 10), &token)
-	if !ok || err != nil {
-		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
-	}
-
 	var kc *kiteconnect.Client
 	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(user.UserID, 10))
 	if !ok {
+		var token string
+		ok, err = database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(user.UserID, 10), &token)
+		if !ok || err != nil || token == "" {
+			return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
+		}
 
 		kc, err = ctrl.zerodhaSvc.InitiateKiteConnect(context.Background(), token, user.UserID)
 		if err != nil {
