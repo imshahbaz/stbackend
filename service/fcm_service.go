@@ -46,11 +46,9 @@ func NewFcmService(cfgManager *config.ConfigManager) (FcmService, error) {
 }
 
 func (s *FcmServiceImpl) SendNotification(ctx context.Context, token, title, body string, data map[string]string) error {
+	data["title"] = title
+	data["body"] = body
 	message := &messaging.Message{
-		Notification: &messaging.Notification{
-			Title: title,
-			Body:  body,
-		},
 		Data:  data,
 		Token: token,
 	}
