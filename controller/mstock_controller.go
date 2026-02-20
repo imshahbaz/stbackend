@@ -104,7 +104,7 @@ func (ctrl *MstockController) placeOrder(ctx context.Context, input *model.Reque
 	return ctrl.mstockSvc.PlaceFnOrder(ctx, user.UserID, &input.Body)
 }
 
-func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model.TypedResponse[int64], error) {
+func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")

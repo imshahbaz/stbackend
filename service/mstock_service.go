@@ -18,7 +18,7 @@ type MstockService interface {
 	Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.TypedResponse[any], error)
 	VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.TypedResponse[any], error)
 	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.TypedResponse[any], error)
-	GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[int64], error)
+	GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[any], error)
 	RefreshAccessToken(ctx context.Context, userId int64) (*model.TypedResponse[any], error)
 	Logout(ctx context.Context, userId int64) (*model.TypedResponse[int64], error)
 }
@@ -139,12 +139,7 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 	}
 
 	return &model.TypedResponse[any]{
-		Body: model.Payload[any]{
-			Success: res.Success,
-			Message: res.Message,
-			Data:    res.Data,
-			Error:   res.Error,
-		},
+		Body: *res,
 	}, nil
 }
 
@@ -206,16 +201,11 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, inpu
 	}
 
 	return &model.TypedResponse[any]{
-		Body: model.Payload[any]{
-			Success: resp.Success,
-			Message: resp.Message,
-			Data:    resp.Data,
-			Error:   resp.Error,
-		},
+		Body: *resp,
 	}, nil
 }
 
-func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[int64], error) {
+func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[any], error) {
 	_, ok := s.getClient(userId)
 	if !ok {
 
@@ -225,26 +215,26 @@ func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*mode
 		}
 
 		if user.MstockConfig.ApiKey == "" || user.MstockConfig.Password == "" || user.MstockConfig.Username == "" {
-			return &model.TypedResponse[int64]{
-				Body: model.Payload[int64]{
+			return &model.TypedResponse[any]{
+				Body: model.Payload[any]{
 					Success: false,
 					Message: "User not logged in",
-					Error:   "E001",
+					Data:    "E001",
 				},
 			}, nil
 		}
 
-		return &model.TypedResponse[int64]{
-			Body: model.Payload[int64]{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "User not logged in",
-				Error:   "E002",
+				Data:    "E002",
 			},
 		}, nil
 	}
 
-	return &model.TypedResponse[int64]{
-		Body: model.Payload[int64]{
+	return &model.TypedResponse[any]{
+		Body: model.Payload[any]{
 			Success: true,
 			Message: "User logged in",
 			Data:    userId,
