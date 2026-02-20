@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"strconv"
 	"time"
 
-	"backend/cache"
-	"backend/database"
+	localCache "backend/cache"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
@@ -151,25 +149,10 @@ func (s *OrderServiceImpl) processTodayOrdersPerUser(ctx context.Context, taskNa
 
 	for userID, oList := range userOrders {
 		go func(uid int64, list []model.Order) {
-			var kc *kiteconnect.Client
-			var err error
-			val, ok := cache.KiteClientCache.Get(strconv.FormatInt(uid, 10))
-			if !ok {
-				var accessToken string
-				ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(uid, 10), &accessToken)
-				if !ok || accessToken == "" {
-					log.Warn().Int64("userId", uid).Msg("AccessToken not found in Redis for user")
-					return
-				}
-
-				kc, err = s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, uid)
-				if err != nil {
-					log.Error().Err(err).Int64("userId", uid).Msg("Failed to initiate KiteConnect for user")
-					return
-				}
-				cache.KiteClientCache.Set(strconv.FormatInt(uid, 10), kc, util.ZerodhaTokenExpiry())
-			} else {
-				kc = val.(*kiteconnect.Client)
+			kc, err := s.zerodhaSvc.GetKiteClient(context.Background(), uid)
+			if err != nil {
+				log.Error().Err(err).Int64("userId", uid).Msg("Failed to retrieve Kite client for user")
+				return
 			}
 
 			for i := range list {
@@ -233,7 +216,7 @@ func (s *OrderServiceImpl) Create(ctx context.Context, dto model.OrderDto) error
 		orderDate = util.ToIST(orderDate)
 	}
 
-	val, ok := cache.MarginCache.Get(dto.Symbol)
+	val, ok := localCache.MarginCache.Get(dto.Symbol)
 	if !ok {
 		return errors.New("Margin not found")
 	}
@@ -268,7 +251,7 @@ func (s *OrderServiceImpl) Update(ctx context.Context, id string, dto model.Orde
 		orderDate = util.ToIST(orderDate)
 	}
 
-	val, ok := cache.MarginCache.Get(dto.Symbol)
+	val, ok := localCache.MarginCache.Get(dto.Symbol)
 	if !ok {
 		return errors.New("Margin not found")
 	}
@@ -344,32 +327,17 @@ func (s *OrderServiceImpl) processOrder(order *model.Order, ltp float64, peakPri
 		return -1
 	}
 
-	var kc *kiteconnect.Client
-	val, ok := cache.KiteClientCache.Get(strconv.FormatInt(order.UserID, 10))
-	if !ok {
-		var accessToken string
-		ok, _ := database.RedisHelper.GetAsStruct("zerodha_token_"+strconv.FormatInt(order.UserID, 10), &accessToken)
-		if !ok || accessToken == "" {
-			log.Warn().Int64("userId", order.UserID).Msg("AccessToken not found in Redis for user")
-			return -1
-		}
-
-		var err error
-		kc, err = s.zerodhaSvc.InitiateKiteConnect(context.Background(), accessToken, order.UserID)
-		if err != nil {
-			log.Error().Err(err).Int64("userId", order.UserID).Msg("Failed to initiate KiteConnect for user")
-			return -1
-		}
-		cache.KiteClientCache.Set(strconv.FormatInt(order.UserID, 10), kc, util.ZerodhaTokenExpiry())
-	} else {
-		kc = val.(*kiteconnect.Client)
+	kc, err := s.zerodhaSvc.GetKiteClient(context.Background(), order.UserID)
+	if err != nil {
+		log.Error().Err(err).Int64("userId", order.UserID).Msg("Failed to retrieve Kite client for user")
+		return -1
 	}
 
 	return s.addStopLoss(order, ltp, buyPrice, kc, peakPrice)
 }
 
 func (s *OrderServiceImpl) addStopLoss(order *model.Order, ltp, buyPrice float64, kc *kiteconnect.Client, peakPrice float64) int8 {
-	if ltp > order.BuyOrder.AveragePrice*1.004 && (ltp <= peakPrice*0.994 || util.IsTimePastClosingGrace()) {
+	if ltp > order.BuyOrder.AveragePrice*1.004 && (ltp <= peakPrice*0.994 || util.IsPastClosingGrace()) {
 		log.Info().Str("symbol", order.Symbol).
 			Msg("Stock price dropped more than 0.6% or Market is closing (3:25 PM). Squaring off...")
 
