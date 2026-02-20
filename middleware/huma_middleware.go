@@ -41,7 +41,7 @@ func HumaAuthMiddleware(api huma.API, isProduction bool) func(huma.Context, func
 				Name:     "auth_token",
 				Value:    newToken,
 				Path:     "/",
-				MaxAge:   1800,
+				MaxAge:   86400,
 				Secure:   isProduction,
 				HttpOnly: true,
 			}

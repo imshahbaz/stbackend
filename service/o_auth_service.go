@@ -182,7 +182,7 @@ func (svc *OAuthServiceImpl) TrueCallerStatus(ctx context.Context, requestId str
 			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
-		cookie := svc.createAuthCookie(tokenStr, 1800)
+		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
 		return &model.DetailedResponseWrapper{
@@ -265,7 +265,7 @@ func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *mode
 			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
-		cookie := svc.createAuthCookie(tokenStr, 1800)
+		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 		cache.GoDelete(key)
 		return &model.GoogleAuthResponse{
