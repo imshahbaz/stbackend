@@ -1,8 +1,12 @@
 package service
 
 import (
+	"backend/cache"
+	"backend/database"
+	"backend/util"
 	"context"
 	"fmt"
+	"strconv"
 
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 )
@@ -16,6 +20,7 @@ type ZerodhaService interface {
 	UpdateMTFStopLossOrder(kc *kiteconnect.Client, orderID string, newPrice float64, newTriggerPrice float64) error
 	CancelOrder(kc *kiteconnect.Client, orderID string) (kiteconnect.OrderResponse, error)
 	ConvertSLToMarket(kc *kiteconnect.Client, orderID string, quantity int, price float64) (kiteconnect.OrderResponse, error)
+	GetKiteClient(ctx context.Context, userID int64) (*kiteconnect.Client, error)
 }
 
 type ZerodhaServiceImpl struct {
@@ -144,4 +149,33 @@ func (s *ZerodhaServiceImpl) ConvertSLToMarket(kc *kiteconnect.Client, orderID s
 	}
 
 	return kc.ModifyOrder(kiteconnect.VarietyRegular, orderID, params)
+}
+
+func (s *ZerodhaServiceImpl) GetKiteClient(ctx context.Context, userID int64) (*kiteconnect.Client, error) {
+	userIdStr := strconv.FormatInt(userID, 10)
+
+	// Check local memory cache
+	if val, ok := cache.KiteClientCache.Get(userIdStr); ok {
+		if kc, ok := val.(*kiteconnect.Client); ok {
+			return kc, nil
+		}
+	}
+
+	// Check Redis for access token
+	var accessToken string
+	ok, err := database.RedisHelper.GetAsStruct("zerodha_token_"+userIdStr, &accessToken)
+	if err != nil || !ok || accessToken == "" {
+		return nil, fmt.Errorf("access token not found in redis for user %d", userID)
+	}
+
+	// Initiate KiteConnect
+	kc, err := s.InitiateKiteConnect(ctx, accessToken, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initiate kite connect: %w", err)
+	}
+
+	// Cache the client
+	cache.KiteClientCache.Set(userIdStr, kc, util.ZerodhaTokenExpiry())
+
+	return kc, nil
 }

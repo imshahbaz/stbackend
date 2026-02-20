@@ -67,13 +67,6 @@ func ToIST(t time.Time) time.Time {
 	return t.In(IstLocation)
 }
 
-func IsTimePastClosingGrace() bool {
-	now := time.Now().In(IstLocation)
-	currentMinutes := now.Hour()*60 + now.Minute()
-	targetMinutes := 15*60 + 25
-	return currentMinutes >= targetMinutes
-}
-
 func GetDurationToMidnightIST() time.Duration {
 
 	now := time.Now().In(IstLocation)

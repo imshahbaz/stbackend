@@ -2,13 +2,11 @@ package service
 
 import (
 	"backend/cache"
-	"backend/database"
 	"backend/model"
 	"backend/repository"
 	"backend/util"
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -17,9 +15,6 @@ import (
 
 const (
 	defaultStrategyName = "RSI15MIN"
-	marketCloseHour     = 15
-	marketCloseMinute   = 15
-	marketSquareOffMin  = 30
 	signalGracePeriod   = 20 * time.Minute
 	signalExpiryPeriod  = 23 * time.Minute
 )
@@ -98,7 +93,7 @@ func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strate
 	go s.startManualPoller(strategy)
 
 	for _, order := range existingOrders {
-		kc, err := s.getKiteClientForUser(ctx, order.UserID)
+		kc, err := s.zerodhaService.GetKiteClient(ctx, order.UserID)
 		if err != nil {
 			log.Error().Err(err).Int64("userId", order.UserID).Msg("Skipping user due to session error")
 			continue
@@ -108,35 +103,6 @@ func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strate
 	}
 
 	return nil
-}
-
-func (s *StrategyTradingServiceImpl) getKiteClientForUser(ctx context.Context, userID int64) (*kiteconnect.Client, error) {
-	userIdStr := strconv.FormatInt(userID, 10)
-
-	// Check local memory cache
-	if val, ok := cache.KiteClientCache.Get(userIdStr); ok {
-		if kc, ok := val.(*kiteconnect.Client); ok {
-			return kc, nil
-		}
-	}
-
-	// Check Redis for access token
-	var accessToken string
-	ok, err := database.RedisHelper.GetAsStruct("zerodha_token_"+userIdStr, &accessToken)
-	if err != nil || !ok || accessToken == "" {
-		return nil, fmt.Errorf("access token not found in redis for user %d", userID)
-	}
-
-	// Initiate KiteConnect
-	kc, err := s.zerodhaService.InitiateKiteConnect(ctx, accessToken, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initiate kite connect: %w", err)
-	}
-
-	// Cache the client
-	cache.KiteClientCache.Set(userIdStr, kc, util.ZerodhaTokenExpiry())
-
-	return kc, nil
 }
 
 func (s *StrategyTradingServiceImpl) tradeLoop(order model.StrategyOrder, kc *kiteconnect.Client, strategyName string) {
@@ -152,7 +118,7 @@ func (s *StrategyTradingServiceImpl) tradeLoop(order model.StrategyOrder, kc *ki
 			return
 		default:
 			now := time.Now().In(util.IstLocation)
-			if now.Hour() >= marketCloseHour && now.Minute() >= marketCloseMinute {
+			if util.IsMarketClosedForTrading() {
 				log.Info().Int64("userId", order.UserID).Msg("Market closing. Stopping trade loop.")
 				return
 			}
@@ -249,8 +215,7 @@ func (s *StrategyTradingServiceImpl) punchSingleTrade(kc *kiteconnect.Client, ta
 
 	var prevLtp float64
 	for {
-		now := time.Now().In(util.IstLocation)
-		if now.Hour() >= marketCloseHour && now.Minute() >= marketSquareOffMin {
+		if util.IsSquareOffTimeReached() {
 			log.Info().Str("symbol", targetStock.Symbol).Msg("Market square-off time reached. Exiting trade monitor.")
 			return false
 		}
@@ -317,14 +282,12 @@ func (s *StrategyTradingServiceImpl) startManualPoller(strategy model.StrategyDt
 				log.Info().Str("strategy", strategy.Name).Msg("Watchdog Poller stopped via context")
 				return
 			case <-ticker.C:
-				now := time.Now().In(util.IstLocation)
-
-				if now.Hour() == 15 && now.Minute() > 30 {
+				if util.IsSquareOffTimeReached() {
 					log.Info().Msg("Market closed. Watchdog exiting.")
 					return
 				}
 
-				currentTime := now.Format("15:04")
+				currentTime := time.Now().In(util.IstLocation).Format("15:04")
 				if targets[currentTime] {
 					log.Info().Str("time", currentTime).Msg("Target match! Fetching signals from Chartink...")
 
