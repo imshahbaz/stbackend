@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -48,6 +50,7 @@ func NewFcmService(cfgManager *config.ConfigManager) (FcmService, error) {
 func (s *FcmServiceImpl) SendNotification(ctx context.Context, token, title, body string, data map[string]string) error {
 	data["title"] = title
 	data["body"] = body
+	data["tag"] = strconv.FormatInt(time.Now().Unix(), 10)
 	message := &messaging.Message{
 		Data:  data,
 		Token: token,
