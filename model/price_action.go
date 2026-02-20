@@ -26,15 +26,6 @@ type ObResponse struct {
 	Date string `json:"date"`
 }
 
-
-type TriggerAutomationResponse struct {
-	Body Response
-}
-
 type GetPAInput struct {
 	Symbol string `path:"symbol" required:"true"`
-}
-
-type ObInput struct {
-	Body ObRequest
 }

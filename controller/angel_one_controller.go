@@ -89,53 +89,48 @@ func (ctrl *AngelOneController) RegisterRoutes(api huma.API) {
 	}, ctrl.wsDisconnect)
 }
 
-func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) refreshSession(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	_, _, err := ctrl.angelOneSvc.RefreshBrokerSession()
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error refreshing broker session: " + err.Error())
 	}
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Broker session refreshed successfully"}}, nil
+	return NewTypedResponse[any](nil, "Broker session refreshed successfully"), nil
 }
 
-func (ctrl *AngelOneController) getLTP(ctx context.Context, input *model.AngelOneLTPInput) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) getLTP(ctx context.Context, input *model.AngelOneLTPInput) (*model.TypedResponse[float64], error) {
 	ltp, err := ctrl.angelOneSvc.GetLTP(input.TradingSymbol, input.SymbolToken)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error fetching LTP: " + err.Error())
 	}
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: ltp}}, nil
+	return NewTypedResponse(ltp, "LTP fetched successfully"), nil
 }
 
-func (ctrl *AngelOneController) getMultipleLTP(ctx context.Context, input *model.AngelOneMultipleLTPInput) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) getMultipleLTP(ctx context.Context, input *model.RequestBody[model.AngelOneMultipleLTPDto]) (*model.TypedResponse[map[string]float64], error) {
 	ltpMap, err := ctrl.angelOneSvc.GetMultipleLTP(input.Body.Tokens)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error fetching bulk LTP: " + err.Error())
 	}
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: ltpMap}}, nil
+	return NewTypedResponse(ltpMap, "Bulk LTP fetched successfully"), nil
 }
 
-func (ctrl *AngelOneController) getHistoricalData(ctx context.Context, input *model.AngelOneHistoricalInput) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) getHistoricalData(ctx context.Context, input *model.AngelOneHistoricalInput) (*model.TypedResponse[[]model.AngelOneCandle], error) {
 	candles, err := ctrl.angelOneSvc.GetHistoricalData(input.SymbolToken, input.Interval, input.FromDate, input.ToDate)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error fetching historical data: " + err.Error())
 	}
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Data: candles}}, nil
+	return NewTypedResponse(candles, "Historical data fetched successfully"), nil
 }
 
-func (ctrl *AngelOneController) wsConnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) wsConnect(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	err := ctrl.angelOneWebSvc.StartWebsocket()
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to initialize WebSocket")
 	}
 
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket connected successfully"}}, nil
+	return NewTypedResponse[any](nil, "WebSocket connected successfully"), nil
 }
 
-func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
-	Body struct {
-		Tokens       []string           `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
-		ExchangeType model.ExchangeType `json:"exchangeType" doc:"Exchange type" required:"true"`
-	}
-}) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *model.RequestBody[model.AngelOneWsSubscribeDto]) (*model.TypedResponse[any], error) {
 
 	for _, token := range input.Body.Tokens {
 		err := ctrl.angelOneWebSvc.Subscribe(token, input.Body.ExchangeType)
@@ -169,11 +164,11 @@ func (ctrl *AngelOneController) wsSubscribe(ctx context.Context, input *struct {
 
 	}
 
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Subscription requests sent for " + strconv.Itoa(len(input.Body.Tokens)) + " tokens"}}, nil
+	return NewTypedResponse[any](nil, "Subscription requests sent for "+strconv.Itoa(len(input.Body.Tokens))+" tokens"), nil
 }
 
-func (ctrl *AngelOneController) wsDisconnect(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *AngelOneController) wsDisconnect(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	ctrl.angelOneWebSvc.Disconnect()
 	ctrl.angelOneWebSvc.StopUpdateChannel()
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "WebSocket disconnected"}}, nil
+	return NewTypedResponse[any](nil, "WebSocket disconnected"), nil
 }

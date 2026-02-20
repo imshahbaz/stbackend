@@ -120,38 +120,38 @@ func (ctrl *AuthController) RegisterRoutes(api huma.API) {
 	}, ctrl.validateGoogleToken)
 }
 
-func (ctrl *AuthController) Login(ctx context.Context, input *model.LoginRequest) (*model.LoginResponse, error) {
+func (ctrl *AuthController) Login(ctx context.Context, input *model.RequestBody[model.LoginDto]) (*model.HeaderResponse[model.UserDto], error) {
 	return ctrl.authSvc.Login(ctx, input.Body)
 }
 
-func (ctrl *AuthController) Signup(ctx context.Context, input *model.SignupRequest) (*model.MessageResponseWrapper, error) {
+func (ctrl *AuthController) Signup(ctx context.Context, input *model.RequestBody[model.SignupDto]) (*model.TypedResponse[model.MessageResponse], error) {
 	return ctrl.authSvc.Signup(ctx, input.Body)
 }
 
-func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
+func (ctrl *AuthController) VerifyOtp(ctx context.Context, input *model.RequestBody[model.VerifyOtpRequest]) (*model.TypedResponse[any], error) {
 	return ctrl.authSvc.VerifyOtp(ctx, input.Body)
 }
 
-func (ctrl *AuthController) Logout(ctx context.Context, input *struct{}) (*model.LogoutResponse, error) {
+func (ctrl *AuthController) Logout(ctx context.Context, input *struct{}) (*model.HeaderResponse[any], error) {
 	return ctrl.authSvc.Logout(), nil
 }
 
-func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.LoginResponse, error) {
+func (ctrl *AuthController) GetMe(ctx context.Context, input *struct{}) (*model.HeaderResponse[model.UserDto], error) {
 	return ctrl.authSvc.GetMe(ctx)
 }
 
-func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.Request) (*model.ResponseWrapper, error) {
+func (ctrl *AuthController) TrueCallerCallBack(ctx context.Context, input *model.RequestBody[model.TruecallerDto]) (*model.TypedResponse[any], error) {
 	return ctrl.oauthSvc.TrueCallerCallBack(ctx, input)
 }
 
-func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.DetailedResponseWrapper, error) {
+func (ctrl *AuthController) TrueCallerStatus(ctx context.Context, input *model.TrueCallerStatusInput) (*model.HeaderResponse[model.UserDto], error) {
 	return ctrl.oauthSvc.TrueCallerStatus(ctx, input.RequestId)
 }
 
-func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
+func (ctrl *AuthController) googleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[model.UserDto], error) {
 	return ctrl.oauthSvc.GoogleAuthCallback(ctx, input)
 }
 
-func (ctrl *AuthController) validateGoogleToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
+func (ctrl *AuthController) validateGoogleToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[string], error) {
 	return ctrl.oauthSvc.ValidateToken(ctx, input)
 }

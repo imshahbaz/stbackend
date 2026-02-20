@@ -92,52 +92,52 @@ func (ctrl *StrategyController) RegisterRoutes(api huma.API) {
 	}, ctrl.getAllStrategiesAdmin)
 }
 
-func (ctrl *StrategyController) getAllStrategies(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) getAllStrategies(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.StrategyDto], error) {
 	strategies := ctrl.strategyService.GetAllStrategies()
 	if strategies == nil {
 		strategies = []model.StrategyDto{}
 	}
-	return NewResponse(strategies, "Strategies fetched successfully"), nil
+	return NewTypedResponse(strategies, "Strategies fetched successfully"), nil
 }
 
-func (ctrl *StrategyController) createStrategy(ctx context.Context, input *model.CreateStrategyRequest) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) createStrategy(ctx context.Context, input *model.RequestBody[model.StrategyDto]) (*model.TypedResponse[model.StrategyDto], error) {
 	res, err := ctrl.strategyService.CreateStrategy(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[model.StrategyDto](err.Error()), nil
 	}
-	return NewResponse(res, "Strategy created successfully"), nil
+	return NewTypedResponse(res, "Strategy created successfully"), nil
 }
 
-func (ctrl *StrategyController) updateStrategy(ctx context.Context, input *model.CreateStrategyRequest) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) updateStrategy(ctx context.Context, input *model.RequestBody[model.StrategyDto]) (*model.TypedResponse[model.StrategyDto], error) {
 	res, err := ctrl.strategyService.UpdateStrategy(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[model.StrategyDto](err.Error()), nil
 	}
-	return NewResponse(res, "Strategy updated successfully"), nil
+	return NewTypedResponse(res, "Strategy updated successfully"), nil
 }
 
-func (ctrl *StrategyController) deleteStrategy(ctx context.Context, input *model.DeleteStrategyInput) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) deleteStrategy(ctx context.Context, input *model.DeleteStrategyInput) (*model.TypedResponse[any], error) {
 	if input.ID == "" {
-		return NewErrorResponse("Strategy ID is required"), nil
+		return NewTypedError[any]("Strategy ID is required"), nil
 	}
 
 	if err := ctrl.strategyService.DeleteStrategy(ctx, input.ID); err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Strategy deleted successfully"), nil
+	return NewTypedResponse[any](nil, "Strategy deleted successfully"), nil
 }
 
-func (ctrl *StrategyController) reloadAllStrategies(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) reloadAllStrategies(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	if err := ctrl.strategyService.ReloadAllStrategies(ctx); err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Strategies reloaded successfully"), nil
+	return NewTypedResponse[any](nil, "Strategies reloaded successfully"), nil
 }
 
-func (ctrl *StrategyController) getAllStrategiesAdmin(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *StrategyController) getAllStrategiesAdmin(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.StrategyDto], error) {
 	strategies := ctrl.strategyService.GetAllStrategiesAdmin()
 	if strategies == nil {
 		strategies = []model.StrategyDto{}
 	}
-	return NewResponse(strategies, "Admin strategies fetched successfully"), nil
+	return NewTypedResponse(strategies, "Admin strategies fetched successfully"), nil
 }

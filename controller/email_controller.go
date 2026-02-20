@@ -31,10 +31,10 @@ func (ctrl *EmailController) RegisterRoutes(api huma.API) {
 	}, ctrl.sendEmail)
 }
 
-func (ctrl *EmailController) sendEmail(ctx context.Context, input *model.SendEmailRequest) (*model.DefaultResponse, error) {
+func (ctrl *EmailController) sendEmail(ctx context.Context, input *model.RequestBody[model.BrevoEmailRequest]) (*model.TypedResponse[any], error) {
 	if err := ctrl.emailService.SendEmail(ctx, input.Body); err != nil {
-		return NewErrorResponse("Failed to send email: " + err.Error()), nil
+		return NewTypedError[any]("Failed to send email: " + err.Error()), nil
 	}
 
-	return NewResponse(nil, "Email sent successfully"), nil
+	return NewTypedResponse[any](nil, "Email sent successfully"), nil
 }

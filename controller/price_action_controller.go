@@ -152,125 +152,125 @@ func (ctrl *PriceActionController) RegisterRoutes(api huma.API) {
 
 }
 
-func (ctrl *PriceActionController) TriggerAutomation(ctx context.Context, input *struct{}) (*model.TriggerAutomationResponse, error) {
+func (ctrl *PriceActionController) TriggerAutomation(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	bgCtx := context.Background()
 	go func() {
 		_ = ctrl.paService.AutomateOrderBlock(bgCtx, 0)
 		_ = ctrl.paService.AutomateFvg(bgCtx, 0)
 	}()
-	return &model.TriggerAutomationResponse{Body: model.Response{Success: true, Message: "Scanning started"}}, nil
+	return NewTypedResponse[any](nil, "Scanning started"), nil
 }
 
-func (ctrl *PriceActionController) GetPABySymbol(ctx context.Context, input *model.GetPAInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) GetPABySymbol(ctx context.Context, input *model.GetPAInput) (*model.TypedResponse[model.StockRecord], error) {
 	data, err := ctrl.paService.GetPABySymbol(ctx, input.Symbol)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[model.StockRecord](err.Error()), nil
 	}
-	return NewResponse(data, "PA data fetched successfully"), nil
+	return NewTypedResponse(data, "PA data fetched successfully"), nil
 }
 
-func (ctrl *PriceActionController) CheckOBMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) CheckOBMitigation(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.ObResponse], error) {
 	data, err := ctrl.paService.CheckOBMitigation(ctx)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ObResponse](err.Error()), nil
 	}
-	return NewResponse(data, "OB mitigation check complete"), nil
+	return NewTypedResponse(data, "OB mitigation check complete"), nil
 }
 
-func (ctrl *PriceActionController) GetOBMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) GetOBMitigation(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.ObResponse], error) {
 	result := make([]model.ObResponse, 0)
 	if ok, err := cache.GetPriceActionResponseCache("ObCache", &result); ok && err == nil {
-		return NewResponse(result, "Cached OB mitigation data fetched"), nil
+		return NewTypedResponse(result, "Cached OB mitigation data fetched"), nil
 	}
 
 	data, err := ctrl.paService.CheckOBMitigation(ctx)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ObResponse](err.Error()), nil
 	}
-	return NewResponse(data, "OB mitigation data fetched"), nil
+	return NewTypedResponse(data, "OB mitigation data fetched"), nil
 }
 
-func (ctrl *PriceActionController) SaveOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) SaveOrderBlock(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	err := ctrl.paService.SaveOrderBlock(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Order Block saved successfully"), nil
+	return NewTypedResponse[any](nil, "Order Block saved successfully"), nil
 }
 
-func (ctrl *PriceActionController) UpdateOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) UpdateOrderBlock(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	err := ctrl.paService.UpdateOrderBlock(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Order Block updated successfully"), nil
+	return NewTypedResponse[any](nil, "Order Block updated successfully"), nil
 }
 
-func (ctrl *PriceActionController) DeleteOrderBlock(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) DeleteOrderBlock(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	req := input.Body
 	err := ctrl.paService.DeleteOrderBlock(ctx, req.Symbol, req.Date)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Order Block deleted successfully"), nil
+	return NewTypedResponse[any](nil, "Order Block deleted successfully"), nil
 }
 
-func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) CheckFvgMitigation(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.ObResponse], error) {
 	data, err := ctrl.paService.CheckFvgMitigation(ctx)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ObResponse](err.Error()), nil
 	}
-	return NewResponse(data, "FVG mitigation check complete"), nil
+	return NewTypedResponse(data, "FVG mitigation check complete"), nil
 }
 
-func (ctrl *PriceActionController) GetFvgMitigation(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) GetFvgMitigation(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.ObResponse], error) {
 	result := make([]model.ObResponse, 0)
 	if ok, err := cache.GetPriceActionResponseCache("FvgCache", &result); ok && err == nil {
-		return NewResponse(result, "Cached FVG mitigation data fetched"), nil
+		return NewTypedResponse(result, "Cached FVG mitigation data fetched"), nil
 	}
 
 	data, err := ctrl.paService.CheckFvgMitigation(ctx)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ObResponse](err.Error()), nil
 	}
-	return NewResponse(data, "FVG mitigation data fetched"), nil
+	return NewTypedResponse(data, "FVG mitigation data fetched"), nil
 }
 
-func (ctrl *PriceActionController) PACleanUp(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) PACleanUp(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	err := ctrl.paService.PACleanUp(ctx)
 	if err != nil {
-		return NewErrorResponse("Failed to cleanup: " + err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Price Action cleanup task executed successfully"), nil
+	return NewTypedResponse[any](nil, "Price Action cleanup task executed successfully"), nil
 }
 
-func (ctrl *PriceActionController) SaveFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) SaveFvg(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	err := ctrl.paService.SaveFvg(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Saved successfully"), nil
+	return NewTypedResponse[any](nil, "Saved successfully"), nil
 }
 
-func (ctrl *PriceActionController) UpdateFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) UpdateFvg(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	err := ctrl.paService.UpdateFvg(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Updated successfully"), nil
+	return NewTypedResponse[any](nil, "Updated successfully"), nil
 }
 
-func (ctrl *PriceActionController) DeleteFvg(ctx context.Context, input *model.ObInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) DeleteFvg(ctx context.Context, input *model.RequestBody[model.ObRequest]) (*model.TypedResponse[any], error) {
 	req := input.Body
 	err := ctrl.paService.DeleteFvg(ctx, req.Symbol, req.Date)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Deleted successfully"), nil
+	return NewTypedResponse[any](nil, "Deleted successfully"), nil
 }
 
-func (ctrl *PriceActionController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.DefaultResponse, error) {
+func (ctrl *PriceActionController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.TypedResponse[any], error) {
 	formData := input.RawBody.Data()
 	ctrl.paService.AddOlderFvgAndOb(ctx, formData.File.Filename, formData.File.File, time.Now().AddDate(0, -1, 0).Format("02-01-2006"))
-	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
+	return NewTypedResponse[any](nil, "Margins loaded successfully from CSV"), nil
 }

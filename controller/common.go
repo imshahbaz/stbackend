@@ -2,9 +2,9 @@ package controller
 
 import "backend/model"
 
-func NewResponse(data any, message string) *model.DefaultResponse {
-	return &model.DefaultResponse{
-		Body: model.Response{
+func NewTypedResponse[T any](data T, message string) *model.TypedResponse[T] {
+	return &model.TypedResponse[T]{
+		Body: model.Payload[T]{
 			Success: true,
 			Message: message,
 			Data:    data,
@@ -12,9 +12,9 @@ func NewResponse(data any, message string) *model.DefaultResponse {
 	}
 }
 
-func NewErrorResponse(err string) *model.DefaultResponse {
-	return &model.DefaultResponse{
-		Body: model.Response{
+func NewTypedError[T any](err string) *model.TypedResponse[T] {
+	return &model.TypedResponse[T]{
+		Body: model.Payload[T]{
 			Success: false,
 			Error:   err,
 		},

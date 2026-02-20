@@ -60,17 +60,17 @@ func (ctrl *ZerodhaController) RegisterRoutes(api huma.API) {
 	}, ctrl.config)
 }
 
-func (ctrl *ZerodhaController) login(ctx context.Context, input *model.ZerodhaInput) (*model.ResponseWrapper, error) {
+func (ctrl *ZerodhaController) login(ctx context.Context, input *model.RequestBody[model.ZerodhaLoginDto]) (*model.TypedResponse[any], error) {
 	token, err := ctrl.zerodhaSvc.GenerateAccessToken(input.Body.RequestToken, input.Body.UserId)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("Error Generating token")
+		return nil, huma.Error500InternalServerError("Error Generating token: " + err.Error())
 	}
 	cache.GoSet("zerodha_token_"+strconv.FormatInt(input.Body.UserId, 10), token, util.ZerodhaTokenExpiry())
 	cache.KiteClientCache.Delete(strconv.FormatInt(input.Body.UserId, 10))
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
+	return NewTypedResponse[any](nil, "Flow invocation success"), nil
 }
 
-func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")
@@ -78,7 +78,7 @@ func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*mode
 
 	user, err := ctrl.userSvc.FindUser(ctx, 0, "", userDto.UserID)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("Error getting user")
+		return nil, huma.Error500InternalServerError("Error getting user: " + err.Error())
 	}
 
 	if user.ZerodhaConfig.ApiKey == "" || user.ZerodhaConfig.ApiSecret == "" {
@@ -87,18 +87,30 @@ func (ctrl *ZerodhaController) auth(ctx context.Context, input *struct{}) (*mode
 
 	kc, err := ctrl.zerodhaSvc.GetKiteClient(ctx, user.UserID)
 	if err != nil {
-		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
+				Success: false,
+				Data:    user.ZerodhaConfig.ApiKey,
+				Message: "Token expired",
+			},
+		}, nil
 	}
 
 	_, err = kc.GetUserProfile()
 	if err != nil {
-		return &model.ResponseWrapper{Body: model.Response{Success: false, Message: "Token expired", Data: user.ZerodhaConfig.ApiKey}}, nil
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
+				Success: false,
+				Data:    user.ZerodhaConfig.ApiKey,
+				Message: "Token expired",
+			},
+		}, nil
 	}
 
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Token already exist", Data: user.UserID}}, nil
+	return NewTypedResponse[any](user.UserID, "Token already exist"), nil
 }
 
-func (ctrl *ZerodhaController) config(ctx context.Context, input *struct{ Body model.ZerodhaConfig }) (*model.ResponseWrapper, error) {
+func (ctrl *ZerodhaController) config(ctx context.Context, input *model.RequestBody[model.ZerodhaConfig]) (*model.TypedResponse[int64], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")
@@ -109,8 +121,8 @@ func (ctrl *ZerodhaController) config(ctx context.Context, input *struct{ Body m
 	})
 
 	if err != nil {
-		return nil, huma.Error500InternalServerError("Error updating Zerodha configuration")
+		return nil, huma.Error500InternalServerError("Error updating Zerodha configuration: " + err.Error())
 	}
 
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Zerodha configuration updated successfully", Data: userDto.UserID}}, nil
+	return NewTypedResponse(userDto.UserID, "Zerodha configuration updated successfully"), nil
 }

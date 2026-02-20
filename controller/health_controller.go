@@ -34,6 +34,6 @@ func (ctrl *HealthController) RegisterRoutes(api huma.API) {
 	}, ctrl.healthCheck)
 }
 
-func (ctrl *HealthController) healthCheck(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
-	return NewResponse(map[string]string{"status": "UP"}, "System is operational"), nil
+func (ctrl *HealthController) healthCheck(ctx context.Context, input *struct{}) (*model.TypedResponse[map[string]string], error) {
+	return NewTypedResponse(map[string]string{"status": "UP"}, "System is operational"), nil
 }

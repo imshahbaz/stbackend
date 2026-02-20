@@ -39,18 +39,18 @@ func (ctrl *NseController) RegisterRoutes(api huma.API) {
 	}, ctrl.GetAllIndices)
 }
 
-func (ctrl *NseController) GetStockHistory(ctx context.Context, input *model.NseHistoryInput) (*model.DefaultResponse, error) {
+func (ctrl *NseController) GetStockHistory(ctx context.Context, input *model.NseHistoryInput) (*model.TypedResponse[[]model.NSEHistoricalData], error) {
 	data, err := ctrl.nseService.FetchStockData(ctx, input.Symbol)
 	if err != nil {
-		return NewErrorResponse("Failed to get history"), nil
+		return NewTypedError[[]model.NSEHistoricalData]("Failed to get history" + err.Error()), nil
 	}
-	return NewResponse(data, "Fetch Success"), nil
+	return NewTypedResponse(data, "Fetch Success"), nil
 }
 
-func (ctrl *NseController) GetAllIndices(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *NseController) GetAllIndices(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.AllIndicesResponse], error) {
 	data, err := ctrl.nseService.FetchAllIndices()
 	if err != nil {
-		return NewErrorResponse("Failed to get all indices data"), nil
+		return NewTypedError[[]model.AllIndicesResponse]("Failed to get all indices data" + err.Error()), nil
 	}
-	return NewResponse(data, "Fetch Success"), nil
+	return NewTypedResponse(data, "Fetch Success"), nil
 }

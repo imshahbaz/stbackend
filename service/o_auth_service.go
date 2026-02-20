@@ -17,19 +17,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-resty/resty/v2"
+	huma "github.com/danielgtaylor/huma/v2"
+	resty "github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
-	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 )
 
 type OAuthService interface {
-	ValidateToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error)
-	TrueCallerCallBack(ctx context.Context, input *model.Request) (*model.ResponseWrapper, error)
-	TrueCallerStatus(ctx context.Context, requestId string) (*model.DetailedResponseWrapper, error)
-	GoogleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error)
+	ValidateToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[string], error)
+	TrueCallerCallBack(ctx context.Context, input *model.RequestBody[model.TruecallerDto]) (*model.TypedResponse[any], error)
+	TrueCallerStatus(ctx context.Context, requestId string) (*model.HeaderResponse[model.UserDto], error)
+	GoogleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[model.UserDto], error)
 }
 
 type OAuthServiceImpl struct {
@@ -50,7 +49,7 @@ func NewOAuthService(userSvc UserService, cfgManager *config.ConfigManager, isPr
 	}
 }
 
-func (svc *OAuthServiceImpl) ValidateToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
+func (svc *OAuthServiceImpl) ValidateToken(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[string], error) {
 	id := uuid.New().String()
 	signUuid := util.SignState(id, svc.cfgManager.GetConfig().GoogleAuth.EncryptionKey)
 	go func() {
@@ -71,9 +70,9 @@ func (svc *OAuthServiceImpl) ValidateToken(ctx context.Context, input *model.Aut
 		cache.GoSet("auth_"+id, user.ToDto(), 2*time.Minute)
 	}()
 
-	return &model.GoogleAuthResponse{
+	return &model.GoogleAuthResponse[string]{
 		Status: http.StatusOK,
-		Body:   model.Response{Data: signUuid},
+		Body:   model.Payload[string]{Data: signUuid},
 	}, nil
 }
 
@@ -121,18 +120,15 @@ func (svc *OAuthServiceImpl) patchUserMetadata(ctx context.Context, user *model.
 	}
 }
 
-func (svc *OAuthServiceImpl) TrueCallerCallBack(ctx context.Context, input *model.Request) (*model.ResponseWrapper, error) {
-	var body model.TruecallerDto
-	if err := mapstructure.Decode(input.Body, &body); err != nil {
-		return nil, huma.Error400BadRequest("Invalid Request")
-	}
+func (svc *OAuthServiceImpl) TrueCallerCallBack(ctx context.Context, input *model.RequestBody[model.TruecallerDto]) (*model.TypedResponse[any], error) {
+	body := input.Body
 
 	switch body.Status {
 	case "user_rejected":
 		return nil, huma.Error400BadRequest("User rejected the Truecaller authentication")
 	case "flow_invoked":
 		log.Info().Msgf("Handshake received for Nonce: %s", body.RequestId)
-		return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Flow invocation success"}}, nil
+		return &model.TypedResponse[any]{Body: model.Payload[any]{Success: true, Message: "Flow invocation success"}}, nil
 	}
 
 	detachedCtx := context.WithoutCancel(ctx)
@@ -170,10 +166,10 @@ func (svc *OAuthServiceImpl) TrueCallerCallBack(ctx context.Context, input *mode
 	}
 
 	cache.SetUserCache(body.RequestId, user.ToDto(), model.Truecaller)
-	return &model.ResponseWrapper{Body: model.Response{Success: true, Message: "Callback Successfull"}}, nil
+	return &model.TypedResponse[any]{Body: model.Payload[any]{Success: true, Message: "Callback Successfull"}}, nil
 }
 
-func (svc *OAuthServiceImpl) TrueCallerStatus(ctx context.Context, requestId string) (*model.DetailedResponseWrapper, error) {
+func (svc *OAuthServiceImpl) TrueCallerStatus(ctx context.Context, requestId string) (*model.HeaderResponse[model.UserDto], error) {
 	var userDto model.UserDto
 	if ok, _ := cache.GetUserCache(requestId, &userDto, model.Truecaller); ok {
 		tokenStr, err := auth.GenerateToken(userDto)
@@ -185,9 +181,9 @@ func (svc *OAuthServiceImpl) TrueCallerStatus(ctx context.Context, requestId str
 		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
-		return &model.DetailedResponseWrapper{
+		return &model.HeaderResponse[model.UserDto]{
 			SetCookie: cookie,
-			Body: model.Response{
+			Body: model.Payload[model.UserDto]{
 				Success: true,
 				Message: "User authenticated",
 				Data:    userDto,
@@ -213,7 +209,7 @@ func (svc *OAuthServiceImpl) createAuthCookie(token string, maxAge int) string {
 	return cookie.String()
 }
 
-func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse, error) {
+func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *model.AuthInput) (*model.GoogleAuthResponse[model.UserDto], error) {
 	var targetURL string
 	isIPhoneRedirect := false
 
@@ -240,7 +236,7 @@ func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *mode
 				svc.googleCallbackProcessing(context.Background(), input.Code, id)
 			}()
 
-			return &model.GoogleAuthResponse{
+			return &model.GoogleAuthResponse[model.UserDto]{
 				Status:   http.StatusTemporaryRedirect,
 				Location: targetURL,
 			}, nil
@@ -268,10 +264,10 @@ func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *mode
 		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 		cache.GoDelete(key)
-		return &model.GoogleAuthResponse{
+		return &model.GoogleAuthResponse[model.UserDto]{
 			Status:    http.StatusOK,
 			SetCookie: cookie,
-			Body: model.Response{
+			Body: model.Payload[model.UserDto]{
 				Success: true,
 				Message: "User created",
 				Data:    userDto,

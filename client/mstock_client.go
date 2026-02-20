@@ -37,7 +37,7 @@ func (c *MstockClient) SetAccessToken(accessToken string) {
 	c.AccessToken = accessToken
 }
 
-func (c *MstockClient) Login(input *model.MstockLoginInput) (*model.ResponseWrapper, error) {
+func (c *MstockClient) Login(input *model.MstockLoginInput) (*model.Payload[any], error) {
 	resp, err := c.Client.R().
 		SetHeader("X-Mirae-Version", "1").
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
@@ -58,12 +58,10 @@ func (c *MstockClient) Login(input *model.MstockLoginInput) (*model.ResponseWrap
 	if status, ok := result["status"].(string); ok && status == "success" {
 		cache.PendingLoginCache.Set(input.Username, input.APIKey, 5*time.Minute)
 		log.Info().Str("username", input.Username).Msg("MStock login initiated (Step 1 success)")
-		return &model.ResponseWrapper{
-			Body: model.Response{
-				Success: true,
-				Message: "OTP sent successfully",
-				Data:    "S002",
-			},
+		return &model.Payload[any]{
+			Success: true,
+			Message: "OTP sent successfully",
+			Data:    "S002",
 		}, nil
 	}
 
@@ -73,16 +71,14 @@ func (c *MstockClient) Login(input *model.MstockLoginInput) (*model.ResponseWrap
 	}
 	log.Warn().Str("username", input.Username).Str("reason", msg).Msg("MStock login failed")
 
-	return &model.ResponseWrapper{
-		Body: model.Response{
-			Success: false,
-			Message: msg,
-			Data:    "E002",
-		},
+	return &model.Payload[any]{
+		Success: false,
+		Message: msg,
+		Data:    "E002",
 	}, nil
 }
 
-func (c *MstockClient) Verify(input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error) {
+func (c *MstockClient) Verify(input *model.MstockVerifyOtpInput) (*model.Payload[any], error) {
 	resp, err := c.Client.R().
 		SetHeader("X-Mirae-Version", "1").
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
@@ -104,12 +100,10 @@ func (c *MstockClient) Verify(input *model.MstockVerifyOtpInput) (*model.Respons
 		data, _ := result["data"].(map[string]any)
 		log.Info().Str("username", c.MstockUserName).Msg("MStock session established successfully")
 		c.SetAccessToken(data["access_token"].(string))
-		return &model.ResponseWrapper{
-			Body: model.Response{
-				Success: true,
-				Message: "Session established successfully",
-				Data:    "S002",
-			},
+		return &model.Payload[any]{
+			Success: true,
+			Message: "Session established successfully",
+			Data:    "S002",
 		}, nil
 	}
 
@@ -118,16 +112,14 @@ func (c *MstockClient) Verify(input *model.MstockVerifyOtpInput) (*model.Respons
 		msg = "OTP verification failed."
 	}
 	log.Warn().Str("username", c.MstockUserName).Str("reason", msg).Msg("MStock verification failed")
-	return &model.ResponseWrapper{
-		Body: model.Response{
-			Success: false,
-			Message: msg,
-			Data:    "E002",
-		},
+	return &model.Payload[any]{
+		Success: false,
+		Message: msg,
+		Data:    "E002",
 	}, nil
 }
 
-func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.ResponseWrapper, error) {
+func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.Payload[any], error) {
 	variety := input.Variety
 	if variety == "" {
 		variety = "regular"
@@ -171,12 +163,10 @@ func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.Respons
 		data, _ := finalResult["data"].(map[string]any)
 		orderId := data["order_id"].(string)
 		log.Info().Str("username", c.MstockUserName).Str("order_id", orderId).Msg("MStock order placed successfully")
-		return &model.ResponseWrapper{
-			Body: model.Response{
-				Success: true,
-				Message: "Order placed successfully",
-				Data:    orderId,
-			},
+		return &model.Payload[any]{
+			Success: true,
+			Message: "Order placed successfully",
+			Data:    orderId,
 		}, nil
 	}
 
@@ -186,12 +176,10 @@ func (c *MstockClient) PlaceOrder(input *model.MstockOrderInput) (*model.Respons
 	}
 
 	log.Warn().Str("username", c.MstockUserName).Str("reason", msg).Msg("MStock order placement failed")
-	return &model.ResponseWrapper{
-		Body: model.Response{
-			Success: false,
-			Message: msg,
-			Data:    "E002",
-		},
+	return &model.Payload[any]{
+		Success: false,
+		Message: msg,
+		Data:    "E002",
 	}, nil
 }
 

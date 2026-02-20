@@ -98,43 +98,40 @@ func (ctrl *StrategyOrderController) RegisterRoutes(api huma.API) {
 	}, ctrl.getMyOrders)
 }
 
-func (ctrl *StrategyOrderController) getAll(ctx context.Context, input *model.GetAllStrategyOrdersInput) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) getAll(ctx context.Context, input *model.GetAllStrategyOrdersInput) (*model.TypedResponse[[]model.StrategyOrderDto], error) {
 	res, err := ctrl.service.GetAll(ctx, input.StrategyName)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.StrategyOrderDto](err.Error()), nil
 	}
-	return NewResponse(res, "Strategy orders fetched successfully"), nil
+	return NewTypedResponse(res, "Strategy orders fetched successfully"), nil
 }
 
-func (ctrl *StrategyOrderController) getOne(ctx context.Context, input *model.GetStrategyOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) getOne(ctx context.Context, input *model.GetStrategyOrderInput) (*model.TypedResponse[model.StrategyOrderDto], error) {
 	res, err := ctrl.service.Get(ctx, input.ID)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[model.StrategyOrderDto](err.Error()), nil
 	}
 	if res.ID == "" {
-		return NewErrorResponse("Strategy order not found"), nil
+		return NewTypedError[model.StrategyOrderDto]("Strategy order not found"), nil
 	}
-	return NewResponse(res, "Strategy order fetched successfully"), nil
+	return NewTypedResponse(res, "Strategy order fetched successfully"), nil
 }
 
-func (ctrl *StrategyOrderController) create(ctx context.Context, input *model.CreateStrategyOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) create(ctx context.Context, input *model.RequestBody[model.StrategyOrderDto]) (*model.TypedResponse[model.StrategyOrderDto], error) {
 	user := ctx.Value("user").(model.UserDto)
 	input.Body.UserID = user.UserID
 
 	res, err := ctrl.service.Create(ctx, input.Body)
 	if err != nil {
 		if strings.Contains(err.Error(), "E11000") {
-			return NewErrorResponse("Strategy order already exists for this user on this date"), nil
+			return nil, huma.Error409Conflict("Strategy order already exists for this user on this date")
 		}
-		return NewErrorResponse(err.Error()), nil
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
-	return NewResponse(res, "Strategy order created successfully"), nil
+	return NewTypedResponse(res, "Strategy order created successfully"), nil
 }
 
-func (ctrl *StrategyOrderController) update(ctx context.Context, input *struct {
-	ID   string `path:"id"`
-	Body model.StrategyOrderDto
-}) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) update(ctx context.Context, input *model.IDInput[model.StrategyOrderDto]) (*model.TypedResponse[model.StrategyOrderDto], error) {
 	user := ctx.Value("user").(model.UserDto)
 	input.Body.UserID = user.UserID
 	input.Body.ID = input.ID
@@ -143,24 +140,24 @@ func (ctrl *StrategyOrderController) update(ctx context.Context, input *struct {
 		if strings.Contains(err.Error(), "E11000") {
 			return nil, huma.Error400BadRequest("Strategy order already exists for this user on this date")
 		}
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[model.StrategyOrderDto](err.Error()), nil
 	}
-	return NewResponse(res, "Strategy order updated successfully"), nil
+	return NewTypedResponse(res, "Strategy order updated successfully"), nil
 }
 
-func (ctrl *StrategyOrderController) delete(ctx context.Context, input *model.GetStrategyOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) delete(ctx context.Context, input *model.GetStrategyOrderInput) (*model.TypedResponse[any], error) {
 	err := ctrl.service.Delete(ctx, input.ID)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Strategy order deleted successfully"), nil
+	return NewTypedResponse[any](nil, "Strategy order deleted successfully"), nil
 }
 
-func (ctrl *StrategyOrderController) getMyOrders(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *StrategyOrderController) getMyOrders(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.StrategyOrderDto], error) {
 	user := ctx.Value("user").(model.UserDto)
 	res, err := ctrl.service.GetByUserID(ctx, user.UserID)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.StrategyOrderDto](err.Error()), nil
 	}
-	return NewResponse(res, "User strategy orders fetched successfully"), nil
+	return NewTypedResponse(res, "User strategy orders fetched successfully"), nil
 }

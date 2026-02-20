@@ -115,68 +115,68 @@ func (ctrl *OrderController) RegisterRoutes(api huma.API) {
 
 }
 
-func (ctrl *OrderController) Get(ctx context.Context, input *model.GetOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) Get(ctx context.Context, input *model.GetOrderInput) (*model.TypedResponse[*model.OrderDto], error) {
 	order, err := ctrl.orderService.Get(ctx, input.ID)
 	if err != nil {
-		return NewErrorResponse("Failed to fetch order: " + err.Error()), nil
+		return NewTypedError[*model.OrderDto]("Failed to fetch order: " + err.Error()), nil
 	}
 	if order == nil {
-		return NewErrorResponse("Order not found"), nil
+		return NewTypedError[*model.OrderDto]("Order not found"), nil
 	}
-	return NewResponse(order, "Order fetched successfully"), nil
+	return NewTypedResponse(order, "Order fetched successfully"), nil
 }
 
-func (ctrl *OrderController) GetByDate(ctx context.Context, input *model.GetOrdersByDateInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) GetByDate(ctx context.Context, input *model.GetOrdersByDateInput) (*model.TypedResponse[[]model.OrderDto], error) {
 	orders, err := ctrl.orderService.GetAllByDate(ctx, input.Date)
 	if err != nil {
-		return NewErrorResponse("Failed to fetch orders by date: " + err.Error()), nil
+		return NewTypedError[[]model.OrderDto]("Failed to fetch orders by date: " + err.Error()), nil
 	}
-	return NewResponse(orders, "Orders fetched successfully"), nil
+	return NewTypedResponse(orders, "Orders fetched successfully"), nil
 }
 
-func (ctrl *OrderController) GetByUserId(ctx context.Context, input *model.GetOrdersByUserIdInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) GetByUserId(ctx context.Context, input *model.GetOrdersByUserIdInput) (*model.TypedResponse[[]model.OrderDto], error) {
 	orders, err := ctrl.orderService.GetAllByUserId(ctx, input.UserID)
 	if err != nil {
-		return NewErrorResponse("Failed to fetch orders by user ID: " + err.Error()), nil
+		return NewTypedError[[]model.OrderDto]("Failed to fetch orders by user ID: " + err.Error()), nil
 	}
-	return NewResponse(orders, "Orders fetched successfully"), nil
+	return NewTypedResponse(orders, "Orders fetched successfully"), nil
 }
 
-func (ctrl *OrderController) Create(ctx context.Context, input *model.CreateOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) Create(ctx context.Context, input *model.RequestBody[model.OrderDto]) (*model.TypedResponse[any], error) {
 	err := ctrl.orderService.Create(ctx, input.Body)
 	if err != nil {
-		return NewErrorResponse("Failed to create order: " + err.Error()), nil
+		return NewTypedError[any]("Failed to create order: " + err.Error()), nil
 	}
-	return NewResponse(nil, "Order created successfully"), nil
+	return NewTypedResponse[any](nil, "Order created successfully"), nil
 }
 
-func (ctrl *OrderController) Update(ctx context.Context, input *model.UpdateOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) Update(ctx context.Context, input *model.IDInput[model.OrderDto]) (*model.TypedResponse[any], error) {
 	err := ctrl.orderService.Update(ctx, input.ID, input.Body)
 	if err != nil {
-		return NewErrorResponse("Failed to update order: " + err.Error()), nil
+		return NewTypedError[any]("Failed to update order: " + err.Error()), nil
 	}
-	return NewResponse(nil, "Order updated successfully"), nil
+	return NewTypedResponse[any](nil, "Order updated successfully"), nil
 }
 
-func (ctrl *OrderController) Delete(ctx context.Context, input *model.GetOrderInput) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) Delete(ctx context.Context, input *model.GetOrderInput) (*model.TypedResponse[any], error) {
 	err := ctrl.orderService.Delete(ctx, input.ID)
 	if err != nil {
-		return NewErrorResponse("Failed to delete order: " + err.Error()), nil
+		return NewTypedError[any]("Failed to delete order: " + err.Error()), nil
 	}
-	return NewResponse(nil, "Order deleted successfully"), nil
+	return NewTypedResponse[any](nil, "Order deleted successfully"), nil
 }
 
-func (ctrl *OrderController) InitiateMtfOrders(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) InitiateMtfOrders(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	ctrl.orderService.InitiateMtfOrders(ctx)
-	return NewResponse(nil, "MTF orders initiation triggered"), nil
+	return NewTypedResponse[any](nil, "MTF orders initiation triggered"), nil
 }
 
-func (ctrl *OrderController) UpdateOrderStatus(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) UpdateOrderStatus(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	ctrl.orderService.UpdateOrderStatus(ctx)
-	return NewResponse(nil, "Order status update triggered"), nil
+	return NewTypedResponse[any](nil, "Order status update triggered"), nil
 }
 
-func (ctrl *OrderController) StartTrading(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *OrderController) StartTrading(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	ctrl.orderService.StartTradingWs(ctx)
-	return NewResponse(nil, "Trading started successfully"), nil
+	return NewTypedResponse[any](nil, "Trading started successfully"), nil
 }

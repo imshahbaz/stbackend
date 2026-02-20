@@ -15,12 +15,12 @@ import (
 )
 
 type MstockService interface {
-	Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.ResponseWrapper, error)
-	VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error)
-	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error)
-	GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
-	RefreshAccessToken(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
-	Logout(ctx context.Context, userId int64) (*model.ResponseWrapper, error)
+	Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.TypedResponse[any], error)
+	VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.TypedResponse[any], error)
+	PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.TypedResponse[any], error)
+	GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[int64], error)
+	RefreshAccessToken(ctx context.Context, userId int64) (*model.TypedResponse[any], error)
+	Logout(ctx context.Context, userId int64) (*model.TypedResponse[int64], error)
 }
 
 type MstockServiceImpl struct {
@@ -35,11 +35,11 @@ func NewMstockService(angelOneWebSvc AngelOneWebSocket, userSvc UserService) Mst
 	}
 }
 
-func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *model.MstockLoginInput) (*model.TypedResponse[any], error) {
 	_, ok := s.getClient(userId)
 	if ok {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: true,
 				Message: "Login successful",
 				Data:    "S001",
@@ -50,8 +50,8 @@ func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *mode
 	userIdStr := strconv.FormatInt(userId, 10)
 	_, ok = cache.PendingLoginCache.Get(userIdStr)
 	if ok {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "OTP already sent",
 				Data:    "E001",
@@ -67,15 +67,24 @@ func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *mode
 
 	cache.PendingLoginCache.Set(userIdStr, fnoClient, 2*time.Minute)
 	cache.PendingLoginCache.Set("mstock:"+userIdStr, input, 5*time.Minute)
-	return res, nil
+
+	// Convert Payload to TypedResponse[any]
+	return &model.TypedResponse[any]{
+		Body: model.Payload[any]{
+			Success: res.Success,
+			Message: res.Message,
+			Data:    res.Data,
+			Error:   res.Error,
+		},
+	}, nil
 }
 
-func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *model.MstockVerifyOtpInput) (*model.TypedResponse[any], error) {
 	userIdStr := strconv.FormatInt(userId, 10)
 	val, exists := cache.PendingLoginCache.Get(userIdStr)
 	if !exists {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "OTP not sent",
 				Data:    "E001",
@@ -85,8 +94,8 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 
 	val2, exists := cache.PendingLoginCache.Get("mstock:" + userIdStr)
 	if !exists {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "OTP not sent",
 				Data:    "E001",
@@ -102,7 +111,7 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 		return nil, huma.Error500InternalServerError("E003")
 	}
 
-	if res.Body.Success {
+	if res.Success {
 		cache.PendingLoginCache.Delete(userIdStr)
 		cache.PendingLoginCache.Delete("mstock:" + userIdStr)
 		cache.MstockClientCache.Set(userIdStr, fnoClient, util.GetDurationToMidnightIST())
@@ -130,19 +139,26 @@ func (s *MstockServiceImpl) VerifyOtp(ctx context.Context, userId int64, input *
 				log.Info().Msg("User updated successfully")
 			}
 		}
-	} else if res.Body.Data == "E002" {
+	} else if res.Data == "E002" {
 		cache.PendingLoginCache.Delete(userIdStr)
 		cache.PendingLoginCache.Delete("mstock:" + userIdStr)
 	}
 
-	return res, nil
+	return &model.TypedResponse[any]{
+		Body: model.Payload[any]{
+			Success: res.Success,
+			Message: res.Message,
+			Data:    res.Data,
+			Error:   res.Error,
+		},
+	}, nil
 }
 
-func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, input *model.MstockOrderRequest) (*model.TypedResponse[any], error) {
 	client, ok := s.getClient(userId)
 	if !ok {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "User not logged in",
 				Data:    "E001",
@@ -158,8 +174,8 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, inpu
 	key := input.Name + input.Expiry + input.Strike + action
 	symbol, ok := cache.OptionCache.Get(key)
 	if !ok {
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[any]{
+			Body: model.Payload[any]{
 				Success: false,
 				Message: "Symbol not found",
 				Data:    "E004",
@@ -189,16 +205,23 @@ func (s *MstockServiceImpl) PlaceFnOrder(ctx context.Context, userId int64, inpu
 		return nil, huma.Error500InternalServerError("E003")
 	}
 
-	if resp.Body.Success {
-		orderId := resp.Body.Data.(string)
+	if resp.Success {
+		orderId := resp.Data.(string)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		go s.monitorAndSell(orderId, request, &option, input, client, ctx, cancel, false)
 	}
 
-	return resp, nil
+	return &model.TypedResponse[any]{
+		Body: model.Payload[any]{
+			Success: resp.Success,
+			Message: resp.Message,
+			Data:    resp.Data,
+			Error:   resp.Error,
+		},
+	}, nil
 }
 
-func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*model.TypedResponse[int64], error) {
 	_, ok := s.getClient(userId)
 	if !ok {
 
@@ -208,26 +231,26 @@ func (s *MstockServiceImpl) GetProfile(ctx context.Context, userId int64) (*mode
 		}
 
 		if user.MstockConfig.ApiKey == "" || user.MstockConfig.Password == "" || user.MstockConfig.Username == "" {
-			return &model.ResponseWrapper{
-				Body: model.Response{
+			return &model.TypedResponse[int64]{
+				Body: model.Payload[int64]{
 					Success: false,
 					Message: "User not logged in",
-					Data:    "E001",
+					Error:   "E001",
 				},
 			}, nil
 		}
 
-		return &model.ResponseWrapper{
-			Body: model.Response{
+		return &model.TypedResponse[int64]{
+			Body: model.Payload[int64]{
 				Success: false,
 				Message: "User not logged in",
-				Data:    "E002",
+				Error:   "E002",
 			},
 		}, nil
 	}
 
-	return &model.ResponseWrapper{
-		Body: model.Response{
+	return &model.TypedResponse[int64]{
+		Body: model.Payload[int64]{
 			Success: true,
 			Message: "User logged in",
 			Data:    userId,
@@ -254,7 +277,7 @@ func (s *MstockServiceImpl) getClient(userId int64) (*client.MstockClient, bool)
 	return nil, false
 }
 
-func (s *MstockServiceImpl) RefreshAccessToken(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) RefreshAccessToken(ctx context.Context, userId int64) (*model.TypedResponse[any], error) {
 	user, err := s.userSvc.FindUser(ctx, 0, "", userId)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Error getting user")
@@ -349,12 +372,12 @@ func (s *MstockServiceImpl) monitorAndSell(orderId string, input *model.MstockOr
 
 }
 
-func (s *MstockServiceImpl) Logout(ctx context.Context, userId int64) (*model.ResponseWrapper, error) {
+func (s *MstockServiceImpl) Logout(ctx context.Context, userId int64) (*model.TypedResponse[int64], error) {
 	key := strconv.FormatInt(userId, 10)
 	cache.MstockClientCache.Delete(key)
 	cache.GoDelete("mstock:" + key)
-	return &model.ResponseWrapper{
-		Body: model.Response{
+	return &model.TypedResponse[int64]{
+		Body: model.Payload[int64]{
 			Success: true,
 			Message: "User logged out",
 			Data:    userId,

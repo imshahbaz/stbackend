@@ -27,52 +27,13 @@ type LoginDto struct {
 	Password string `json:"password" validate:"required" example:"secret"`
 }
 
-type LoginRequest struct {
-	Body LoginDto
-}
-
-type LoginResponse struct {
-	SetCookie string `header:"Set-Cookie"`
-	Body      Response
-}
-
 type SignupDto struct {
 	LoginDto
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password" example:"secret"`
 }
 
-type SignupRequest struct {
-	Body SignupDto
-}
-
-type MessageResponseWrapper struct {
-	Body Response
-}
-
-type VerifyOtpInput struct {
-	Body VerifyOtpRequest
-}
-
-type TrueCallerInput struct {
-	Body TruecallerDto
-}
-
-type ResponseWrapper struct {
-	Body Response
-}
-
 type TrueCallerStatusInput struct {
 	RequestId string `path:"requestId"`
-}
-
-type DetailedResponseWrapper struct {
-	SetCookie string `header:"Set-Cookie"`
-	Body      Response
-}
-
-type LogoutResponse struct {
-	SetCookie string `header:"Set-Cookie"`
-	Body      Response
 }
 
 type AuthInput struct {
@@ -80,16 +41,14 @@ type AuthInput struct {
 	State string `query:"state" doc:"Anti-forgery state token"`
 }
 
-type GoogleAuthResponse struct {
+type GoogleAuthResponse[T any] struct {
 	Location  string `header:"Location"`
 	SetCookie string `header:"Set-Cookie"`
 	Status    int    `status:"302"`
-	Body      Response
+	Body      Payload[T]
 }
 
-type ZerodhaInput struct {
-	Body struct {
-		RequestToken string `json:"request_token" doc:"The temporary request token returned by Zerodha after login" required:"true"`
-		UserId       int64  `json:"user_id" doc:"The internal user identifier" required:"true"`
-	}
+type ZerodhaLoginDto struct {
+	RequestToken string `json:"request_token" doc:"The temporary request token returned by Zerodha after login" required:"true"`
+	UserId       int64  `json:"user_id" doc:"The internal user identifier" required:"true"`
 }

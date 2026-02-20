@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-resty/resty/v2"
+	huma "github.com/danielgtaylor/huma/v2"
+	resty "github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 )
 
 type NewsService interface {
-	FetchTVNews(symbol string) (*model.DefaultResponse, error)
-	FetchGenAiAnalysis(symbol string) (*model.DefaultResponse, error)
+	FetchTVNews(symbol string) (*model.TypedResponse[[]model.TVNewsItem], error)
+	FetchGenAiAnalysis(symbol string) (*model.TypedResponse[model.AIAnalysis], error)
 }
 
 type NewsServiceImpl struct {
@@ -42,11 +42,11 @@ func NewNewsService(genAiClient *client.GenAiClient, nseService NseService) News
 	}
 }
 
-func (svc *NewsServiceImpl) FetchTVNews(symbol string) (*model.DefaultResponse, error) {
+func (svc *NewsServiceImpl) FetchTVNews(symbol string) (*model.TypedResponse[[]model.TVNewsItem], error) {
 	var result model.TVNewsResponse
 	if ok, _ := database.RedisHelper.GetAsStruct("tv_news_"+symbol, &result); ok {
-		return &model.DefaultResponse{
-			Body: model.Response{
+		return &model.TypedResponse[[]model.TVNewsItem]{
+			Body: model.Payload[[]model.TVNewsItem]{
 				Success: true,
 				Data:    result.Items,
 			},
@@ -65,28 +65,28 @@ func (svc *NewsServiceImpl) FetchTVNews(symbol string) (*model.DefaultResponse, 
 
 	if err != nil || resp.StatusCode() != http.StatusOK {
 		log.Err(err).Msgf("Error calling tv api %v", resp)
-		return &model.DefaultResponse{
-			Body: model.Response{
+		return &model.TypedResponse[[]model.TVNewsItem]{
+			Body: model.Payload[[]model.TVNewsItem]{
 				Success: false,
-				Data:    []string{},
+				Data:    []model.TVNewsItem{},
 			},
 		}, nil
 	}
 
 	cache.GoSet("tv_news_"+symbol, result, 10*time.Minute)
-	return &model.DefaultResponse{
-		Body: model.Response{
+	return &model.TypedResponse[[]model.TVNewsItem]{
+		Body: model.Payload[[]model.TVNewsItem]{
 			Success: true,
 			Data:    result.Items,
 		},
 	}, nil
 }
 
-func (svc *NewsServiceImpl) FetchGenAiAnalysis(symbol string) (*model.DefaultResponse, error) {
+func (svc *NewsServiceImpl) FetchGenAiAnalysis(symbol string) (*model.TypedResponse[model.AIAnalysis], error) {
 	var resp model.AIAnalysis
 	if ok, _ := database.RedisHelper.GetAsStruct("genai_"+symbol, &resp); ok {
-		return &model.DefaultResponse{
-			Body: model.Response{
+		return &model.TypedResponse[model.AIAnalysis]{
+			Body: model.Payload[model.AIAnalysis]{
 				Success: true,
 				Data:    resp,
 			},
@@ -107,8 +107,8 @@ func (svc *NewsServiceImpl) FetchGenAiAnalysis(symbol string) (*model.DefaultRes
 
 	cache.GoSet("genai_"+symbol, resp, util.NseCacheExpiryTime())
 
-	return &model.DefaultResponse{
-		Body: model.Response{
+	return &model.TypedResponse[model.AIAnalysis]{
+		Body: model.Payload[model.AIAnalysis]{
 			Success: true,
 			Data:    resp,
 		},
