@@ -163,7 +163,7 @@ func (s *AuthServiceImpl) wrapLoginResponse(user model.UserDto, token string, me
 		},
 	}
 	if token != "" {
-		resp.SetCookie = s.createAuthCookie(token, 1800)
+		resp.SetCookie = s.createAuthCookie(token, 86400)
 	}
 	return resp
 }
