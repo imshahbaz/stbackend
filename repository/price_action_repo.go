@@ -7,9 +7,9 @@ import (
 	"fmt"
 
 	"github.com/jinzhu/copier"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type PriceActionRepo struct {
@@ -101,9 +101,7 @@ func (r *PriceActionRepo) updateNestedInfo(ctx context.Context, req model.ObRequ
 			fieldName + ".$[elem].low":  req.Low,
 		},
 	}
-	opts := options.Update().SetArrayFilters(options.ArrayFilters{
-		Filters: []any{bson.M{"elem.date": req.Date}},
-	})
+	opts := options.UpdateOne().SetArrayFilters([]any{bson.M{"elem.date": req.Date}})
 
 	res, err := r.Collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {

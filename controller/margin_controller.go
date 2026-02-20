@@ -64,6 +64,32 @@ func (ctrl *MarginController) RegisterRoutes(api huma.API) {
 		Tags:        []string{"Margin"},
 	}, ctrl.syncMTF)
 
+	huma.Register(api, huma.Operation{
+		OperationID: "sync-margin-token",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/sync-token",
+		Summary:     "Sync Margin Token",
+		Description: "Syncs instrument tokens from Angel One for matching margins in local cache",
+		Tags:        []string{"Margin"},
+	}, ctrl.syncMarginToken)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-all-options",
+		Method:      http.MethodGet,
+		Path:        "/api/margin/options",
+		Summary:     "Get all options",
+		Description: "Returns available expiries and strikes for major indices",
+		Tags:        []string{"Margin"},
+	}, ctrl.getAllOptions)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "reload-options",
+		Method:      http.MethodPost,
+		Path:        "/api/margin/options/reload",
+		Summary:     "Reload options",
+		Description: "Forces a reload of all options from MongoDB into the memory cache",
+		Tags:        []string{"Margin"},
+	}, ctrl.reloadAllOptions)
 }
 
 func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
@@ -104,4 +130,23 @@ func (ctrl *MarginController) syncMTF(ctx context.Context, input *model.MTFInput
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 	return NewResponse(nil, "MTF data synced successfully"), nil
+}
+
+func (ctrl *MarginController) syncMarginToken(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	if err := ctrl.marginService.SyncMarginToken(ctx); err != nil {
+		return nil, huma.Error500InternalServerError(err.Error())
+	}
+	return NewResponse(nil, "Margin tokens synced successfully"), nil
+}
+
+func (ctrl *MarginController) getAllOptions(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	options := ctrl.marginService.GetAllOptions()
+	return NewResponse(options, "Success"), nil
+}
+
+func (ctrl *MarginController) reloadAllOptions(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+	if err := ctrl.marginService.ReloadAllOptions(ctx); err != nil {
+		return NewErrorResponse("Failed to reload options: " + err.Error()), nil
+	}
+	return NewResponse(nil, "Options reloaded successfully"), nil
 }

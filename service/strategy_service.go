@@ -15,6 +15,7 @@ type StrategyService interface {
 	UpdateStrategy(ctx context.Context, request model.StrategyDto) (model.StrategyDto, error)
 	DeleteStrategy(ctx context.Context, id string) error
 	GetAllStrategiesAdmin() []model.StrategyDto
+	GetStrategyByName(name string) (model.StrategyDto, bool)
 }
 
 type StrategyServiceImpl struct {
@@ -102,4 +103,13 @@ func (s *StrategyServiceImpl) filterStrategies(includeInactive bool) []model.Str
 		}
 	}
 	return list
+}
+
+func (s *StrategyServiceImpl) GetStrategyByName(name string) (model.StrategyDto, bool) {
+	val, found := cache.StrategyCache.Get(name)
+	if !found {
+		return model.StrategyDto{}, false
+	}
+	strategy, ok := val.(model.StrategyDto)
+	return strategy, ok
 }

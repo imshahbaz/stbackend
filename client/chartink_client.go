@@ -33,3 +33,13 @@ func (c *ChartinkClient) FetchData(ctx context.Context, token, ua string, payloa
 		SetFormData(payload).
 		Post("/screener/process")
 }
+
+func (c *ChartinkClient) FetchBackTestData(ctx context.Context, token, ua string, payload map[string]string) (*resty.Response, error) {
+	return c.RestyClient.R().
+		SetContext(ctx).
+		SetHeader("X-XSRF-TOKEN", token).
+		SetHeader("User-Agent", ua).
+		SetHeader("Referer", "https://chartink.com/").
+		SetFormData(payload).
+		Post("/backtest/process")
+}

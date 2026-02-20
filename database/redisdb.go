@@ -54,9 +54,12 @@ func (v *valkeyUtil) Set(key string, value any, expiration time.Duration) error 
 	var data []byte
 	var err error
 
-	if b, ok := value.([]byte); ok {
-		data = b
-	} else {
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
 		data, err = sonic.ConfigDefault.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("sonic marshal error: %w", err)
@@ -109,4 +112,8 @@ func (v *valkeyUtil) Exists(key string) bool {
 	cmd := v.client.B().Exists().Key(key).Build()
 	count, err := v.client.Do(context.Background(), cmd).AsInt64()
 	return err == nil && count > 0
+}
+
+func (v *valkeyUtil) Close() {
+	v.client.Close()
 }

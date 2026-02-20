@@ -29,10 +29,10 @@ type AuthService interface {
 type AuthServiceImpl struct {
 	userSvc      UserService
 	otpSvc       OtpService
-	isProduction bool
+	isProduction IsProduction
 }
 
-func NewAuthService(userSvc UserService, otpSvc OtpService, isProduction bool) AuthService {
+func NewAuthService(userSvc UserService, otpSvc OtpService, isProduction IsProduction) AuthService {
 	return &AuthServiceImpl{
 		userSvc:      userSvc,
 		otpSvc:       otpSvc,
@@ -141,7 +141,7 @@ func (s *AuthServiceImpl) createAuthCookie(token string, maxAge int) string {
 		Value:    token,
 		MaxAge:   maxAge,
 		Path:     "/",
-		Secure:   s.isProduction,
+		Secure:   bool(s.isProduction),
 		HttpOnly: true,
 	}
 	if s.isProduction {
@@ -163,7 +163,7 @@ func (s *AuthServiceImpl) wrapLoginResponse(user model.UserDto, token string, me
 		},
 	}
 	if token != "" {
-		resp.SetCookie = s.createAuthCookie(token, 1800)
+		resp.SetCookie = s.createAuthCookie(token, 86400)
 	}
 	return resp
 }

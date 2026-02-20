@@ -14,10 +14,10 @@ import (
 
 type ConfigController struct {
 	cfgSvc       service.ConfigService
-	isProduction bool
+	isProduction service.IsProduction
 }
 
-func NewConfigController(cfgSvc service.ConfigService, isProduction bool) *ConfigController {
+func NewConfigController(cfgSvc service.ConfigService, isProduction service.IsProduction) *ConfigController {
 	return &ConfigController{
 		cfgSvc:       cfgSvc,
 		isProduction: isProduction,
@@ -25,7 +25,7 @@ func NewConfigController(cfgSvc service.ConfigService, isProduction bool) *Confi
 }
 
 func (ctrl *ConfigController) RegisterRoutes(api huma.API) {
-	authMw := middleware.HumaAuthMiddleware(api, ctrl.isProduction)
+	authMw := middleware.HumaAuthMiddleware(api, bool(ctrl.isProduction))
 	adminMw := middleware.HumaAdminOnly(api)
 
 	huma.Register(api, huma.Operation{

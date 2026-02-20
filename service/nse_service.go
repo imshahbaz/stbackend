@@ -1,11 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http/cookiejar"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,12 +25,13 @@ import (
 )
 
 const (
-	nseUrl         = "https://www.nseindia.com"
-	userAgent      = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
-	historicalPath = "/api/NextApi/apiClient/GetQuoteApi"
-	heatMapPath    = "/api/heatmap-index"
-	allIndicesPath = "/api/allindices"
-	nseDateFormat  = "02-01-2006"
+	nseUrl                = "https://www.nseindia.com"
+	userAgent             = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
+	historicalPath        = "/api/NextApi/apiClient/GetQuoteApi"
+	heatMapPath           = "/api/heatmap-index"
+	allIndicesPath        = "/api/allindices"
+	nseDateFormat         = "02-01-2006"
+	deliveryPercentageUrl = "/api/historicalOR/generateSecurityWiseHistoricalData"
 )
 
 var sfGroup singleflight.Group
@@ -36,6 +40,7 @@ type NseService interface {
 	FetchStockData(ctx context.Context, symbol string) ([]model.NSEHistoricalData, error)
 	FetchAllIndices() ([]model.AllIndicesResponse, error)
 	ClearStockDataCache(symbol string)
+	GetDeliveryDataMap(ctx context.Context) (map[string]float64, error)
 }
 
 type NseServiceImpl struct {
@@ -222,4 +227,86 @@ func (s *NseServiceImpl) getStandardHeaders(referer string) map[string]string {
 		"sec-fetch-mode":  "cors",
 		"sec-fetch-site":  "same-origin",
 	}
+}
+
+func (s *NseServiceImpl) GetDeliveryDataMap(ctx context.Context) (map[string]float64, error) {
+	cacheKey := "nse_delivery_data_map"
+	val, err, _ := sfGroup.Do(cacheKey, func() (any, error) {
+		var deliveryMap map[string]float64
+
+		if err := s.WarmUp(); err != nil {
+			return nil, err
+		}
+
+		dateObj := time.Now().In(util.IstLocation)
+		success := false
+		var resp *resty.Response
+		var fetchErr error
+
+		for range 5 {
+			formattedDate := dateObj.Format("02012006")
+			url := fmt.Sprintf("https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_%s.csv", formattedDate)
+
+			resp, fetchErr = s.client.R().
+				SetContext(ctx).
+				SetHeaders(map[string]string{
+					"User-Agent": userAgent,
+					"Referer":    "https://www.nseindia.com/all-reports",
+					"Accept":     "text/csv",
+				}).
+				Get(url)
+
+			if fetchErr == nil && resp.StatusCode() == 200 {
+				success = true
+				log.Info().Str("date", formattedDate).Msg("Successfully fetched NSE Bhavcopy")
+				break
+			}
+
+			log.Debug().Str("date", formattedDate).Int("status", resp.StatusCode()).Msg("File not found, trying previous day")
+			dateObj = dateObj.AddDate(0, 0, -1)
+		}
+
+		if !success {
+			return nil, fmt.Errorf("could not find a valid NSE bhavcopy in the last 5 days")
+		}
+
+		reader := csv.NewReader(bytes.NewReader(resp.Body()))
+		records, err := reader.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse CSV rows: %w", err)
+		}
+
+		deliveryMap = make(map[string]float64)
+		for i, row := range records {
+			if i == 0 || len(row) < 15 {
+				continue
+			}
+
+			if strings.TrimSpace(row[1]) != "EQ" {
+				continue
+			}
+
+			symbol := strings.TrimSpace(row[0])
+			delivPer, err := strconv.ParseFloat(strings.TrimSpace(row[14]), 64)
+			if err != nil {
+				continue
+			}
+
+			if delivPer > 50 {
+				deliveryMap[symbol] = delivPer
+			}
+		}
+
+		time.AfterFunc(10*time.Second, func() {
+			sfGroup.Forget(cacheKey)
+		})
+
+		return deliveryMap, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return val.(map[string]float64), nil
 }

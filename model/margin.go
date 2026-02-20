@@ -12,13 +12,15 @@ type Margin struct {
 	Symbol string  `bson:"_id" json:"symbol"`
 	Name   string  `bson:"name" json:"name"`
 	Margin float32 `bson:"margin" json:"margin"`
+	Token  string  `bson:"token" json:"token"`
 }
 
 type StockMarginDto struct {
-	Name   string  `json:"name"`
-	Symbol string  `json:"symbol"`
-	Margin float32 `json:"margin"`
-	Close  float32 `json:"close"`
+	Name            string  `json:"name"`
+	Symbol          string  `json:"symbol"`
+	Margin          float32 `json:"margin"`
+	Close           float32 `json:"close"`
+	DeliveryPercent float32 `json:"deliveryPercent,omitempty"`
 }
 
 type GetMarginInput struct {

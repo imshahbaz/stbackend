@@ -37,10 +37,10 @@ type OAuthServiceImpl struct {
 	cfgManager   *config.ConfigManager
 	restyClient  *resty.Client
 	googleConfig *oauth2.Config
-	isProduction bool
+	isProduction IsProduction
 }
 
-func NewOAuthService(userSvc UserService, cfgManager *config.ConfigManager, isProduction bool, googleConfig *oauth2.Config) OAuthService {
+func NewOAuthService(userSvc UserService, cfgManager *config.ConfigManager, isProduction IsProduction, googleConfig *oauth2.Config) OAuthService {
 	return &OAuthServiceImpl{
 		userSvc:      userSvc,
 		cfgManager:   cfgManager,
@@ -182,7 +182,7 @@ func (svc *OAuthServiceImpl) TrueCallerStatus(ctx context.Context, requestId str
 			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
-		cookie := svc.createAuthCookie(tokenStr, 1800)
+		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 
 		return &model.DetailedResponseWrapper{
@@ -204,7 +204,7 @@ func (svc *OAuthServiceImpl) createAuthCookie(token string, maxAge int) string {
 		Value:    token,
 		MaxAge:   maxAge,
 		Path:     "/",
-		Secure:   svc.isProduction,
+		Secure:   bool(svc.isProduction),
 		HttpOnly: true,
 	}
 	if svc.isProduction {
@@ -265,7 +265,7 @@ func (svc *OAuthServiceImpl) GoogleAuthCallback(ctx context.Context, input *mode
 			return nil, huma.Error500InternalServerError("Internal server error")
 		}
 
-		cookie := svc.createAuthCookie(tokenStr, 1800)
+		cookie := svc.createAuthCookie(tokenStr, 86400)
 		cache.GoSet("auth_"+strconv.FormatInt(userDto.UserID, 10), userDto, time.Hour)
 		cache.GoDelete(key)
 		return &model.GoogleAuthResponse{

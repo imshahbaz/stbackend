@@ -10,8 +10,8 @@ import (
 	"backend/repository"
 	"backend/util"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type UserService interface {
@@ -22,6 +22,7 @@ type UserService interface {
 	FindUser(ctx context.Context, mobile int64, email string, userId int64) (*model.User, error)
 	AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error)
 	PatchUserData(ctx context.Context, userId int64, user model.User) error
+	UpdateFcmToken(ctx context.Context, userId int64, fcmToken string) (*model.User, error)
 }
 
 type UserServiceImpl struct {
@@ -71,11 +72,11 @@ func (s *UserServiceImpl) CreateUser(ctx context.Context, request model.UserDto)
 }
 
 func (s *UserServiceImpl) UpdateUserTheme(ctx context.Context, userId int64, theme model.UserTheme) (*model.User, error) {
-	return s.repo.GenericRepo.PatchStruct(ctx, userId, model.User{Theme: theme})
+	return s.repo.GenericRepo.UpdateFields(ctx, userId, bson.M{"theme": theme})
 }
 
 func (s *UserServiceImpl) UpdateUsername(ctx context.Context, userId int64, username string) (*model.User, error) {
-	return s.repo.GenericRepo.PatchStruct(ctx, userId, model.User{Username: username})
+	return s.repo.GenericRepo.UpdateFields(ctx, userId, bson.M{"username": username})
 }
 
 func (s *UserServiceImpl) GetNextSequence(ctx context.Context, sequenceName string) (int, error) {
@@ -115,10 +116,49 @@ func (s *UserServiceImpl) FindUser(ctx context.Context, mobile int64, email stri
 }
 
 func (s *UserServiceImpl) AddCredentials(ctx context.Context, userDto model.UserDto) (*model.User, error) {
-	return s.repo.GenericRepo.PatchStruct(ctx, userDto.UserID, model.User{Email: userDto.Email, Password: userDto.Password})
+	return s.repo.GenericRepo.UpdateFields(ctx, userDto.UserID, bson.M{
+		"email":    userDto.Email,
+		"password": userDto.Password,
+	})
 }
 
 func (s *UserServiceImpl) PatchUserData(ctx context.Context, userId int64, user model.User) error {
-	_, err := s.repo.GenericRepo.PatchStruct(ctx, userId, user)
+	updateData := bson.M{}
+	if user.Email != "" {
+		updateData["email"] = user.Email
+	}
+	if user.Username != "" {
+		updateData["username"] = user.Username
+	}
+	if user.Password != "" {
+		updateData["password"] = user.Password
+	}
+	if user.Role != "" {
+		updateData["role"] = user.Role
+	}
+	if user.Theme != "" {
+		updateData["theme"] = user.Theme
+	}
+	if user.Mobile != 0 {
+		updateData["mobile"] = user.Mobile
+	}
+	if user.Name != "" {
+		updateData["name"] = user.Name
+	}
+	if user.Profile != "" {
+		updateData["profile"] = user.Profile
+	}
+	if user.ZerodhaConfig.ApiKey != "" {
+		updateData["zerodhaConfig"] = user.ZerodhaConfig
+	}
+	if user.MstockConfig.ApiKey != "" {
+		updateData["mstockConfig"] = user.MstockConfig
+	}
+
+	_, err := s.repo.GenericRepo.UpdateFields(ctx, userId, updateData)
 	return err
+}
+
+func (s *UserServiceImpl) UpdateFcmToken(ctx context.Context, userId int64, fcmToken string) (*model.User, error) {
+	return s.repo.GenericRepo.UpdateFields(ctx, userId, bson.M{"fcmToken": fcmToken})
 }

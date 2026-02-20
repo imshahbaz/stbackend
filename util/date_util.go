@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -46,4 +47,45 @@ func NseCacheExpiryTime() time.Duration {
 	}
 
 	return time.Until(start.AddDate(0, 0, 1))
+}
+
+func ZerodhaTokenExpiry() time.Duration {
+	now := time.Now().In(IstLocation)
+	target := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
+	if now.After(target) {
+		target = target.AddDate(0, 0, 1)
+	}
+	return target.Sub(now)
+}
+
+func GetISTMidnight() time.Time {
+	now := time.Now().In(IstLocation)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, IstLocation)
+}
+
+func ToIST(t time.Time) time.Time {
+	return t.In(IstLocation)
+}
+
+func GetDurationToMidnightIST() time.Duration {
+
+	now := time.Now().In(IstLocation)
+
+	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, IstLocation)
+	duration := midnight.Sub(now)
+
+	return duration
+}
+
+func ParseAllCapsDate(dateStr string) (time.Time, error) {
+	if len(dateStr) < 9 {
+		return time.Time{}, fmt.Errorf("invalid date length")
+	}
+
+	normalized := dateStr[:2] +
+		strings.ToUpper(dateStr[2:3]) +
+		strings.ToLower(dateStr[3:5]) +
+		dateStr[5:]
+
+	return time.Parse("02Jan2006", normalized)
 }
