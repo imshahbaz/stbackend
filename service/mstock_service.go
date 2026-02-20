@@ -68,14 +68,8 @@ func (s *MstockServiceImpl) Login(ctx context.Context, userId int64, input *mode
 	cache.PendingLoginCache.Set(userIdStr, fnoClient, 2*time.Minute)
 	cache.PendingLoginCache.Set("mstock:"+userIdStr, input, 5*time.Minute)
 
-	// Convert Payload to TypedResponse[any]
 	return &model.TypedResponse[any]{
-		Body: model.Payload[any]{
-			Success: res.Success,
-			Message: res.Message,
-			Data:    res.Data,
-			Error:   res.Error,
-		},
+		Body: *res,
 	}, nil
 }
 
