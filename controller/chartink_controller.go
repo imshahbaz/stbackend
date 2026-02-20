@@ -69,74 +69,74 @@ func (ctrl *ChartInkController) RegisterRoutes(api huma.API) {
 	}, ctrl.fetchBacktestTodayWithMargin)
 }
 
-func (ctrl *ChartInkController) fetchData(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+func (ctrl *ChartInkController) fetchData(ctx context.Context, input *model.ChartInkInput) (*model.TypedResponse[*model.ChartInkResponseDto], error) {
 	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		return NewErrorResponse("Strategy not found"), nil
+		return NewTypedError[*model.ChartInkResponseDto]("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchData(strategyDto)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[*model.ChartInkResponseDto](err.Error()), nil
 	}
 
-	return NewResponse(data, "ChartInk data fetched"), nil
+	return NewTypedResponse(data, "ChartInk data fetched"), nil
 }
 
-func (ctrl *ChartInkController) fetchWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+func (ctrl *ChartInkController) fetchWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.TypedResponse[[]model.StockMarginDto], error) {
 	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		return NewErrorResponse("Strategy not found"), nil
+		return NewTypedError[[]model.StockMarginDto]("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchWithMargin(strategyDto)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.StockMarginDto](err.Error()), nil
 	}
 
-	return NewResponse(data, "ChartInk data with margin details fetched"), nil
+	return NewTypedResponse(data, "ChartInk data with margin details fetched"), nil
 }
 
-func (ctrl *ChartInkController) fetchBacktestData(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+func (ctrl *ChartInkController) fetchBacktestData(ctx context.Context, input *model.ChartInkInput) (*model.TypedResponse[[]model.ChartinkBacktestSignal], error) {
 	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		return NewErrorResponse("Strategy not found"), nil
+		return NewTypedError[[]model.ChartinkBacktestSignal]("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchBacktestData(strategyDto)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ChartinkBacktestSignal](err.Error()), nil
 	}
 
-	return NewResponse(data, "ChartInk backtest data fetched"), nil
+	return NewTypedResponse(data, "ChartInk backtest data fetched"), nil
 }
 
-func (ctrl *ChartInkController) fetchBacktestWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+func (ctrl *ChartInkController) fetchBacktestWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.TypedResponse[[]model.ChartinkBacktestSignalWithMargin], error) {
 	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		return NewErrorResponse("Strategy not found"), nil
+		return NewTypedError[[]model.ChartinkBacktestSignalWithMargin]("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchBacktestWithMargin(strategyDto)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ChartinkBacktestSignalWithMargin](err.Error()), nil
 	}
 
-	return NewResponse(data, "ChartInk backtest data with margin details fetched"), nil
+	return NewTypedResponse(data, "ChartInk backtest data with margin details fetched"), nil
 }
 
-func (ctrl *ChartInkController) fetchBacktestTodayWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.DefaultResponse, error) {
+func (ctrl *ChartInkController) fetchBacktestTodayWithMargin(ctx context.Context, input *model.ChartInkInput) (*model.TypedResponse[[]model.ChartinkBacktestSignalWithMargin], error) {
 	strategyDto, exists := ctrl.findStrategy(input.Strategy)
 	if !exists {
-		return NewErrorResponse("Strategy not found"), nil
+		return NewTypedError[[]model.ChartinkBacktestSignalWithMargin]("Strategy not found"), nil
 	}
 
 	data, err := ctrl.chartInkService.FetchBacktestTodayWithMargin(strategyDto)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[[]model.ChartinkBacktestSignalWithMargin](err.Error()), nil
 	}
 
-	return NewResponse(data, "ChartInk today's backtest data with margin details fetched"), nil
+	return NewTypedResponse(data, "ChartInk today's backtest data with margin details fetched"), nil
 }
 
 func (ctrl *ChartInkController) findStrategy(name string) (model.StrategyDto, bool) {

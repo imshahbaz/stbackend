@@ -92,61 +92,65 @@ func (ctrl *MarginController) RegisterRoutes(api huma.API) {
 	}, ctrl.reloadAllOptions)
 }
 
-func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) getAllMargins(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.Margin], error) {
 	margins := ctrl.marginService.GetAllMargins()
 	if margins == nil {
 		margins = []model.Margin{}
 	}
-	return NewResponse(margins, "Success"), nil
+	return NewTypedResponse(margins, "Success"), nil
 }
 
-func (ctrl *MarginController) getMargin(ctx context.Context, input *model.GetMarginInput) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) getMargin(ctx context.Context, input *model.GetMarginInput) (*model.TypedResponse[*model.Margin], error) {
 	margin, exists := ctrl.marginService.GetMargin(input.Symbol)
 	if !exists {
-		return NewErrorResponse("Margin not found for symbol: " + input.Symbol), nil
+		return NewTypedError[*model.Margin]("Margin not found for symbol: " + input.Symbol), nil
 	}
-	return NewResponse(margin, "Success"), nil
+	return NewTypedResponse(margin, "Success"), nil
 }
 
-func (ctrl *MarginController) reloadAllMargins(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) reloadAllMargins(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	if err := ctrl.marginService.ReloadAllMargins(ctx); err != nil {
-		return NewErrorResponse("Failed to reload margins: " + err.Error()), nil
+		return NewTypedError[any]("Failed to reload margins: " + err.Error()), nil
 	}
-	return NewResponse(nil, "Margins reloaded successfully"), nil
+	return NewTypedResponse[any](nil, "Margins reloaded successfully"), nil
 }
 
-func (ctrl *MarginController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) loadFromCsv(ctx context.Context, input *model.UploadMarginInput) (*model.TypedResponse[any], error) {
 	formData := input.RawBody.Data()
 	err := ctrl.marginService.LoadFromCsv(ctx, formData.File.Filename, formData.File.File)
 	if err != nil {
-		return nil, huma.Error500InternalServerError(err.Error())
+		return nil, huma.Error500InternalServerError("Failed to load margins from CSV: " + err.Error())
 	}
-	return NewResponse(nil, "Margins loaded successfully from CSV"), nil
+	return NewTypedResponse[any](nil, "Margins loaded successfully from CSV"), nil
 }
 
-func (ctrl *MarginController) syncMTF(ctx context.Context, input *model.MTFInput) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) syncMTF(ctx context.Context, input *model.MTFInput) (*model.TypedResponse[any], error) {
 	formData := input.RawBody.Data().File.File
 	if err := ctrl.marginService.SyncMTF(ctx, formData); err != nil {
-		return nil, huma.Error500InternalServerError(err.Error())
+		return nil, huma.Error500InternalServerError("Failed to sync MTF data: " + err.Error())
 	}
-	return NewResponse(nil, "MTF data synced successfully"), nil
+	return NewTypedResponse[any](nil, "MTF data synced successfully"), nil
 }
 
-func (ctrl *MarginController) syncMarginToken(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) syncMarginToken(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	if err := ctrl.marginService.SyncMarginToken(ctx); err != nil {
-		return nil, huma.Error500InternalServerError(err.Error())
+		return nil, huma.Error500InternalServerError("Failed to sync margin tokens: " + err.Error())
 	}
-	return NewResponse(nil, "Margin tokens synced successfully"), nil
+	return NewTypedResponse[any](nil, "Margin tokens synced successfully"), nil
 }
 
-func (ctrl *MarginController) getAllOptions(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) getAllOptions(ctx context.Context, input *struct{}) (*model.TypedResponse[[]model.OptionOutput], error) {
 	options := ctrl.marginService.GetAllOptions()
-	return NewResponse(options, "Success"), nil
+	var data []model.OptionOutput
+	if options != nil {
+		data = *options
+	}
+	return NewTypedResponse(data, "Success"), nil
 }
 
-func (ctrl *MarginController) reloadAllOptions(ctx context.Context, input *struct{}) (*model.DefaultResponse, error) {
+func (ctrl *MarginController) reloadAllOptions(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	if err := ctrl.marginService.ReloadAllOptions(ctx); err != nil {
-		return NewErrorResponse("Failed to reload options: " + err.Error()), nil
+		return NewTypedError[any]("Failed to reload options: " + err.Error()), nil
 	}
-	return NewResponse(nil, "Options reloaded successfully"), nil
+	return NewTypedResponse[any](nil, "Options reloaded successfully"), nil
 }

@@ -1,10 +1,12 @@
 package model
 
+type TVNewsItem struct {
+	Title     string `json:"title"`
+	Published int64  `json:"published"`
+}
+
 type TVNewsResponse struct {
-	Items []struct {
-		Title     string `json:"title"`
-		Published int64  `json:"published"`
-	} `json:"items"`
+	Items []TVNewsItem `json:"items"`
 }
 
 type AIAnalysis struct {

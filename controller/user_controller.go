@@ -16,7 +16,6 @@ import (
 
 	"github.com/Oudwins/zog"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -90,7 +89,7 @@ func (ctrl *UserController) RegisterRoutes(api huma.API) {
 	}, ctrl.UpdateFcmToken)
 }
 
-func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.UpdateUsernameRequest) (*model.DefaultResponse, error) {
+func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.RequestBody[model.UpdateUsernameInput]) (*model.TypedResponse[any], error) {
 	req := input.Body
 
 	ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -98,15 +97,15 @@ func (ctrl *UserController) UpdateUsername(ctx context.Context, input *model.Upd
 
 	_, err := ctrl.userSvc.UpdateUsername(ctxt, req.UserID, req.Username)
 	if err != nil {
-		return NewErrorResponse("Failed to update username"), nil
+		return NewTypedError[any](err.Error()), nil
 	}
 
 	cache.GoDelete("auth_" + strconv.FormatInt(req.UserID, 10))
 
-	return NewResponse(nil, "Username updated successfully"), nil
+	return NewTypedResponse[any](nil, "Username updated successfully"), nil
 }
 
-func (ctrl *UserController) UpdateTheme(ctx context.Context, input *model.UpdateThemeInput) (*model.DefaultResponse, error) {
+func (ctrl *UserController) UpdateTheme(ctx context.Context, input *model.RequestBody[model.UpdateThemeRequest]) (*model.TypedResponse[model.UserTheme], error) {
 	req := input.Body
 
 	if req.Theme != model.ThemeLight && req.Theme != model.ThemeDark {
@@ -124,19 +123,16 @@ func (ctrl *UserController) UpdateTheme(ctx context.Context, input *model.Update
 	defer cancel()
 
 	if _, err := ctrl.userSvc.UpdateUserTheme(ctxt, userDto.UserID, req.Theme); err != nil {
-		return NewErrorResponse("Internal server error"), nil
+		return NewTypedError[model.UserTheme](err.Error()), nil
 	}
 
 	cache.GoDelete("auth_" + strconv.FormatInt(userDto.UserID, 10))
 
-	return NewResponse(req.Theme, "Theme synchronized"), nil
+	return NewTypedResponse(req.Theme, "Theme synchronized"), nil
 }
 
-func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.Request) (*model.MessageResponseWrapper, error) {
-	var req model.UserDto
-	if err := mapstructure.Decode(input.Body, &req); err != nil {
-		return nil, huma.Error400BadRequest("Invalid Request")
-	}
+func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.RequestBody[model.UserDto]) (*model.TypedResponse[model.MessageResponse], error) {
+	req := input.Body
 
 	authUser := ctx.Value("user").(model.UserDto)
 	if authUser.UserID != req.UserID {
@@ -179,16 +175,10 @@ func (ctrl *UserController) sendUpdateOtp(ctx context.Context, input *model.Requ
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
-	return &model.MessageResponseWrapper{
-		Body: model.Response{
-			Success: true,
-			Message: "OTP sent to " + req.Email,
-			Data:    model.MessageResponse{OtpSent: true, Message: "OTP sent to " + req.Email},
-		},
-	}, nil
+	return NewTypedResponse(model.MessageResponse{OtpSent: true, Message: "OTP sent to " + req.Email}, "OTP sent to "+req.Email), nil
 }
 
-func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.VerifyOtpInput) (*model.MessageResponseWrapper, error) {
+func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.RequestBody[model.VerifyOtpRequest]) (*model.TypedResponse[any], error) {
 	req := input.Body
 	authUser := ctx.Value("user").(model.UserDto)
 
@@ -211,10 +201,10 @@ func (ctrl *UserController) verifyUpdateOtp(ctx context.Context, input *model.Ve
 
 	cache.DeleteUserCache(req.Email, model.CredUpdate)
 	cache.GoDelete("auth_" + strconv.FormatInt(authUser.UserID, 10))
-	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Credential added successfully"}}, nil
+	return NewTypedResponse[any](nil, "Credential added successfully"), nil
 }
 
-func (ctrl *UserController) UpdateFcmToken(ctx context.Context, input *model.UpdateFcmTokenInput) (*model.DefaultResponse, error) {
+func (ctrl *UserController) UpdateFcmToken(ctx context.Context, input *model.RequestBody[model.UpdateFcmTokenRequest]) (*model.TypedResponse[string], error) {
 	req := input.Body
 
 	val := ctx.Value("user")
@@ -228,8 +218,8 @@ func (ctrl *UserController) UpdateFcmToken(ctx context.Context, input *model.Upd
 	defer cancel()
 
 	if _, err := ctrl.userSvc.UpdateFcmToken(ctxt, userDto.UserID, req.Token); err != nil {
-		return NewErrorResponse("Internal server error"), nil
+		return NewTypedError[string](err.Error()), nil
 	}
 
-	return NewResponse(req.Token, "FCM token synchronized"), nil
+	return NewTypedResponse(req.Token, "FCM token synchronized"), nil
 }

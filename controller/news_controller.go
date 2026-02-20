@@ -42,12 +42,12 @@ func (ctrl *NewsController) RegisterRoutes(api huma.API) {
 
 func (ctrl *NewsController) fetchTvNews(ctx context.Context, input *struct {
 	Symbol string `path:"symbol" doc:"Stock Symbol" example:"RELIANCE"`
-}) (*model.DefaultResponse, error) {
+}) (*model.TypedResponse[[]model.TVNewsItem], error) {
 	return ctrl.newsSvc.FetchTVNews(input.Symbol)
 }
 
 func (ctrl *NewsController) fetchGenAiAnalysis(ctx context.Context, input *struct {
 	Symbol string `path:"symbol" doc:"Stock Symbol" example:"RELIANCE"`
-}) (*model.DefaultResponse, error) {
+}) (*model.TypedResponse[model.AIAnalysis], error) {
 	return ctrl.newsSvc.FetchGenAiAnalysis(input.Symbol)
 }

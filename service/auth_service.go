@@ -19,11 +19,11 @@ import (
 )
 
 type AuthService interface {
-	Login(ctx context.Context, req model.LoginDto) (*model.LoginResponse, error)
-	Signup(ctx context.Context, req model.SignupDto) (*model.MessageResponseWrapper, error)
-	VerifyOtp(ctx context.Context, req model.VerifyOtpRequest) (*model.MessageResponseWrapper, error)
-	Logout() *model.LogoutResponse
-	GetMe(ctx context.Context) (*model.LoginResponse, error)
+	Login(ctx context.Context, req model.LoginDto) (*model.HeaderResponse[model.UserDto], error)
+	Signup(ctx context.Context, req model.SignupDto) (*model.TypedResponse[model.MessageResponse], error)
+	VerifyOtp(ctx context.Context, req model.VerifyOtpRequest) (*model.TypedResponse[any], error)
+	Logout() *model.HeaderResponse[any]
+	GetMe(ctx context.Context) (*model.HeaderResponse[model.UserDto], error)
 }
 
 type AuthServiceImpl struct {
@@ -40,7 +40,7 @@ func NewAuthService(userSvc UserService, otpSvc OtpService, isProduction IsProdu
 	}
 }
 
-func (s *AuthServiceImpl) Login(ctx context.Context, req model.LoginDto) (*model.LoginResponse, error) {
+func (s *AuthServiceImpl) Login(ctx context.Context, req model.LoginDto) (*model.HeaderResponse[model.UserDto], error) {
 	user, err := s.userSvc.FindUser(ctx, 0, req.Email, 0)
 	if err != nil {
 		return nil, huma.Error401Unauthorized("Invalid email or password")
@@ -60,7 +60,7 @@ func (s *AuthServiceImpl) Login(ctx context.Context, req model.LoginDto) (*model
 	return s.wrapLoginResponse(userDto, token, "Login successful"), nil
 }
 
-func (s *AuthServiceImpl) Signup(ctx context.Context, req model.SignupDto) (*model.MessageResponseWrapper, error) {
+func (s *AuthServiceImpl) Signup(ctx context.Context, req model.SignupDto) (*model.TypedResponse[model.MessageResponse], error) {
 	var userDto model.UserDto
 	copier.Copy(&userDto, &req)
 	cache.SetUserCache(req.Email, userDto, model.Signup)
@@ -75,8 +75,8 @@ func (s *AuthServiceImpl) Signup(ctx context.Context, req model.SignupDto) (*mod
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
-	return &model.MessageResponseWrapper{
-		Body: model.Response{
+	return &model.TypedResponse[model.MessageResponse]{
+		Body: model.Payload[model.MessageResponse]{
 			Success: true,
 			Message: "OTP sent to " + req.Email,
 			Data:    model.MessageResponse{OtpSent: true, Message: "OTP sent to " + req.Email},
@@ -84,7 +84,7 @@ func (s *AuthServiceImpl) Signup(ctx context.Context, req model.SignupDto) (*mod
 	}, nil
 }
 
-func (s *AuthServiceImpl) VerifyOtp(ctx context.Context, req model.VerifyOtpRequest) (*model.MessageResponseWrapper, error) {
+func (s *AuthServiceImpl) VerifyOtp(ctx context.Context, req model.VerifyOtpRequest) (*model.TypedResponse[any], error) {
 	var pendingDto model.UserDto
 	ok, err := cache.GetUserCache(req.Email, &pendingDto, model.Signup)
 	if err != nil || !ok {
@@ -101,18 +101,23 @@ func (s *AuthServiceImpl) VerifyOtp(ctx context.Context, req model.VerifyOtpRequ
 	}
 
 	cache.DeleteUserCache(req.Email, model.Signup)
-	return &model.MessageResponseWrapper{Body: model.Response{Success: true, Message: "Signup successful"}}, nil
+	return &model.TypedResponse[any]{
+		Body: model.Payload[any]{
+			Success: true,
+			Message: "Signup successful",
+		},
+	}, nil
 }
 
-func (s *AuthServiceImpl) Logout() *model.LogoutResponse {
+func (s *AuthServiceImpl) Logout() *model.HeaderResponse[any] {
 	cookie := s.createAuthCookie("", -1)
-	return &model.LogoutResponse{
+	return &model.HeaderResponse[any]{
 		SetCookie: cookie,
-		Body:      model.Response{Success: true, Message: "Logged out successfully"},
+		Body:      model.Payload[any]{Success: true, Message: "Logged out successfully"},
 	}
 }
 
-func (s *AuthServiceImpl) GetMe(ctx context.Context) (*model.LoginResponse, error) {
+func (s *AuthServiceImpl) GetMe(ctx context.Context) (*model.HeaderResponse[model.UserDto], error) {
 	val := ctx.Value("user")
 	if val == nil {
 		return nil, huma.Error401Unauthorized("Unauthorized")
@@ -154,9 +159,9 @@ func (s *AuthServiceImpl) getAuthCacheKey(userID int64) string {
 	return "auth_" + strconv.FormatInt(userID, 10)
 }
 
-func (s *AuthServiceImpl) wrapLoginResponse(user model.UserDto, token string, message string) *model.LoginResponse {
-	resp := &model.LoginResponse{
-		Body: model.Response{
+func (s *AuthServiceImpl) wrapLoginResponse(user model.UserDto, token string, message string) *model.HeaderResponse[model.UserDto] {
+	resp := &model.HeaderResponse[model.UserDto]{
+		Body: model.Payload[model.UserDto]{
 			Success: true,
 			Message: message,
 			Data:    user,

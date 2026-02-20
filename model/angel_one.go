@@ -5,10 +5,13 @@ type AngelOneLTPInput struct {
 	SymbolToken   string `query:"symbolToken" doc:"The symbol token of the instrument" required:"true"`
 }
 
-type AngelOneMultipleLTPInput struct {
-	Body struct {
-		Tokens []string `json:"tokens" doc:"List of symbol tokens" required:"true"`
-	}
+type AngelOneMultipleLTPDto struct {
+	Tokens []string `json:"tokens" doc:"List of symbol tokens" required:"true"`
+}
+
+type AngelOneWsSubscribeDto struct {
+	Tokens       []string     `json:"tokens" doc:"List of symbol tokens to subscribe to" required:"true"`
+	ExchangeType ExchangeType `json:"exchangeType" doc:"Exchange type" required:"true"`
 }
 
 type AngelOneHistoricalInput struct {

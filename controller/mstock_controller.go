@@ -89,22 +89,22 @@ func (ctrl *MstockController) RegisterRoutes(api huma.API) {
 	}, ctrl.logout)
 }
 
-func (ctrl *MstockController) login(ctx context.Context, input *struct{ Body model.MstockLoginInput }) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) login(ctx context.Context, input *model.RequestBody[model.MstockLoginInput]) (*model.TypedResponse[any], error) {
 	user := ctx.Value("user").(model.UserDto)
 	return ctrl.mstockSvc.Login(ctx, user.UserID, &input.Body)
 }
 
-func (ctrl *MstockController) verifyOtp(ctx context.Context, input *struct{ Body model.MstockVerifyOtpInput }) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) verifyOtp(ctx context.Context, input *model.RequestBody[model.MstockVerifyOtpInput]) (*model.TypedResponse[any], error) {
 	user := ctx.Value("user").(model.UserDto)
 	return ctrl.mstockSvc.VerifyOtp(ctx, user.UserID, &input.Body)
 }
 
-func (ctrl *MstockController) placeOrder(ctx context.Context, input *struct{ Body model.MstockOrderRequest }) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) placeOrder(ctx context.Context, input *model.RequestBody[model.MstockOrderRequest]) (*model.TypedResponse[any], error) {
 	user := ctx.Value("user").(model.UserDto)
 	return ctrl.mstockSvc.PlaceFnOrder(ctx, user.UserID, &input.Body)
 }
 
-func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")
@@ -113,7 +113,7 @@ func (ctrl *MstockController) auth(ctx context.Context, input *struct{}) (*model
 	return ctrl.mstockSvc.GetProfile(ctx, userDto.UserID)
 }
 
-func (ctrl *MstockController) refreshAccessToken(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) refreshAccessToken(ctx context.Context, input *struct{}) (*model.TypedResponse[any], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")
@@ -122,7 +122,7 @@ func (ctrl *MstockController) refreshAccessToken(ctx context.Context, input *str
 	return ctrl.mstockSvc.RefreshAccessToken(ctx, userDto.UserID)
 }
 
-func (ctrl *MstockController) logout(ctx context.Context, input *struct{}) (*model.ResponseWrapper, error) {
+func (ctrl *MstockController) logout(ctx context.Context, input *struct{}) (*model.TypedResponse[int64], error) {
 	userDto, ok := ctx.Value("user").(model.UserDto)
 	if !ok {
 		return nil, huma.Error401Unauthorized("User context missing")

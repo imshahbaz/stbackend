@@ -28,7 +28,3 @@ type TruecallerProfile struct {
 	Badges   []any          `json:"badges"`
 	History  map[string]any `json:"history"`
 }
-
-type Request struct {
-	Body map[string]any
-}

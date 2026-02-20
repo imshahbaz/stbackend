@@ -35,10 +35,10 @@ func (ctrl *StrategyTradingController) RegisterRoutes(api huma.API) {
 
 func (ctrl *StrategyTradingController) continuousTrade(ctx context.Context, input *struct {
 	StrategyName string `query:"strategyName" description:"Optional strategy name to execute"`
-}) (*model.DefaultResponse, error) {
+}) (*model.TypedResponse[any], error) {
 	err := ctrl.strategyTradingService.ContinuousTrade(ctx, input.StrategyName)
 	if err != nil {
-		return NewErrorResponse(err.Error()), nil
+		return NewTypedError[any](err.Error()), nil
 	}
-	return NewResponse(nil, "Continuous trading triggered"), nil
+	return NewTypedResponse[any](nil, "Continuous trading triggered"), nil
 }
