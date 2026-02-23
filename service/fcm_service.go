@@ -57,6 +57,11 @@ func (s *FcmServiceImpl) SendNotification(ctx context.Context, token, title, bod
 		Android: &messaging.AndroidConfig{
 			Priority: "high",
 		},
+		Webpush: &messaging.WebpushConfig{
+			Headers: map[string]string{
+				"Urgency": "high",
+			},
+		},
 	}
 
 	_, err := s.client.Send(ctx, message)
