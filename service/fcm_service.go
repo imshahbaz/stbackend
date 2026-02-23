@@ -54,6 +54,9 @@ func (s *FcmServiceImpl) SendNotification(ctx context.Context, token, title, bod
 	message := &messaging.Message{
 		Data:  data,
 		Token: token,
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+		},
 	}
 
 	_, err := s.client.Send(ctx, message)
