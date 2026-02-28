@@ -14,13 +14,12 @@ import (
 )
 
 const (
-	defaultStrategyName = "RSI15MIN"
-	signalGracePeriod   = 20 * time.Minute
-	signalExpiryPeriod  = 23 * time.Minute
+	signalGracePeriod  = 20 * time.Minute
+	signalExpiryPeriod = 23 * time.Minute
 )
 
 type StrategyTradingService interface {
-	ContinuousTrade(ctx context.Context, strategyName string) error
+	ContinuousTrade(ctx context.Context) error
 }
 
 type StrategyTradingServiceImpl struct {
@@ -66,31 +65,37 @@ func NewStrategyTradingService(
 	return s
 }
 
-func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strategyName string) error {
-	if strategyName == "" {
-		strategyName = defaultStrategyName
-	}
+func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context) error {
 
-	existingOrders, err := s.strategyOrderRepo.FindTodayOrdersByStrategy(ctx, strategyName)
+	existingOrders, err := s.strategyOrderRepo.FindTodayOrders(ctx)
 	if err != nil {
-		log.Error().Err(err).Str("strategy", strategyName).Msg("Failed to fetch today's strategy orders")
+		log.Error().Err(err).Msg("Failed to fetch today's strategy orders")
 		return err
 	}
 
 	if len(existingOrders) == 0 {
-		log.Info().Str("strategy", strategyName).Msg("No orders found for the strategy today")
+		log.Info().Msg("No orders found for the strategy today")
 		return nil
 	}
 
-	strategy, ok := s.strategyService.GetStrategyByName(strategyName)
-	if !ok {
-		log.Error().Str("strategy", strategyName).Msg("Strategy configuration not found")
-		return fmt.Errorf("strategy %s not found", strategyName)
+	strategies := make(map[string]bool)
+
+	for _, order := range existingOrders {
+		if strategies[order.StrategyName] {
+			continue
+		}
+
+		strategies[order.StrategyName] = true
+		strategy, ok := s.strategyService.GetStrategyByName(order.StrategyName)
+		if !ok {
+			log.Error().Str("strategy", order.StrategyName).Msg("Strategy configuration not found")
+			continue
+		}
+
+		go s.startManualPoller(strategy)
 	}
 
-	log.Info().Int("orderCount", len(existingOrders)).Str("strategy", strategyName).Msg("Starting strategy trading")
-
-	go s.startManualPoller(strategy)
+	log.Info().Int("orderCount", len(existingOrders)).Msg("Starting strategy trading")
 
 	for _, order := range existingOrders {
 		kc, err := s.zerodhaService.GetKiteClient(ctx, order.UserID)
@@ -99,7 +104,7 @@ func (s *StrategyTradingServiceImpl) ContinuousTrade(ctx context.Context, strate
 			continue
 		}
 
-		go s.tradeLoop(order, kc, strategyName)
+		go s.tradeLoop(order, kc, order.StrategyName)
 	}
 
 	return nil
