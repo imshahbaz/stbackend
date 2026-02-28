@@ -23,9 +23,8 @@ func NewStrategyOrderRepository(db *mongo.Database) *StrategyOrderRepository {
 	}
 }
 
-func (r *StrategyOrderRepository) FindByStrategyAndTime(ctx context.Context, strategyName string, startTime, endTime time.Time) ([]model.StrategyOrder, error) {
+func (r *StrategyOrderRepository) FindByTime(ctx context.Context, startTime, endTime time.Time) ([]model.StrategyOrder, error) {
 	filter := bson.M{
-		"strategyName": strategyName,
 		"date": bson.M{
 			"$gte": startTime,
 			"$lte": endTime,
@@ -34,9 +33,9 @@ func (r *StrategyOrderRepository) FindByStrategyAndTime(ctx context.Context, str
 	return r.Generic.GetAll(ctx, filter)
 }
 
-func (r *StrategyOrderRepository) FindTodayOrdersByStrategy(ctx context.Context, strategyName string) ([]model.StrategyOrder, error) {
+func (r *StrategyOrderRepository) FindTodayOrders(ctx context.Context) ([]model.StrategyOrder, error) {
 	startTime := util.GetISTMidnight()
 	endTime := startTime.Add(24 * time.Hour)
 
-	return r.FindByStrategyAndTime(ctx, strategyName, startTime, endTime)
+	return r.FindByTime(ctx, startTime, endTime)
 }
