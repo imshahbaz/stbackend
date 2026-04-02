@@ -83,6 +83,10 @@ func (s *ZerodhaServiceImpl) PlaceMTFOrder(kc *kiteconnect.Client, symbol string
 		Tag:             "Shahbaz Trades",
 	}
 
+	if orderType == kiteconnect.OrderTypeMarket {
+		orderParams.MarketProtection = -1
+	}
+
 	return kc.PlaceOrder(kiteconnect.VarietyRegular, orderParams)
 }
 
@@ -143,9 +147,10 @@ func (s *ZerodhaServiceImpl) CancelOrder(kc *kiteconnect.Client, orderID string)
 
 func (s *ZerodhaServiceImpl) ConvertSLToMarket(kc *kiteconnect.Client, orderID string, quantity int, price float64) (kiteconnect.OrderResponse, error) {
 	params := kiteconnect.OrderParams{
-		OrderType: kiteconnect.OrderTypeMarket,
-		Quantity:  quantity,
-		Price:     price,
+		OrderType:        kiteconnect.OrderTypeMarket,
+		Quantity:         quantity,
+		Price:            price,
+		MarketProtection: -1,
 	}
 
 	return kc.ModifyOrder(kiteconnect.VarietyRegular, orderID, params)
