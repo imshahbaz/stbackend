@@ -21,16 +21,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-session-wakeup-
 
-      - name: Call Session Manager Wakeup API (POST)
+      - name: Call Session Manager Wakeup API (GET)
         run: |
           mkdir -p .cache
           CURRENT_TIME=$(date +%s)
           
-          # 🌟 UPDATED: Added the "-H 'source: github-actions'" custom header rule
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.SESSION_MANAGER_WAKEUP }}" \
+          # 🌟 UPDATED: Swapped to -X GET and removed the request body payload (-d)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.SESSION_MANAGER_WAKEUP }}" \
             -H "Content-Type: application/json" \
-            -H "source: 1Klik" \
-            -d '{}')
+            -H "source: 1Klik")
 
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 201 ]; then
             echo "Session Manager Wakeup Successful at $(date)"
