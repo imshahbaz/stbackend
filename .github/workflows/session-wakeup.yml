@@ -26,15 +26,15 @@ jobs:
           mkdir -p .cache
           CURRENT_TIME=$(date +%s)
           
-          # 🌟 UPDATED: Swapped to -X GET and removed the request body payload (-d)
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.SESSION_MANAGER_WAKEUP }}" \
             -H "Content-Type: application/json" \
             -H "source: 1Klik")
 
-          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 201 ]; then
-            echo "Session Manager Wakeup Successful at $(date)"
+          # 🌟 UPDATED: Added [ "$RESPONSE" -eq 404 ] to the allowed success status codes
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 201 ] || [ "$RESPONSE" -eq 404 ]; then
+            echo "Session Manager Wakeup Successful (Status: $RESPONSE) at $(date)"
             echo "$CURRENT_TIME" > .cache/warmup_timestamp
           else
-            echo "Session Manager Wakeup Failed with status: $RESPONSE"
+            echo "Session Manager Wakeup Failed with unexpected status: $RESPONSE"
             exit 1
           fi
