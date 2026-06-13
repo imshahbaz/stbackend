@@ -1,0 +1,41 @@
+name: Session Manager Wakeup Schedule IST
+
+on:
+  repository_dispatch:
+    types: [session-manager-wakeup]
+  workflow_dispatch:
+
+jobs:
+  wakeup-session-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Cache for Wakeup Strategy
+        id: cache-warmup
+        uses: actions/cache@v3
+        with:
+          path: .cache/warmup_timestamp
+          key: ${{ runner.os }}-session-wakeup-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-session-wakeup-
+
+      - name: Call Session Manager Wakeup API (POST)
+        run: |
+          mkdir -p .cache
+          CURRENT_TIME=$(date +%s)
+          
+          # 🌟 UPDATED: Added the "-H 'source: github-actions'" custom header rule
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.SESSION_MANAGER_WAKEUP }}" \
+            -H "Content-Type: application/json" \
+            -H "source: 1Klik" \
+            -d '{}')
+
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 201 ]; then
+            echo "Session Manager Wakeup Successful at $(date)"
+            echo "$CURRENT_TIME" > .cache/warmup_timestamp
+          else
+            echo "Session Manager Wakeup Failed with status: $RESPONSE"
+            exit 1
+          fi
