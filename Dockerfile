@@ -5,7 +5,7 @@ WORKDIR /app
 # Prevent Python from writing .pyc files & enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=7860
 
 # Install system dependencies (curl for health check)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 # Copy application files
 COPY . .
 
-# Expose default port
-EXPOSE 8000
+# Expose Hugging Face Spaces / default container port
+EXPOSE 7860
 
 # Container healthcheck using dynamic PORT variable
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
