@@ -41,13 +41,16 @@ PREDICTOR_LOADED = False
 try:
     from model import KronosTokenizer, Kronos, KronosPredictor
     
+    print("--> Downloading/loading Kronos tokenizer and model weights from HuggingFace...")
     tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
     model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
     predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
     PREDICTOR_LOADED = True
     print("--> Real Kronos model loaded successfully into CPU RAM.")
 except Exception as e:
+    import traceback
     print(f"--> Warning: Kronos model not loaded ({e}). Running in simulation mode.")
+    traceback.print_exc()
 
 app = FastAPI(
     title="Kronos Auto-Fetching Stock Analysis API",
