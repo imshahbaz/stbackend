@@ -1,0 +1,21 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+kronos_env/
+venv/
+env/
+ENV/
+.venv
+
+# Cache directories
+cache/
+.cache/
+.pytest_cache/
+
+# IDE & OS specific files
+.DS_Store
+.vscode/
+.idea/
