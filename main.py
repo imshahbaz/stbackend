@@ -219,4 +219,5 @@ def predict_price_path(request: ForecastRequest):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
+    print(f"--> Starting Uvicorn server on http://0.0.0.0:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port)

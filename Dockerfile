@@ -4,7 +4,8 @@ WORKDIR /app
 
 # Prevent Python from writing .pyc files & enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
 # Install system dependencies (curl for health check)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,12 +19,12 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 # Copy application files
 COPY . .
 
-# Expose port
+# Expose default port
 EXPOSE 8000
 
-# Container healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+# Container healthcheck using dynamic PORT variable
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Run FastAPI app
 CMD ["python", "main.py"]
